@@ -1,10 +1,11 @@
 import {
-  collection, doc, addDoc, updateDoc, deleteDoc,
+  collection, doc, addDoc, updateDoc, deleteDoc, setDoc,
   getDocs, getDoc, query, where, orderBy,
   serverTimestamp, FieldValue, increment,
   runTransaction, Timestamp, writeBatch,
 } from "firebase/firestore";
 import { db } from "./firebase";
+import type { ShopSettings } from "@/types";
 
 // ─── BRANDS ───────────────────────────────────────────────────────────────────
 
@@ -115,12 +116,13 @@ export async function deleteProduct(id: string) {
 
 export async function addBatch(
   productId: string,
-  data: { costPrice: number; qty: number; supplierId?: string; note?: string }
+  data: { costPrice: number; sellingPrice?: number; qty: number; supplierId?: string; note?: string }
 ) {
   return runTransaction(db, async (tx) => {
     const batchRef = doc(collection(db, "products", productId, "batches"));
     tx.set(batchRef, {
       costPrice: data.costPrice,
+      sellingPrice: data.sellingPrice ?? null,
       totalQty: data.qty,
       remainingQty: data.qty,
       supplierId: data.supplierId ?? null,
@@ -136,13 +138,58 @@ export async function addBatch(
 
 export async function getBatches(productId: string) {
   const snap = await getDocs(
-    query(
-      collection(db, "products", productId, "batches"),
-      where("status", "==", "active"),
-      orderBy("receivedAt", "asc")
-    )
+    query(collection(db, "products", productId, "batches"), orderBy("receivedAt", "asc"))
+  );
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .filter((b: any) => b.status === "active");
+}
+
+export async function getAllBatches(productId: string) {
+  const snap = await getDocs(
+    query(collection(db, "products", productId, "batches"), orderBy("receivedAt", "asc"))
   );
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+export async function updateBatch(
+  productId: string,
+  batchId: string,
+  data: { costPrice: number; sellingPrice?: number; totalQty: number; remainingQty: number; note?: string },
+  performedBy?: string
+) {
+  return runTransaction(db, async (tx) => {
+    const batchRef = doc(db, "products", productId, "batches", batchId);
+    const batchSnap = await tx.get(batchRef);
+    if (!batchSnap.exists()) throw new Error("Batch not found");
+    const current = batchSnap.data() as { remainingQty: number };
+
+    tx.update(batchRef, {
+      costPrice: data.costPrice,
+      sellingPrice: data.sellingPrice ?? null,
+      totalQty: data.totalQty,
+      remainingQty: data.remainingQty,
+      note: data.note ?? "",
+      status: data.remainingQty <= 0 ? "depleted" : "active",
+    });
+
+    // Keep the product's aggregate stock in sync with the corrected quantity.
+    const delta = data.remainingQty - current.remainingQty;
+    if (delta !== 0) {
+      tx.update(doc(db, "products", productId), { totalStock: increment(delta) });
+      const mvRef = doc(collection(db, "stock_movements"));
+      tx.set(mvRef, {
+        productId,
+        type: "adjustment",
+        qty: delta,
+        referenceId: batchId,
+        referenceType: "batch_edit",
+        note: "Batch quantity corrected",
+        performedBy: performedBy || "unknown",
+        createdAt: serverTimestamp(),
+      });
+    }
+  });
 }
 
 // ─── WARRANTY ─────────────────────────────────────────────────────────────────
@@ -209,6 +256,7 @@ export interface SaleItem {
   productId: string;
   productName: string;
   sku: string;
+  batchId?: string | null;
   qty: number;
   unitPrice: number;
   costPrice: number;
@@ -247,7 +295,52 @@ async function getNextInvoiceNumber(): Promise<string> {
   return invoiceNo;
 }
 
+// Allocates a sale qty across a product's active batches, oldest first,
+// so each batch's remainingQty reflects what's actually left and the sale
+// records the true weighted cost price (not the client-supplied one).
+async function allocateFifo(productId: string, qty: number, preferredBatchId?: string | null) {
+  const activeBatches = (await getBatches(productId)) as { id: string; remainingQty: number; costPrice: number }[];
+
+  // If the cashier picked a specific batch, draw from it first; FIFO covers any shortfall.
+  let ordered = activeBatches;
+  if (preferredBatchId) {
+    const idx = activeBatches.findIndex((b) => b.id === preferredBatchId);
+    if (idx > -1) {
+      const rest = activeBatches.slice(0, idx).concat(activeBatches.slice(idx + 1));
+      ordered = [activeBatches[idx], ...rest];
+    }
+  }
+
+  let toConsume = qty;
+  let totalCost = 0;
+  const consumed: { batchId: string; qty: number; remainingAfter: number }[] = [];
+
+  for (const batch of ordered) {
+    if (toConsume <= 0) break;
+    const take = Math.min(toConsume, batch.remainingQty);
+    if (take <= 0) continue;
+    consumed.push({ batchId: batch.id, qty: take, remainingAfter: batch.remainingQty - take });
+    totalCost += take * batch.costPrice;
+    toConsume -= take;
+  }
+
+  // Stock oversold relative to recorded batches — cost the shortfall at the last known batch price.
+  if (toConsume > 0 && activeBatches.length > 0) {
+    totalCost += toConsume * activeBatches[activeBatches.length - 1].costPrice;
+  }
+
+  const costPrice = qty > 0 ? totalCost / qty : 0;
+  return { consumed, costPrice };
+}
+
 export async function createSale(data: SaleData) {
+  // Batch allocation requires querying each product's batches, which Firestore
+  // transactions can't do mid-transaction — so resolve FIFO allocation first,
+  // then apply all writes atomically.
+  const allocations = await Promise.all(
+    data.items.map((item) => allocateFifo(item.productId, item.qty, item.batchId))
+  );
+
   return runTransaction(db, async (tx) => {
     // 1. Generate invoice number
     const counterRef = doc(db, "counters", "invoice");
@@ -265,11 +358,21 @@ export async function createSale(data: SaleData) {
       createdAt: serverTimestamp(),
     });
 
-    // 3. Deduct stock for each item (FIFO across batches)
-    for (const item of data.items) {
+    // 3. Deduct stock for each item and consume from its batches (FIFO)
+    const itemsWithCost = data.items.map((item, i) => ({ ...item, costPrice: allocations[i].costPrice }));
+
+    data.items.forEach((item, i) => {
       tx.update(doc(db, "products", item.productId), {
         totalStock: increment(-item.qty),
       });
+
+      for (const c of allocations[i].consumed) {
+        tx.update(doc(db, "products", item.productId, "batches", c.batchId), {
+          remainingQty: increment(-c.qty),
+          status: c.remainingAfter <= 0 ? "depleted" : "active",
+        });
+      }
+
       // Log stock movement
       const mvRef = doc(collection(db, "stock_movements"));
       tx.set(mvRef, {
@@ -282,10 +385,10 @@ export async function createSale(data: SaleData) {
         performedBy: data.cashierId,
         createdAt: serverTimestamp(),
       });
-    }
+    });
 
-    // 4. Create sale items subcollection
-    for (const item of data.items) {
+    // 4. Create sale items subcollection (with corrected cost price)
+    for (const item of itemsWithCost) {
       const itemRef = doc(collection(db, "sales", saleRef.id, "saleItems"));
       tx.set(itemRef, item);
     }
@@ -329,4 +432,15 @@ export async function getSuppliers() {
 
 export async function addSupplier(data: { name: string; phone: string; email?: string; address?: string }) {
   return addDoc(collection(db, "suppliers"), { ...data, createdAt: serverTimestamp() });
+}
+
+// ─── SHOP SETTINGS ────────────────────────────────────────────────────────────
+
+export async function getShopSettings() {
+  const snap = await getDoc(doc(db, "shopSettings", "main"));
+  return snap.exists() ? (snap.data() as ShopSettings) : null;
+}
+
+export async function updateShopSettings(data: ShopSettings) {
+  return setDoc(doc(db, "shopSettings", "main"), { ...data, updatedAt: serverTimestamp() }, { merge: true });
 }

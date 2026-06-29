@@ -2,12 +2,14 @@
 import { useEffect, useState } from "react";
 import {
   getProducts, addProduct, updateProduct, deleteProduct,
-  getBrands, getMainCategories, getSubCategories, addBatch, getBatches,
+  getBrands, getMainCategories, getSubCategories, addBatch, getAllBatches, updateBatch,
 } from "@/lib/firestore";
+import { useAuth } from "@/hooks/useAuth";
 import { Product, Brand, MainCategory, SubCategory } from "@/types";
 import { Plus, Search, Edit2, Trash2, Package, ChevronDown, X, Layers } from "lucide-react";
 
 export default function ProductsPage() {
+  const { user } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [mainCats, setMainCats] = useState<MainCategory[]>([]);
@@ -18,13 +20,15 @@ export default function ProductsPage() {
   const [batches, setBatches] = useState<any[]>([]);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
+  const [editingBatchId, setEditingBatchId] = useState<string | null>(null);
+  const [editBatchForm, setEditBatchForm] = useState({ costPrice: "", sellingPrice: "", totalQty: "", remainingQty: "", note: "" });
 
   const [form, setForm] = useState({
     name: "", brandId: "", mainCategoryId: "", subCategoryId: "",
     sku: "", sellingPrice: "", totalStock: "", lowStockAlert: "5",
     description: "", warrantyMonths: "0",
   });
-  const [batchForm, setBatchForm] = useState({ costPrice: "", qty: "", note: "" });
+  const [batchForm, setBatchForm] = useState({ costPrice: "", sellingPrice: "", qty: "", note: "" });
 
   const filteredSubCats = subCats.filter(s => s.mainCategoryId === form.mainCategoryId);
 
@@ -63,8 +67,35 @@ export default function ProductsPage() {
 
   const openBatches = async (productId: string) => {
     setShowBatchModal(productId);
-    const b = await getBatches(productId);
+    const b = await getAllBatches(productId);
     setBatches(b);
+  };
+
+  const openEditBatch = (b: any) => {
+    setEditingBatchId(b.id);
+    setEditBatchForm({
+      costPrice: String(b.costPrice),
+      sellingPrice: b.sellingPrice != null ? String(b.sellingPrice) : "",
+      totalQty: String(b.totalQty),
+      remainingQty: String(b.remainingQty),
+      note: b.note || "",
+    });
+  };
+
+  const handleUpdateBatch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!showBatchModal || !editingBatchId) return;
+    await updateBatch(showBatchModal, editingBatchId, {
+      costPrice: Number(editBatchForm.costPrice),
+      sellingPrice: editBatchForm.sellingPrice ? Number(editBatchForm.sellingPrice) : undefined,
+      totalQty: Number(editBatchForm.totalQty),
+      remainingQty: Number(editBatchForm.remainingQty),
+      note: editBatchForm.note,
+    }, user?.uid);
+    setEditingBatchId(null);
+    const b = await getAllBatches(showBatchModal);
+    setBatches(b);
+    loadData();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -101,11 +132,12 @@ export default function ProductsPage() {
     if (!showBatchModal) return;
     await addBatch(showBatchModal, {
       costPrice: Number(batchForm.costPrice),
+      sellingPrice: batchForm.sellingPrice ? Number(batchForm.sellingPrice) : undefined,
       qty: Number(batchForm.qty),
       note: batchForm.note,
     });
-    setBatchForm({ costPrice: "", qty: "", note: "" });
-    const b = await getBatches(showBatchModal);
+    setBatchForm({ costPrice: "", sellingPrice: "", qty: "", note: "" });
+    const b = await getAllBatches(showBatchModal);
     setBatches(b);
     loadData();
   };
@@ -289,7 +321,7 @@ export default function ProductsPage() {
           <div className="bg-white rounded-xl w-full max-w-md">
             <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-100">
               <h2 className="font-prata text-lg text-black">Stock Batches</h2>
-              <button onClick={() => setShowBatchModal(null)} className="text-zinc-400 hover:text-black">
+              <button onClick={() => { setShowBatchModal(null); setEditingBatchId(null); }} className="text-zinc-400 hover:text-black">
                 <X size={18} />
               </button>
             </div>
@@ -298,19 +330,54 @@ export default function ProductsPage() {
               {batches.length === 0 ? (
                 <p className="text-sm text-zinc-400 mb-4">No batches yet</p>
               ) : (
-                <div className="space-y-2 mb-4">
-                  {batches.map((b, i) => (
-                    <div key={b.id} className="flex items-center justify-between p-3 bg-zinc-50 rounded-lg">
-                      <div>
-                        <p className="text-sm font-medium text-black">Batch {i + 1}</p>
-                        <p className="text-xs text-zinc-400">Cost: Rs. {b.costPrice?.toLocaleString()}</p>
+                <div className="space-y-2 mb-4 max-h-72 overflow-y-auto">
+                  {batches.map((b, i) =>
+                    editingBatchId === b.id ? (
+                      <form key={b.id} onSubmit={handleUpdateBatch} className="p-3 bg-zinc-50 rounded-lg space-y-2">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-xs text-zinc-500 mb-1">Cost Price (Rs.)</label>
+                            <input type="number" required className="nexora-input" value={editBatchForm.costPrice} onChange={e => setEditBatchForm({ ...editBatchForm, costPrice: e.target.value })} />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-zinc-500 mb-1">Selling Price (Rs.)</label>
+                            <input type="number" className="nexora-input" value={editBatchForm.sellingPrice} onChange={e => setEditBatchForm({ ...editBatchForm, sellingPrice: e.target.value })} placeholder="Use product price" />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-zinc-500 mb-1">Total Qty</label>
+                            <input type="number" required className="nexora-input" value={editBatchForm.totalQty} onChange={e => setEditBatchForm({ ...editBatchForm, totalQty: e.target.value })} />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-zinc-500 mb-1">Remaining Qty</label>
+                            <input type="number" required className="nexora-input" value={editBatchForm.remainingQty} onChange={e => setEditBatchForm({ ...editBatchForm, remainingQty: e.target.value })} />
+                          </div>
+                        </div>
+                        <input className="nexora-input" placeholder="Note (optional)" value={editBatchForm.note} onChange={e => setEditBatchForm({ ...editBatchForm, note: e.target.value })} />
+                        <div className="flex gap-2">
+                          <button type="submit" className="nexora-btn nexora-btn-primary flex-1 justify-center text-xs py-1.5">Save</button>
+                          <button type="button" onClick={() => setEditingBatchId(null)} className="nexora-btn nexora-btn-outline text-xs py-1.5">Cancel</button>
+                        </div>
+                      </form>
+                    ) : (
+                      <div key={b.id} className="flex items-center justify-between p-3 bg-zinc-50 rounded-lg">
+                        <div>
+                          <p className="text-sm font-medium text-black">Batch {i + 1}</p>
+                          <p className="text-xs text-zinc-400">
+                            Cost: Rs. {b.costPrice?.toLocaleString()}
+                            {b.sellingPrice != null && <> · Sells: Rs. {b.sellingPrice.toLocaleString()}</>}
+                          </p>
+                          {b.note && <p className="text-xs text-zinc-400">{b.note}</p>}
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <div className="text-right">
+                            <p className="text-sm font-medium">{b.remainingQty} / {b.totalQty} units</p>
+                            <span className={`badge ${b.status === "active" ? "badge-success" : "badge-default"}`}>{b.status}</span>
+                          </div>
+                          <button onClick={() => openEditBatch(b)} className="nexora-btn nexora-btn-ghost p-1.5"><Edit2 size={12} /></button>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p className="text-sm font-medium">{b.remainingQty} / {b.totalQty} units</p>
-                        <span className={`badge ${b.status === "active" ? "badge-success" : "badge-default"}`}>{b.status}</span>
-                      </div>
-                    </div>
-                  ))}
+                    )
+                  )}
                 </div>
               )}
 
@@ -322,6 +389,10 @@ export default function ProductsPage() {
                     <div>
                       <label className="block text-xs text-zinc-500 mb-1">Cost Price (Rs.)</label>
                       <input type="number" required className="nexora-input" value={batchForm.costPrice} onChange={e => setBatchForm({...batchForm, costPrice: e.target.value})} placeholder="e.g. 2000" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-zinc-500 mb-1">Selling Price (Rs.)</label>
+                      <input type="number" className="nexora-input" value={batchForm.sellingPrice} onChange={e => setBatchForm({...batchForm, sellingPrice: e.target.value})} placeholder="Use product price" />
                     </div>
                     <div>
                       <label className="block text-xs text-zinc-500 mb-1">Quantity</label>

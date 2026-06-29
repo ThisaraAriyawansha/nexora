@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
-import { getProducts, getCustomers, addCustomer, createSale } from "@/lib/firestore";
+import { getProducts, getCustomers, addCustomer, createSale, getBatches } from "@/lib/firestore";
 import { Product, Customer, CartItem } from "@/types";
 import { Search, Plus, Minus, Trash2, Printer, User, X, Check } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
@@ -24,6 +24,9 @@ export default function SalesPage() {
   const [completedSale, setCompletedSale] = useState<any>(null);
   const [processing, setProcessing] = useState(false);
   const [newCustomerForm, setNewCustomerForm] = useState({ name: "", phone: "", email: "" });
+  const [batchPickerProduct, setBatchPickerProduct] = useState<Product | null>(null);
+  const [productBatches, setProductBatches] = useState<any[]>([]);
+  const [loadingBatches, setLoadingBatches] = useState(false);
 
   const printRef = useRef<HTMLDivElement>(null);
   const handlePrint = useReactToPrint({ content: () => printRef.current });
@@ -45,12 +48,27 @@ export default function SalesPage() {
     c.name.toLowerCase().includes(customerSearch.toLowerCase()) || c.phone?.includes(customerSearch)
   );
 
-  const addToCart = (product: Product) => {
-    const existing = cart.find(i => i.productId === product.id);
+  const openBatchPicker = async (product: Product) => {
+    setLoadingBatches(true);
+    const b = await getBatches(product.id);
+    setLoadingBatches(false);
+    if (b.length === 0) {
+      // Nothing to pick between — add straight to cart.
+      addToCart(product);
+      return;
+    }
+    setProductBatches(b);
+    setBatchPickerProduct(product);
+  };
+
+  const addToCart = (product: Product, batch?: { id: string; costPrice: number; sellingPrice?: number | null } | null) => {
+    const batchId = batch?.id || null;
+    const unitPrice = batch?.sellingPrice ?? product.sellingPrice;
+    const existing = cart.find(i => i.productId === product.id && (i.batchId || null) === batchId);
     if (existing) {
       if (existing.qty >= product.totalStock) return;
       setCart(cart.map(i =>
-        i.productId === product.id
+        i.tempId === existing.tempId
           ? { ...i, qty: i.qty + 1, lineTotal: (i.qty + 1) * (i.unitPrice - i.discount) }
           : i
       ));
@@ -60,14 +78,16 @@ export default function SalesPage() {
         productId: product.id,
         productName: product.name,
         sku: product.sku,
+        batchId,
         qty: 1,
-        unitPrice: product.sellingPrice,
-        costPrice: 0,
+        unitPrice,
+        costPrice: batch?.costPrice ?? 0,
         discount: 0,
-        lineTotal: product.sellingPrice,
+        lineTotal: unitPrice,
         warrantyMonths: product.warrantyMonths || 0,
       }]);
     }
+    setBatchPickerProduct(null);
   };
 
   const updateQty = (tempId: string, qty: number) => {
@@ -148,7 +168,7 @@ export default function SalesPage() {
           {filteredProducts.map(p => (
             <button
               key={p.id}
-              onClick={() => addToCart(p)}
+              onClick={() => openBatchPicker(p)}
               className="nexora-card p-3 text-left hover:border-black transition-colors group"
             >
               <p className="text-sm font-medium text-black group-hover:underline">{p.name}</p>
@@ -197,7 +217,12 @@ export default function SalesPage() {
               {cart.map(item => (
                 <div key={item.tempId} className="px-4 py-3">
                   <div className="flex items-start justify-between mb-1.5">
-                    <p className="text-sm font-medium text-black flex-1 pr-2">{item.productName}</p>
+                    <div className="flex-1 pr-2">
+                      <p className="text-sm font-medium text-black">{item.productName}</p>
+                      <p className="text-xs text-zinc-400">
+                        {item.batchId ? `Batch · Rs. ${item.costPrice?.toLocaleString()}/unit cost` : "Auto (FIFO)"}
+                      </p>
+                    </div>
                     <button onClick={() => removeItem(item.tempId)} className="text-zinc-300 hover:text-red-500 transition-colors">
                       <X size={13} />
                     </button>
@@ -212,16 +237,13 @@ export default function SalesPage() {
                         <Plus size={11} />
                       </button>
                     </div>
-                    <div className="relative flex-1">
-                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-zinc-400">disc</span>
-                      <input
-                        type="number"
-                        value={item.discount || ""}
-                        onChange={e => updateDiscount(item.tempId, Number(e.target.value))}
-                        className="nexora-input pl-8 py-1.5 text-xs"
-                        placeholder="0"
-                      />
-                    </div>
+                    <input
+                      type="number"
+                      value={item.discount || ""}
+                      onChange={e => updateDiscount(item.tempId, Number(e.target.value))}
+                      className="nexora-input flex-1 py-1.5 text-xs"
+                      placeholder="Discount"
+                    />
                     <span className="text-sm font-medium text-black w-20 text-right">Rs. {item.lineTotal.toLocaleString()}</span>
                   </div>
                 </div>
@@ -290,6 +312,52 @@ export default function SalesPage() {
           </button>
         </div>
       </div>
+
+      {/* Batch picker modal */}
+      {batchPickerProduct && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-sm mx-4">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100">
+              <h2 className="font-prata text-base">{batchPickerProduct.name}</h2>
+              <button onClick={() => setBatchPickerProduct(null)}><X size={16} className="text-zinc-400" /></button>
+            </div>
+            <div className="p-3 space-y-2 max-h-80 overflow-y-auto">
+              <button
+                onClick={() => addToCart(batchPickerProduct)}
+                className="w-full text-left px-3 py-2.5 rounded border border-zinc-200 hover:border-black transition-colors"
+              >
+                <p className="text-sm font-medium">Auto (FIFO)</p>
+                <p className="text-xs text-zinc-400">Bills from the oldest stock automatically</p>
+              </button>
+              {loadingBatches ? (
+                <p className="text-xs text-zinc-400 text-center py-3">Loading batches…</p>
+              ) : productBatches.length === 0 ? (
+                <p className="text-xs text-zinc-400 text-center py-3">No batches recorded for this product</p>
+              ) : (
+                productBatches.map((b, i) => {
+                  const effectivePrice = b.sellingPrice ?? batchPickerProduct.sellingPrice;
+                  const isLoss = effectivePrice < b.costPrice;
+                  return (
+                    <button
+                      key={b.id}
+                      onClick={() => addToCart(batchPickerProduct, { id: b.id, costPrice: b.costPrice, sellingPrice: b.sellingPrice })}
+                      className="w-full text-left px-3 py-2.5 rounded border border-zinc-200 hover:border-black transition-colors flex items-center justify-between"
+                    >
+                      <div>
+                        <p className="text-sm font-medium">Batch {i + 1}</p>
+                        <p className="text-xs text-zinc-400">
+                          Cost Rs. {b.costPrice?.toLocaleString()} · Sells Rs. {effectivePrice?.toLocaleString()} · {b.remainingQty} left
+                        </p>
+                      </div>
+                      {isLoss && <span className="badge badge-danger text-xs shrink-0 ml-2">Selling at a loss</span>}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Customer picker modal */}
       {showCustomerPicker && (

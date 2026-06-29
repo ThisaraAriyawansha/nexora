@@ -1,10 +1,22 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { getShopSettings } from "@/lib/firestore";
+import type { ShopSettings } from "@/types";
 
 interface BillPrintProps {
   sale: any;
 }
 
+const DEFAULT_SHOP: ShopSettings = { name: "Nexora", phone: "", email: "", address: "" };
+
 export default function BillPrint({ sale }: BillPrintProps) {
+  const [shop, setShop] = useState<ShopSettings>(DEFAULT_SHOP);
+
+  useEffect(() => {
+    getShopSettings().then((s) => {
+      if (s) setShop(s);
+    });
+  }, []);
+
   const now = new Date();
   const dateStr = now.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
   const timeStr = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
@@ -14,9 +26,13 @@ export default function BillPrint({ sale }: BillPrintProps) {
       {/* Header */}
       <div className="bill-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8mm", paddingBottom: "6mm", borderBottom: "2px solid #000" }}>
         <div>
-          <div className="bill-title" style={{ fontFamily: "'Milonga', serif", fontSize: "32pt", letterSpacing: "-0.5px", lineHeight: 1 }}>Nexora</div>
-          <div style={{ fontSize: "9pt", color: "#555", marginTop: "3px" }}>Computer &amp; Accessories</div>
-          <div style={{ fontSize: "8pt", color: "#888", marginTop: "2px" }}>Tel: +94 XX XXX XXXX | nexora.lk</div>
+          <div className="bill-title" style={{ fontFamily: "'Milonga', serif", fontSize: "32pt", letterSpacing: "-0.5px", lineHeight: 1 }}>{shop.name}</div>
+          {shop.address && <div style={{ fontSize: "9pt", color: "#555", marginTop: "3px" }}>{shop.address}</div>}
+          <div style={{ fontSize: "8pt", color: "#888", marginTop: "2px" }}>
+            {shop.phone && <>Tel: {shop.phone}</>}
+            {shop.phone && shop.email && " | "}
+            {shop.email}
+          </div>
         </div>
         <div style={{ textAlign: "right" }}>
           <div style={{ fontSize: "9pt", color: "#555", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "4px" }}>Invoice</div>
@@ -133,9 +149,9 @@ export default function BillPrint({ sale }: BillPrintProps) {
 
       {/* Footer */}
       <div style={{ borderTop: "1pt solid #e4e4e7", paddingTop: "5mm", textAlign: "center" }}>
-        <div style={{ fontFamily: "'Milonga', serif", fontSize: "14pt", color: "#000", marginBottom: "2mm" }}>Nexora</div>
+        <div style={{ fontFamily: "'Milonga', serif", fontSize: "14pt", color: "#000", marginBottom: "2mm" }}>{shop.name}</div>
         <div style={{ fontSize: "8pt", color: "#888" }}>Thank you for your purchase!</div>
-        <div style={{ fontSize: "8pt", color: "#aaa", marginTop: "2px" }}>For support, contact us at support@nexora.lk</div>
+        {shop.email && <div style={{ fontSize: "8pt", color: "#aaa", marginTop: "2px" }}>For support, contact us at {shop.email}</div>}
       </div>
     </div>
   );

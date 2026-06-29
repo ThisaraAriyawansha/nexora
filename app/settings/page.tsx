@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { addSupplier, getSuppliers } from "@/lib/firestore";
+import { addSupplier, getSuppliers, getShopSettings, updateShopSettings } from "@/lib/firestore";
 import { useEffect } from "react";
 import { Plus, X, Store, Truck } from "lucide-react";
 
@@ -10,9 +10,15 @@ export default function SettingsPage() {
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [showSupplierModal, setShowSupplierModal] = useState(false);
   const [supplierForm, setSupplierForm] = useState({ name: "", phone: "", email: "", address: "" });
+  const [shopForm, setShopForm] = useState({ name: "", phone: "", email: "", address: "" });
+  const [savingShop, setSavingShop] = useState(false);
+  const [shopSaved, setShopSaved] = useState(false);
 
   useEffect(() => {
     getSuppliers().then(setSuppliers);
+    getShopSettings().then((s) => {
+      if (s) setShopForm({ name: s.name || "", phone: s.phone || "", email: s.email || "", address: s.address || "" });
+    });
   }, []);
 
   const handleAddSupplier = async (e: React.FormEvent) => {
@@ -21,6 +27,15 @@ export default function SettingsPage() {
     setShowSupplierModal(false);
     setSupplierForm({ name: "", phone: "", email: "", address: "" });
     getSuppliers().then(setSuppliers);
+  };
+
+  const handleSaveShop = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingShop(true);
+    await updateShopSettings(shopForm);
+    setSavingShop(false);
+    setShopSaved(true);
+    setTimeout(() => setShopSaved(false), 2000);
   };
 
   return (
@@ -36,20 +51,26 @@ export default function SettingsPage() {
           <Store size={16} className="text-zinc-400" />
           <h2 className="font-prata text-base text-black">Shop Info</h2>
         </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">System Name</p>
-            <p className="text-sm font-medium text-black font-milonga">Nexora</p>
+        <p className="text-xs text-zinc-400 mb-4">
+          These details are printed on every bill. "Nexora" is just the system's name — set your own shop name, phone, email and address below.
+        </p>
+        <form onSubmit={handleSaveShop} className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <input className="nexora-input" required placeholder="Shop name" value={shopForm.name} onChange={e => setShopForm({ ...shopForm, name: e.target.value })} />
+            <input className="nexora-input" required placeholder="Phone" value={shopForm.phone} onChange={e => setShopForm({ ...shopForm, phone: e.target.value })} />
+            <input className="nexora-input" placeholder="Email" value={shopForm.email} onChange={e => setShopForm({ ...shopForm, email: e.target.value })} />
+            <input className="nexora-input" placeholder="Address" value={shopForm.address} onChange={e => setShopForm({ ...shopForm, address: e.target.value })} />
           </div>
-          <div>
-            <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Logged in as</p>
-            <p className="text-sm font-medium text-black">{user?.email}</p>
+          <div className="flex items-center gap-3">
+            <button type="submit" disabled={savingShop} className="nexora-btn nexora-btn-primary text-xs py-1.5 px-3">
+              {savingShop ? "Saving..." : "Save Shop Info"}
+            </button>
+            {shopSaved && <span className="text-xs text-green-600">Saved</span>}
           </div>
-        </div>
+        </form>
         <div className="mt-4 pt-4 border-t border-zinc-100">
-          <p className="text-xs text-zinc-400">
-            To update shop name, address and contact details shown on bills, edit the <code className="bg-zinc-100 px-1 rounded text-xs">components/pos/BillPrint.tsx</code> file.
-          </p>
+          <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Logged in as</p>
+          <p className="text-sm font-medium text-black">{user?.email}</p>
         </div>
       </div>
 
@@ -86,6 +107,7 @@ export default function SettingsPage() {
         <h2 className="font-prata text-base text-black mb-4">Firebase Collections</h2>
         <div className="space-y-1.5">
           {[
+            ["shopSettings/main", "Shop name, phone, email, address shown on bills"],
             ["brands", "Product brands"],
             ["main_categories", "Main product categories"],
             ["sub_categories", "Sub categories (linked to main)"],

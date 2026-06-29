@@ -24,6 +24,7 @@ export interface SubCategory {
 export interface ProductBatch {
   id: string;
   costPrice: number;
+  sellingPrice?: number;
   totalQty: number;
   remainingQty: number;
   status: "active" | "depleted";
@@ -60,6 +61,14 @@ export interface Customer {
   createdAt?: any;
 }
 
+export interface ShopSettings {
+  name: string;
+  phone: string;
+  email?: string;
+  address?: string;
+  updatedAt?: any;
+}
+
 export interface Supplier {
   id: string;
   name: string;
@@ -73,6 +82,7 @@ export interface SaleItem {
   productId: string;
   productName: string;
   sku: string;
+  batchId?: string | null;
   qty: number;
   unitPrice: number;
   costPrice: number;
