@@ -1,0 +1,146 @@
+@import url('https://fonts.googleapis.com/css2?family=Milonga&family=Prata&family=Poppins:wght@300;400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-milonga: 'Milonga', serif;
+  --font-prata: 'Prata', serif;
+  --font-poppins: 'Poppins', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-family: var(--font-poppins);
+  background: #ffffff;
+  color: #0a0a0a;
+}
+
+body {
+  font-family: var(--font-poppins);
+  font-size: 14px;
+  line-height: 1.6;
+  color: #0a0a0a;
+  background: #fafafa;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Nexora Typography */
+.font-milonga { font-family: var(--font-milonga); }
+.font-prata   { font-family: var(--font-prata); }
+.font-poppins { font-family: var(--font-poppins); }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: #f4f4f5; }
+::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: #a1a1aa; }
+
+/* Print styles for A4 bill */
+@media print {
+  @page {
+    size: A4;
+    margin: 15mm 15mm 15mm 15mm;
+  }
+
+  body * { visibility: hidden; }
+  #bill-print, #bill-print * { visibility: visible; }
+  #bill-print {
+    position: absolute;
+    inset: 0;
+    width: 210mm;
+    min-height: 297mm;
+    padding: 15mm;
+    font-family: var(--font-poppins);
+    font-size: 11pt;
+    color: #000;
+    background: #fff;
+  }
+
+  .bill-header { margin-bottom: 8mm; }
+  .bill-title {
+    font-family: var(--font-milonga);
+    font-size: 28pt;
+    color: #000;
+    letter-spacing: -0.5px;
+  }
+  .bill-table { width: 100%; border-collapse: collapse; margin-top: 6mm; }
+  .bill-table th {
+    border-bottom: 1.5pt solid #000;
+    padding: 3mm 2mm;
+    text-align: left;
+    font-weight: 600;
+    font-size: 9pt;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .bill-table td { padding: 2.5mm 2mm; border-bottom: 0.5pt solid #e4e4e7; font-size: 10pt; }
+  .bill-totals { margin-top: 6mm; }
+  .bill-divider { border: none; border-top: 1.5pt solid #000; margin: 4mm 0; }
+  .no-print { display: none !important; }
+}
+
+/* Utility classes */
+.nexora-card {
+  background: #ffffff;
+  border: 1px solid #e4e4e7;
+  border-radius: 8px;
+}
+
+.nexora-input {
+  width: 100%;
+  border: 1px solid #e4e4e7;
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-family: var(--font-poppins);
+  font-size: 14px;
+  color: #0a0a0a;
+  background: #ffffff;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.nexora-input:focus { border-color: #0a0a0a; }
+.nexora-input::placeholder { color: #a1a1aa; }
+
+.nexora-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 18px;
+  font-family: var(--font-poppins);
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+  border: none;
+  outline: none;
+}
+.nexora-btn-primary { background: #0a0a0a; color: #ffffff; }
+.nexora-btn-primary:hover { background: #27272a; }
+.nexora-btn-outline { background: transparent; color: #0a0a0a; border: 1px solid #e4e4e7; }
+.nexora-btn-outline:hover { border-color: #0a0a0a; }
+.nexora-btn-ghost { background: transparent; color: #52525b; border: none; }
+.nexora-btn-ghost:hover { background: #f4f4f5; color: #0a0a0a; }
+.nexora-btn-danger { background: #0a0a0a; color: #fff; }
+.nexora-btn-danger:hover { background: #ef4444; }
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 2px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+}
+.badge-default { background: #f4f4f5; color: #52525b; }
+.badge-success { background: #f0fdf4; color: #15803d; }
+.badge-warning { background: #fefce8; color: #a16207; }
+.badge-danger  { background: #fef2f2; color: #dc2626; }

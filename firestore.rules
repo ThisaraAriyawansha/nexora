@@ -1,0 +1,38 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Only authenticated users can access anything
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    match /users/{userId} {
+      allow read, write: if isAuth() && request.auth.uid == userId;
+    }
+
+    match /brands/{id} { allow read, write: if isAuth(); }
+    match /main_categories/{id} { allow read, write: if isAuth(); }
+    match /sub_categories/{id} { allow read, write: if isAuth(); }
+    match /suppliers/{id} { allow read, write: if isAuth(); }
+    match /customers/{id} { allow read, write: if isAuth(); }
+
+    match /products/{productId} {
+      allow read, write: if isAuth();
+      match /batches/{batchId} {
+        allow read, write: if isAuth();
+      }
+    }
+
+    match /sales/{saleId} {
+      allow read, write: if isAuth();
+      match /saleItems/{itemId} {
+        allow read, write: if isAuth();
+      }
+    }
+
+    match /warranties/{id} { allow read, write: if isAuth(); }
+    match /stock_movements/{id} { allow read, write: if isAuth(); }
+    match /counters/{id} { allow read, write: if isAuth(); }
+  }
+}
