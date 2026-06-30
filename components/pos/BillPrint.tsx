@@ -107,6 +107,12 @@ export default function BillPrint({ sale }: BillPrintProps) {
               <span>- Rs. {sale.discountAmount?.toLocaleString()}</span>
             </div>
           )}
+          {sale.pointsRedeemed > 0 && (
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "9pt", padding: "1.5mm 0", color: "#7c3aed" }}>
+              <span>Points Redeemed ({sale.pointsRedeemed} pts)</span>
+              <span>- Rs. {sale.pointsRedeemed?.toLocaleString()}</span>
+            </div>
+          )}
           {sale.taxAmount > 0 && (
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: "9pt", padding: "1.5mm 0", color: "#555" }}>
               <span>Tax</span>

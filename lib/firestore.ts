@@ -253,6 +253,13 @@ export async function addLoyaltyPoints(customerId: string, points: number) {
   });
 }
 
+export async function redeemLoyaltyPoints(customerId: string, points: number) {
+  return updateDoc(doc(db, "customers", customerId), {
+    loyaltyPoints: increment(-points),
+    updatedAt: serverTimestamp(),
+  });
+}
+
 // ─── SALES (POS checkout) ─────────────────────────────────────────────────────
 
 export interface SaleItem {
@@ -278,6 +285,7 @@ export interface SaleData {
   discountAmount: number;
   taxAmount: number;
   totalAmount: number;
+  pointsRedeemed?: number;
   paymentMethod: "cash" | "card" | "transfer";
   paymentStatus: "paid" | "partial" | "pending";
   amountTendered?: number;

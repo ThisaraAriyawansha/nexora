@@ -168,6 +168,12 @@ export default function BillsPage() {
                     <span>Discount</span><span>- Rs. {viewSale.discountAmount?.toLocaleString()}</span>
                   </div>
                 )}
+                {viewSale.pointsRedeemed > 0 && (
+                  <div className="flex justify-between text-sm text-violet-600">
+                    <span>Points Redeemed ({viewSale.pointsRedeemed} pts)</span>
+                    <span>- Rs. {viewSale.pointsRedeemed?.toLocaleString()}</span>
+                  </div>
+                )}
                 <div className="flex justify-between font-prata text-lg border-t border-zinc-100 pt-2 mt-2">
                   <span>Total</span><span>Rs. {viewSale.totalAmount?.toLocaleString()}</span>
                 </div>

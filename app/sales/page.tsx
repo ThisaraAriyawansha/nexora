@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
-import { getProducts, getCustomers, addCustomer, createSale, getBatches, addWarranty, addLoyaltyPoints } from "@/lib/firestore";
+import { getProducts, getCustomers, addCustomer, createSale, getBatches, addWarranty, addLoyaltyPoints, redeemLoyaltyPoints } from "@/lib/firestore";
 import { Product, Customer, CartItem } from "@/types";
 import { Search, Plus, Minus, Trash2, Printer, User, X, Check } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
@@ -27,6 +27,7 @@ export default function SalesPage() {
   const [batchPickerProduct, setBatchPickerProduct] = useState<Product | null>(null);
   const [productBatches, setProductBatches] = useState<any[]>([]);
   const [loadingBatches, setLoadingBatches] = useState(false);
+  const [pointsToRedeem, setPointsToRedeem] = useState(0);
 
   const printRef = useRef<HTMLDivElement>(null);
   const handlePrint = useReactToPrint({ content: () => printRef.current });
@@ -102,7 +103,7 @@ export default function SalesPage() {
   const removeItem = (tempId: string) => setCart(cart.filter(i => i.tempId !== tempId));
 
   const subtotal = cart.reduce((s, i) => s + i.lineTotal, 0);
-  const totalAmount = Math.max(0, subtotal - discount);
+  const totalAmount = Math.max(0, subtotal - discount - pointsToRedeem);
   const change = Number(amountTendered) - totalAmount;
 
   const handleCheckout = async () => {
@@ -119,6 +120,7 @@ export default function SalesPage() {
         discountAmount: discount,
         taxAmount: 0,
         totalAmount,
+        pointsRedeemed: pointsToRedeem || 0,
         paymentMethod,
         paymentStatus: "paid",
         amountTendered: Number(amountTendered) || totalAmount,
@@ -143,10 +145,14 @@ export default function SalesPage() {
         ...(selectedCustomer && pointsEarned > 0
           ? [addLoyaltyPoints(selectedCustomer.id, pointsEarned)]
           : []),
+        ...(selectedCustomer && pointsToRedeem > 0
+          ? [redeemLoyaltyPoints(selectedCustomer.id, pointsToRedeem)]
+          : []),
       ]);
-      setCompletedSale({ ...result, items: cart, subtotal, discountAmount: discount, totalAmount, customerName: selectedCustomer?.name || "Walk-in Customer", cashierName: userDisplayName || "Cashier", paymentMethod, amountTendered: Number(amountTendered), changeAmount: Math.max(0, change) });
+      setCompletedSale({ ...result, items: cart, subtotal, discountAmount: discount, pointsRedeemed: pointsToRedeem, totalAmount, customerName: selectedCustomer?.name || "Walk-in Customer", cashierName: userDisplayName || "Cashier", paymentMethod, amountTendered: Number(amountTendered), changeAmount: Math.max(0, change) });
       setCart([]);
       setDiscount(0);
+      setPointsToRedeem(0);
       setSelectedCustomer(null);
       setAmountTendered("");
       setNote("");
@@ -217,7 +223,7 @@ export default function SalesPage() {
               {selectedCustomer ? selectedCustomer.name : "Walk-in customer (tap to select)"}
             </span>
             {selectedCustomer && (
-              <button onClick={e => { e.stopPropagation(); setSelectedCustomer(null); }}>
+              <button onClick={e => { e.stopPropagation(); setSelectedCustomer(null); setPointsToRedeem(0); }}>
                 <X size={13} className="text-zinc-400" />
               </button>
             )}
@@ -287,6 +293,27 @@ export default function SalesPage() {
               placeholder="0"
             />
           </div>
+          {selectedCustomer && (selectedCustomer.loyaltyPoints || 0) > 0 && (
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-sm text-zinc-500">Redeem Points</span>
+                <p className="text-xs text-zinc-400">{(selectedCustomer.loyaltyPoints || 0)} pts available</p>
+              </div>
+              <input
+                type="number"
+                value={pointsToRedeem || ""}
+                onChange={e => {
+                  const val = Number(e.target.value);
+                  const max = Math.min(selectedCustomer.loyaltyPoints || 0, Math.floor(subtotal - discount));
+                  setPointsToRedeem(Math.max(0, Math.min(val, max)));
+                }}
+                className="nexora-input w-28 py-1.5 text-sm text-right"
+                placeholder="0"
+                max={Math.min(selectedCustomer.loyaltyPoints || 0, Math.floor(subtotal - discount))}
+                min={0}
+              />
+            </div>
+          )}
           <div className="flex justify-between font-prata text-lg border-t border-zinc-100 pt-2">
             <span>Total</span>
             <span>Rs. {totalAmount.toLocaleString()}</span>
