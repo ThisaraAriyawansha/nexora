@@ -149,10 +149,10 @@ export default function SalesPage() {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex flex-col lg:flex-row h-full overflow-hidden">
       {/* Left: Product search */}
-      <div className="flex-1 flex flex-col border-r border-zinc-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-zinc-100">
+      <div className="flex-1 min-h-0 flex flex-col border-b lg:border-b-0 lg:border-r border-zinc-200 overflow-hidden">
+        <div className="px-4 sm:px-6 py-4 border-b border-zinc-100">
           <h1 className="font-prata text-xl text-black mb-3">New Sale</h1>
           <div className="relative">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
@@ -164,7 +164,7 @@ export default function SalesPage() {
             />
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto p-4 grid grid-cols-2 xl:grid-cols-3 gap-3 content-start">
+        <div className="flex-1 overflow-y-auto p-4 grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 content-start">
           {filteredProducts.map(p => (
             <button
               key={p.id}
@@ -180,13 +180,13 @@ export default function SalesPage() {
             </button>
           ))}
           {filteredProducts.length === 0 && (
-            <p className="col-span-3 text-center py-12 text-sm text-zinc-400">No products found</p>
+            <p className="col-span-2 sm:col-span-3 xl:col-span-4 text-center py-12 text-sm text-zinc-400">No products found</p>
           )}
         </div>
       </div>
 
       {/* Right: Cart */}
-      <div className="w-96 flex flex-col bg-white">
+      <div className="flex-1 min-h-0 lg:flex-none lg:w-96 flex flex-col bg-white overflow-hidden">
         {/* Customer */}
         <div className="px-4 py-3 border-b border-zinc-100">
           <button

@@ -59,13 +59,13 @@ export default function CategoriesPage() {
   };
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <div className="mb-8">
         <h1 className="font-prata text-2xl text-black">Categories</h1>
         <p className="text-zinc-500 text-sm mt-1">Manage main categories and subcategories</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
         {/* Main Categories */}
         <div className="nexora-card overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100">

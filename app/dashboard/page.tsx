@@ -42,7 +42,7 @@ export default function DashboardPage() {
   ];
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       {/* Header */}
       <div className="mb-8">
         <h1 className="font-prata text-2xl text-black">Dashboard</h1>
@@ -94,12 +94,12 @@ export default function DashboardPage() {
             <div className="px-6 py-8 text-center text-sm text-zinc-400">No sales yet</div>
           ) : (
             recentSales.map((sale: any) => (
-              <div key={sale.id} className="px-6 py-3.5 flex items-center justify-between hover:bg-zinc-50 transition-colors">
-                <div>
+              <div key={sale.id} className="px-4 sm:px-6 py-3.5 flex items-center justify-between gap-3 hover:bg-zinc-50 transition-colors">
+                <div className="min-w-0">
                   <p className="text-sm font-medium text-black">{sale.invoiceNo}</p>
                   <p className="text-xs text-zinc-400">{sale.customerName || "Walk-in customer"}</p>
                 </div>
-                <div className="text-right">
+                <div className="text-right shrink-0">
                   <p className="text-sm font-medium text-black">Rs. {sale.totalAmount?.toLocaleString()}</p>
                   <span className={`badge ${sale.paymentStatus === "paid" ? "badge-success" : "badge-warning"}`}>
                     {sale.paymentStatus}
@@ -112,7 +112,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Quick actions */}
-      <div className="grid grid-cols-3 gap-3 mt-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
         <Link href="/sales" className="nexora-card p-4 hover:border-black transition-colors flex items-center gap-3 group">
           <ShoppingBag size={16} className="text-zinc-400 group-hover:text-black transition-colors" />
           <span className="text-sm font-medium text-zinc-700 group-hover:text-black transition-colors">New Sale</span>

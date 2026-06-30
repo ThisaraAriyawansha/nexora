@@ -35,18 +35,18 @@ export default function BrandsPage() {
   };
 
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
+    <div className="p-4 sm:p-8">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
           <h1 className="font-prata text-2xl text-black">Brands</h1>
           <p className="text-zinc-500 text-sm mt-1">{brands.length} brands</p>
         </div>
-        <button onClick={openAdd} className="nexora-btn nexora-btn-primary">
+        <button onClick={openAdd} className="nexora-btn nexora-btn-primary self-start sm:self-auto">
           <Plus size={14} /> Add Brand
         </button>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
         {brands.map(brand => (
           <div key={brand.id} className="nexora-card p-4 flex items-start justify-between">
             <div>
@@ -60,7 +60,7 @@ export default function BrandsPage() {
           </div>
         ))}
         {brands.length === 0 && (
-          <div className="col-span-4 text-center py-12 text-zinc-400 text-sm">No brands yet. Add your first brand.</div>
+          <div className="col-span-full text-center py-12 text-zinc-400 text-sm">No brands yet. Add your first brand.</div>
         )}
       </div>
 

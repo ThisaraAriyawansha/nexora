@@ -34,18 +34,18 @@ export default function CustomersPage() {
   );
 
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
+    <div className="p-4 sm:p-8">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
           <h1 className="font-prata text-2xl text-black">Customers</h1>
           <p className="text-zinc-500 text-sm mt-1">{customers.length} customers</p>
         </div>
-        <button onClick={openAdd} className="nexora-btn nexora-btn-primary">
+        <button onClick={openAdd} className="nexora-btn nexora-btn-primary self-start sm:self-auto">
           <Plus size={14} /> Add Customer
         </button>
       </div>
 
-      <div className="relative mb-4 max-w-sm">
+      <div className="relative mb-4 sm:max-w-sm">
         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
         <input
           className="nexora-input pl-9"
@@ -61,8 +61,8 @@ export default function CustomersPage() {
             <p className="text-center py-12 text-sm text-zinc-400">No customers found</p>
           ) : (
             filtered.map(c => (
-              <div key={c.id} className="px-6 py-3.5 flex items-center justify-between hover:bg-zinc-50 transition-colors">
-                <div>
+              <div key={c.id} className="px-4 sm:px-6 py-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 hover:bg-zinc-50 transition-colors">
+                <div className="min-w-0">
                   <p className="text-sm font-medium text-black">{c.name}</p>
                   <p className="text-xs text-zinc-400">{c.phone} {c.email ? `· ${c.email}` : ""}</p>
                   {c.address && <p className="text-xs text-zinc-400">{c.address}</p>}

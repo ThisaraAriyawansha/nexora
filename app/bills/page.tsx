@@ -35,7 +35,7 @@ export default function BillsPage() {
   };
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="font-prata text-2xl text-black">Bills</h1>
@@ -43,7 +43,7 @@ export default function BillsPage() {
         </div>
       </div>
 
-      <div className="relative mb-6 max-w-sm">
+      <div className="relative mb-6 sm:max-w-sm">
         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
         <input
           className="nexora-input pl-9"
@@ -53,8 +53,8 @@ export default function BillsPage() {
         />
       </div>
 
-      <div className="nexora-card overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="nexora-card overflow-x-auto">
+        <table className="w-full text-sm min-w-[700px]">
           <thead>
             <tr className="border-b border-zinc-100">
               <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase tracking-wider">Invoice</th>
@@ -116,7 +116,7 @@ export default function BillsPage() {
 
             <div className="px-6 py-4">
               {/* Summary */}
-              <div className="grid grid-cols-3 gap-4 mb-6">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
                 <div>
                   <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Customer</p>
                   <p className="text-sm font-medium">{viewSale.customerName || "Walk-in"}</p>
@@ -132,7 +132,8 @@ export default function BillsPage() {
               </div>
 
               {/* Items */}
-              <table className="w-full text-sm mb-4">
+              <div className="overflow-x-auto">
+              <table className="w-full text-sm mb-4 min-w-[480px]">
                 <thead>
                   <tr className="border-b border-zinc-100">
                     <th className="text-left py-2 text-xs text-zinc-500 font-medium">Item</th>
@@ -155,6 +156,7 @@ export default function BillsPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
 
               {/* Totals */}
               <div className="border-t border-zinc-100 pt-4 space-y-1.5">

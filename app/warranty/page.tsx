@@ -52,14 +52,14 @@ export default function WarrantyPage() {
   };
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <div className="mb-8">
         <h1 className="font-prata text-2xl text-black">Warranty</h1>
         <p className="text-zinc-500 text-sm mt-1">Track product warranties by sale</p>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <div className="nexora-card p-4">
           <div className="flex items-center gap-2 mb-1">
             <Check size={14} className="text-green-500" />
@@ -84,7 +84,7 @@ export default function WarrantyPage() {
       </div>
 
       {/* Search */}
-      <div className="relative mb-6 max-w-sm">
+      <div className="relative mb-6 sm:max-w-sm">
         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
         <input
           className="nexora-input pl-9"
@@ -94,8 +94,8 @@ export default function WarrantyPage() {
         />
       </div>
 
-      <div className="nexora-card overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="nexora-card overflow-x-auto">
+        <table className="w-full text-sm min-w-[640px]">
           <thead>
             <tr className="border-b border-zinc-100">
               <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase tracking-wider">Customer</th>

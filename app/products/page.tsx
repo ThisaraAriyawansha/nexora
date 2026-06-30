@@ -152,19 +152,19 @@ export default function ProductsPage() {
   const getSubCat = (id: string) => subCats.find(c => c.id === id)?.name || "—";
 
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
+    <div className="p-4 sm:p-8">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
           <h1 className="font-prata text-2xl text-black">Products</h1>
           <p className="text-zinc-500 text-sm mt-1">{products.length} items in inventory</p>
         </div>
-        <button onClick={openAdd} className="nexora-btn nexora-btn-primary">
+        <button onClick={openAdd} className="nexora-btn nexora-btn-primary self-start sm:self-auto">
           <Plus size={14} /> Add Product
         </button>
       </div>
 
       {/* Search */}
-      <div className="relative mb-6 max-w-sm">
+      <div className="relative mb-6 sm:max-w-sm">
         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
         <input
           className="nexora-input pl-9"
@@ -175,8 +175,8 @@ export default function ProductsPage() {
       </div>
 
       {/* Table */}
-      <div className="nexora-card overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="nexora-card overflow-x-auto">
+        <table className="w-full text-sm min-w-[760px]">
           <thead>
             <tr className="border-b border-zinc-100">
               <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase tracking-wider">Product</th>
@@ -251,7 +251,7 @@ export default function ProductsPage() {
                 <label className="block text-xs text-zinc-500 uppercase tracking-wider mb-1.5">Product Name</label>
                 <input className="nexora-input" required value={form.name} onChange={e => setForm({...form, name: e.target.value})} />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs text-zinc-500 uppercase tracking-wider mb-1.5">Brand</label>
                   <select className="nexora-input" required value={form.brandId} onChange={e => setForm({...form, brandId: e.target.value})}>
@@ -264,7 +264,7 @@ export default function ProductsPage() {
                   <input className="nexora-input" required value={form.sku} onChange={e => setForm({...form, sku: e.target.value})} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs text-zinc-500 uppercase tracking-wider mb-1.5">Main Category</label>
                   <select className="nexora-input" required value={form.mainCategoryId} onChange={e => setForm({...form, mainCategoryId: e.target.value, subCategoryId: ""})}>
@@ -280,7 +280,7 @@ export default function ProductsPage() {
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs text-zinc-500 uppercase tracking-wider mb-1.5">Selling Price (Rs.)</label>
                   <input type="number" className="nexora-input" required value={form.sellingPrice} onChange={e => setForm({...form, sellingPrice: e.target.value})} />
@@ -290,7 +290,7 @@ export default function ProductsPage() {
                   <input type="number" className="nexora-input" required value={form.totalStock} onChange={e => setForm({...form, totalStock: e.target.value})} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs text-zinc-500 uppercase tracking-wider mb-1.5">Low Stock Alert</label>
                   <input type="number" className="nexora-input" value={form.lowStockAlert} onChange={e => setForm({...form, lowStockAlert: e.target.value})} />
@@ -334,7 +334,7 @@ export default function ProductsPage() {
                   {batches.map((b, i) =>
                     editingBatchId === b.id ? (
                       <form key={b.id} onSubmit={handleUpdateBatch} className="p-3 bg-zinc-50 rounded-lg space-y-2">
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <div>
                             <label className="block text-xs text-zinc-500 mb-1">Cost Price (Rs.)</label>
                             <input type="number" required className="nexora-input" value={editBatchForm.costPrice} onChange={e => setEditBatchForm({ ...editBatchForm, costPrice: e.target.value })} />
@@ -385,7 +385,7 @@ export default function ProductsPage() {
               <div className="border-t border-zinc-100 pt-4">
                 <p className="text-xs text-zinc-500 uppercase tracking-wider mb-3">Add New Batch</p>
                 <form onSubmit={handleAddBatch} className="space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs text-zinc-500 mb-1">Cost Price (Rs.)</label>
                       <input type="number" required className="nexora-input" value={batchForm.costPrice} onChange={e => setBatchForm({...batchForm, costPrice: e.target.value})} placeholder="e.g. 2000" />
