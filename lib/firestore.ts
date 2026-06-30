@@ -1,8 +1,8 @@
 import {
   collection, doc, addDoc, updateDoc, deleteDoc, setDoc,
-  getDocs, getDoc, query, where, orderBy,
+  getDocs, getDoc, query, where, orderBy, limit,
   serverTimestamp, FieldValue, increment,
-  runTransaction, Timestamp, writeBatch,
+  runTransaction, Timestamp, writeBatch, getCountFromServer,
 } from "firebase/firestore";
 import { initializeApp, deleteApp } from "firebase/app";
 import { getAuth, createUserWithEmailAndPassword, signOut } from "firebase/auth";
@@ -504,4 +504,53 @@ export async function createTeamUser(
     await signOut(secondaryAuth);
     await deleteApp(secondaryApp);
   }
+}
+
+// ─── FIREBASE USAGE STATS ─────────────────────────────────────────────────────
+
+export interface CollectionStat {
+  key: string;
+  label: string;
+  count: number;
+  avgBytes: number;
+}
+
+export async function getUsageStats(): Promise<CollectionStat[]> {
+  const targets = [
+    { key: "sales",           label: "Sales",            avgBytes: 1000 },
+    { key: "stock_movements", label: "Stock Movements",  avgBytes: 350  },
+    { key: "products",        label: "Products",         avgBytes: 700  },
+    { key: "customers",       label: "Customers",        avgBytes: 400  },
+    { key: "warranties",      label: "Warranties",       avgBytes: 500  },
+    { key: "sub_categories",  label: "Sub Categories",   avgBytes: 250  },
+    { key: "users",           label: "Users",            avgBytes: 400  },
+    { key: "suppliers",       label: "Suppliers",        avgBytes: 350  },
+    { key: "main_categories", label: "Main Categories",  avgBytes: 200  },
+    { key: "brands",          label: "Brands",           avgBytes: 200  },
+  ];
+
+  const results = await Promise.all(
+    targets.map(async (t) => {
+      const snap = await getCountFromServer(collection(db, t.key));
+      return { ...t, count: snap.data().count };
+    })
+  );
+
+  return results;
+}
+
+// ─── CLEAN COLLECTION ─────────────────────────────────────────────────────────
+
+export async function cleanCollection(collectionName: string): Promise<number> {
+  let totalDeleted = 0;
+  while (true) {
+    const snap = await getDocs(query(collection(db, collectionName), limit(500)));
+    if (snap.empty) break;
+    const batch = writeBatch(db);
+    snap.docs.forEach((d) => batch.delete(d.ref));
+    await batch.commit();
+    totalDeleted += snap.docs.length;
+    if (snap.docs.length < 500) break;
+  }
+  return totalDeleted;
 }
