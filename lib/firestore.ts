@@ -203,7 +203,7 @@ export async function getWarranties() {
 }
 
 export async function addWarranty(data: {
-  customerId: string;
+  customerId: string | null;
   customerName: string;
   productId: string;
   productName: string;
@@ -220,13 +220,6 @@ export async function addWarranty(data: {
     status: "active",
     createdAt: serverTimestamp(),
   });
-}
-
-export async function getWarrantyByCustomer(customerId: string) {
-  const snap = await getDocs(
-    query(collection(db, "warranties"), where("customerId", "==", customerId))
-  );
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 
 // ─── CUSTOMERS ────────────────────────────────────────────────────────────────
@@ -251,6 +244,13 @@ export async function addCustomer(data: {
 
 export async function updateCustomer(id: string, data: any) {
   return updateDoc(doc(db, "customers", id), { ...data, updatedAt: serverTimestamp() });
+}
+
+export async function addLoyaltyPoints(customerId: string, points: number) {
+  return updateDoc(doc(db, "customers", customerId), {
+    loyaltyPoints: increment(points),
+    updatedAt: serverTimestamp(),
+  });
 }
 
 // ─── SALES (POS checkout) ─────────────────────────────────────────────────────
@@ -541,11 +541,30 @@ export async function getUsageStats(): Promise<CollectionStat[]> {
 
 // ─── CLEAN COLLECTION ─────────────────────────────────────────────────────────
 
+const SUBCOLLECTIONS: Record<string, string[]> = {
+  products: ["batches"],
+  sales: ["saleItems"],
+};
+
 export async function cleanCollection(collectionName: string): Promise<number> {
   let totalDeleted = 0;
   while (true) {
     const snap = await getDocs(query(collection(db, collectionName), limit(500)));
     if (snap.empty) break;
+    const subcols = SUBCOLLECTIONS[collectionName] ?? [];
+    for (const docSnap of snap.docs) {
+      for (const sub of subcols) {
+        let subSnap;
+        do {
+          subSnap = await getDocs(query(collection(db, collectionName, docSnap.id, sub), limit(500)));
+          if (!subSnap.empty) {
+            const subBatch = writeBatch(db);
+            subSnap.docs.forEach((d) => subBatch.delete(d.ref));
+            await subBatch.commit();
+          }
+        } while (subSnap.docs.length === 500);
+      }
+    }
     const batch = writeBatch(db);
     snap.docs.forEach((d) => batch.delete(d.ref));
     await batch.commit();

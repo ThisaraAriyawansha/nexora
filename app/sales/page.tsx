@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
-import { getProducts, getCustomers, addCustomer, createSale, getBatches, addWarranty } from "@/lib/firestore";
+import { getProducts, getCustomers, addCustomer, createSale, getBatches, addWarranty, addLoyaltyPoints } from "@/lib/firestore";
 import { Product, Customer, CartItem } from "@/types";
 import { Search, Plus, Minus, Trash2, Printer, User, X, Check } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
@@ -8,7 +8,7 @@ import BillPrint from "@/components/pos/BillPrint";
 import { useReactToPrint } from "react-to-print";
 
 export default function SalesPage() {
-  const { user } = useAuth();
+  const { user, userDisplayName } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -113,7 +113,7 @@ export default function SalesPage() {
         customerId: selectedCustomer?.id || null,
         customerName: selectedCustomer?.name || "Walk-in Customer",
         cashierId: user!.uid,
-        cashierName: user!.email || "Cashier",
+        cashierName: userDisplayName || "Cashier",
         items: cart,
         subtotal,
         discountAmount: discount,
@@ -126,22 +126,25 @@ export default function SalesPage() {
         note,
       });
       const saleDate = new Date();
-      await Promise.all(
-        cart
-          .filter((item) => (item.warrantyMonths ?? 0) > 0)
-          .map((item) =>
-            addWarranty({
-              customerId: selectedCustomer?.id || "",
-              customerName: selectedCustomer?.name || "Walk-in Customer",
-              productId: item.productId,
-              productName: item.productName,
-              saleId: result.saleId,
-              warrantyMonths: item.warrantyMonths!,
-              startDate: saleDate,
-            })
-          )
-      );
-      setCompletedSale({ ...result, items: cart, totalAmount, customerName: selectedCustomer?.name || "Walk-in Customer", paymentMethod, amountTendered: Number(amountTendered), change: Math.max(0, change) });
+      const warrantyItems = cart.filter((item) => (item.warrantyMonths ?? 0) > 0);
+      const pointsEarned = Math.floor(totalAmount / 100);
+      await Promise.all([
+        ...warrantyItems.map((item) =>
+          addWarranty({
+            customerId: selectedCustomer?.id ?? null,
+            customerName: selectedCustomer?.name || "Walk-in Customer",
+            productId: item.productId,
+            productName: item.productName,
+            saleId: result.saleId,
+            warrantyMonths: item.warrantyMonths!,
+            startDate: saleDate,
+          })
+        ),
+        ...(selectedCustomer && pointsEarned > 0
+          ? [addLoyaltyPoints(selectedCustomer.id, pointsEarned)]
+          : []),
+      ]);
+      setCompletedSale({ ...result, items: cart, subtotal, discountAmount: discount, totalAmount, customerName: selectedCustomer?.name || "Walk-in Customer", cashierName: userDisplayName || "Cashier", paymentMethod, amountTendered: Number(amountTendered), changeAmount: Math.max(0, change) });
       setCart([]);
       setDiscount(0);
       setSelectedCustomer(null);

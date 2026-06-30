@@ -11,6 +11,7 @@ import { auth, db } from "@/lib/firebase";
 interface AuthContextType {
   user: User | null;
   userRole: string | null;
+  userDisplayName: string | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -24,6 +25,7 @@ const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [userDisplayName, setUserDisplayName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -32,12 +34,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         if (u) {
           const snap = await getDoc(doc(db, "users", u.uid));
-          setUserRole(snap.exists() ? (snap.data().role ?? "Admin") : "Admin");
+          const data = snap.exists() ? snap.data() : null;
+          setUserRole(data?.role ?? "Admin");
+          setUserDisplayName(data?.displayName ?? u.displayName ?? null);
         } else {
           setUserRole(null);
+          setUserDisplayName(null);
         }
       } catch {
         setUserRole(u ? "Admin" : null);
+        setUserDisplayName(u?.displayName ?? null);
       } finally {
         setLoading(false);
       }
@@ -80,7 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, userRole, loading, login, logout, updateDisplayName, updateUserPassword, updateUserEmail }}>
+    <AuthContext.Provider value={{ user, userRole, userDisplayName, loading, login, logout, updateDisplayName, updateUserPassword, updateUserEmail }}>
       {children}
     </AuthContext.Provider>
   );

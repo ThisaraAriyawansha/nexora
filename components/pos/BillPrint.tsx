@@ -50,8 +50,12 @@ export default function BillPrint({ sale }: BillPrintProps) {
           {sale.customerPhone && <div style={{ fontSize: "9pt", color: "#555" }}>{sale.customerPhone}</div>}
         </div>
         <div style={{ textAlign: "right" }}>
-          <div style={{ fontSize: "8pt", textTransform: "uppercase", letterSpacing: "0.08em", color: "#888", marginBottom: "3px" }}>Served By</div>
-          <div style={{ fontSize: "10pt", fontWeight: "600" }}>{sale.cashierName}</div>
+          {sale.cashierName && (
+            <>
+              <div style={{ fontSize: "8pt", textTransform: "uppercase", letterSpacing: "0.08em", color: "#888", marginBottom: "3px" }}>Served By</div>
+              <div style={{ fontSize: "10pt", fontWeight: "600" }}>{sale.cashierName?.includes("@") ? "Cashier" : sale.cashierName}</div>
+            </>
+          )}
           <div style={{ fontSize: "9pt", color: "#555", textTransform: "capitalize" }}>Payment: {sale.paymentMethod}</div>
         </div>
       </div>
@@ -122,7 +126,7 @@ export default function BillPrint({ sale }: BillPrintProps) {
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: "9pt", padding: "1.5mm 0", fontWeight: "600", color: "#15803d" }}>
                 <span>Change</span>
-                <span>Rs. {sale.change?.toLocaleString()}</span>
+                <span>Rs. {(sale.changeAmount ?? sale.change)?.toLocaleString()}</span>
               </div>
             </>
           )}

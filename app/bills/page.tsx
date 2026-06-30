@@ -123,7 +123,7 @@ export default function BillsPage() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Cashier</p>
-                  <p className="text-sm font-medium break-all">{viewSale.cashierName}</p>
+                  <p className="text-sm font-medium break-all">{viewSale.cashierName?.includes("@") ? "Cashier" : viewSale.cashierName}</p>
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Payment</p>
