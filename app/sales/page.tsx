@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
-import { getProducts, getCustomers, addCustomer, createSale, getBatches } from "@/lib/firestore";
+import { getProducts, getCustomers, addCustomer, createSale, getBatches, addWarranty } from "@/lib/firestore";
 import { Product, Customer, CartItem } from "@/types";
 import { Search, Plus, Minus, Trash2, Printer, User, X, Check } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
@@ -125,6 +125,22 @@ export default function SalesPage() {
         changeAmount: Math.max(0, change),
         note,
       });
+      const saleDate = new Date();
+      await Promise.all(
+        cart
+          .filter((item) => (item.warrantyMonths ?? 0) > 0)
+          .map((item) =>
+            addWarranty({
+              customerId: selectedCustomer?.id || "",
+              customerName: selectedCustomer?.name || "Walk-in Customer",
+              productId: item.productId,
+              productName: item.productName,
+              saleId: result.saleId,
+              warrantyMonths: item.warrantyMonths!,
+              startDate: saleDate,
+            })
+          )
+      );
       setCompletedSale({ ...result, items: cart, totalAmount, customerName: selectedCustomer?.name || "Walk-in Customer", paymentMethod, amountTendered: Number(amountTendered), change: Math.max(0, change) });
       setCart([]);
       setDiscount(0);

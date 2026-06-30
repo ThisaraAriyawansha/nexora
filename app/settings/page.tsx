@@ -69,6 +69,7 @@ function getInitials(name: string | null | undefined, email: string | null | und
 export default function SettingsPage() {
   const { user, userRole } = useAuth();
   const isSuperAdmin = userRole === "Super Admin";
+  const canClean = userRole === "Super Admin" || userRole === "Admin";
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [showSupplierModal, setShowSupplierModal] = useState(false);
   const [supplierForm, setSupplierForm] = useState({ name: "", phone: "", email: "", address: "" });
@@ -377,7 +378,7 @@ export default function SettingsPage() {
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded font-medium">Free</span>
-            {isSuperAdmin && !loadingUsage && (
+            {canClean && !loadingUsage && (
               <button
                 onClick={() => { setShowCleanModal(true); setCleanTarget(null); setCleanConfirm(""); setCleanResult(null); }}
                 className="flex items-center gap-1.5 text-xs text-red-500 hover:text-red-700 border border-red-200 hover:border-red-400 px-2 py-0.5 rounded transition-colors"

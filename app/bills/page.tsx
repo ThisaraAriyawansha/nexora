@@ -117,15 +117,15 @@ export default function BillsPage() {
             <div className="px-6 py-4">
               {/* Summary */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-                <div>
+                <div className="min-w-0">
                   <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Customer</p>
-                  <p className="text-sm font-medium">{viewSale.customerName || "Walk-in"}</p>
+                  <p className="text-sm font-medium truncate">{viewSale.customerName || "Walk-in"}</p>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Cashier</p>
-                  <p className="text-sm font-medium">{viewSale.cashierName}</p>
+                  <p className="text-sm font-medium break-all">{viewSale.cashierName}</p>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Payment</p>
                   <p className="text-sm font-medium capitalize">{viewSale.paymentMethod}</p>
                 </div>
