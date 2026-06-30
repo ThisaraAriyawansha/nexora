@@ -129,7 +129,7 @@ export default function SalesPage() {
       });
       const saleDate = new Date();
       const warrantyItems = cart.filter((item) => (item.warrantyMonths ?? 0) > 0);
-      const pointsEarned = Math.floor(totalAmount / 100);
+      const pointsEarned = Math.floor((subtotal - discount) / 100);
       await Promise.all([
         ...warrantyItems.map((item) =>
           addWarranty({
@@ -346,6 +346,16 @@ export default function SalesPage() {
               {Number(amountTendered) >= totalAmount && (
                 <p className="text-xs text-green-600 mt-1 font-medium">Change: Rs. {change.toLocaleString()}</p>
               )}
+            </div>
+          )}
+
+          {selectedCustomer && cart.length > 0 && (
+            <div className="flex items-center justify-between text-xs text-zinc-400 bg-zinc-50 rounded px-3 py-2">
+              <span>Points after this sale</span>
+              <span className="font-medium text-zinc-600">
+                {(selectedCustomer.loyaltyPoints || 0) - pointsToRedeem + Math.floor((subtotal - discount) / 100)} pts
+                <span className="text-green-600 ml-1">(+{Math.floor((subtotal - discount) / 100)})</span>
+              </span>
             </div>
           )}
 
