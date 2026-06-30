@@ -442,23 +442,22 @@ export default function SettingsPage() {
                 <p className="text-xs text-zinc-400 uppercase tracking-wider mb-2">Collection Breakdown</p>
                 {usageStats.map((c) => {
                   const bytes = c.count * c.avgBytes;
-                  const pct   = (bytes / STORAGE_LIMIT) * 100;
                   return (
-                    <div key={c.key} className="flex items-center gap-3">
-                      <span className="text-xs text-zinc-500 w-36 shrink-0">{c.label}</span>
+                    <div key={c.key} className="flex items-center gap-2 sm:gap-3">
+                      <span className="text-xs text-zinc-500 w-24 sm:w-36 shrink-0 truncate">{c.label}</span>
                       <div className="flex-1 h-1.5 bg-zinc-100 rounded-full overflow-hidden">
                         <div
                           className="h-full bg-zinc-400 rounded-full"
                           style={{ width: `${totalBytes > 0 ? Math.max((bytes / totalBytes) * 100, c.count > 0 ? 2 : 0) : 0}%` }}
                         />
                       </div>
-                      <span className="text-xs text-zinc-400 w-16 text-right shrink-0">
+                      <span className="text-xs text-zinc-400 w-14 sm:w-16 text-right shrink-0">
                         {c.count.toLocaleString()} docs
                       </span>
-                      <span className="text-xs text-zinc-300 w-16 text-right shrink-0">
+                      <span className="hidden sm:inline-block text-xs text-zinc-300 w-16 text-right shrink-0">
                         {formatBytes(bytes)}
                       </span>
-                      <span className="text-xs text-zinc-300 w-10 text-right shrink-0">
+                      <span className="hidden sm:inline-block text-xs text-zinc-300 w-10 text-right shrink-0">
                         {totalBytes > 0 ? ((bytes / totalBytes) * 100).toFixed(1) : "0.0"}%
                       </span>
                     </div>
