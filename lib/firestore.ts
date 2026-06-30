@@ -4,8 +4,11 @@ import {
   serverTimestamp, FieldValue, increment,
   runTransaction, Timestamp, writeBatch,
 } from "firebase/firestore";
+import { initializeApp, deleteApp } from "firebase/app";
+import { getAuth, createUserWithEmailAndPassword, signOut } from "firebase/auth";
 import { db } from "./firebase";
-import type { ShopSettings } from "@/types";
+import { firebaseConfig } from "./firebase";
+import type { ShopSettings, UserProfile } from "@/types";
 
 // ─── BRANDS ───────────────────────────────────────────────────────────────────
 
@@ -434,6 +437,10 @@ export async function addSupplier(data: { name: string; phone: string; email?: s
   return addDoc(collection(db, "suppliers"), { ...data, createdAt: serverTimestamp() });
 }
 
+export async function updateSupplier(id: string, data: { name: string; phone: string; email?: string; address?: string }) {
+  return updateDoc(doc(db, "suppliers", id), { ...data, updatedAt: serverTimestamp() });
+}
+
 // ─── SHOP SETTINGS ────────────────────────────────────────────────────────────
 
 export async function getShopSettings() {
@@ -443,4 +450,58 @@ export async function getShopSettings() {
 
 export async function updateShopSettings(data: ShopSettings) {
   return setDoc(doc(db, "shopSettings", "main"), { ...data, updatedAt: serverTimestamp() }, { merge: true });
+}
+
+// ─── USER PROFILE ─────────────────────────────────────────────────────────────
+
+export async function getUserProfile(uid: string): Promise<UserProfile | null> {
+  const snap = await getDoc(doc(db, "users", uid));
+  return snap.exists() ? ({ uid: snap.id, ...snap.data() } as UserProfile) : null;
+}
+
+export async function upsertUserProfile(uid: string, data: Partial<Omit<UserProfile, "uid" | "createdAt">>) {
+  const ref = doc(db, "users", uid);
+  const snap = await getDoc(ref);
+  if (snap.exists()) {
+    return updateDoc(ref, { ...data, updatedAt: serverTimestamp() });
+  }
+  return setDoc(ref, { uid, role: "Admin", ...data, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+}
+
+export async function updateTeamUser(
+  uid: string,
+  data: Partial<Pick<UserProfile, "displayName" | "role" | "status">>
+) {
+  return updateDoc(doc(db, "users", uid), { ...data, updatedAt: serverTimestamp() });
+}
+
+export async function getTeamUsers(): Promise<UserProfile[]> {
+  const snap = await getDocs(query(collection(db, "users"), orderBy("createdAt", "asc")));
+  return snap.docs.map((d) => ({ uid: d.id, ...d.data() } as UserProfile));
+}
+
+export async function createTeamUser(
+  email: string,
+  password: string,
+  displayName: string,
+  role: string
+): Promise<void> {
+  // Use a secondary app instance so the current admin session is not affected
+  const secondaryApp = initializeApp(firebaseConfig, `secondary-${Date.now()}`);
+  const secondaryAuth = getAuth(secondaryApp);
+  try {
+    const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
+    await setDoc(doc(db, "users", cred.user.uid), {
+      uid: cred.user.uid,
+      email,
+      displayName,
+      role,
+      status: "active",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  } finally {
+    await signOut(secondaryAuth);
+    await deleteApp(secondaryApp);
+  }
 }

@@ -18,8 +18,12 @@ export default function LoginPage() {
     try {
       await login(email, password);
       router.push("/dashboard");
-    } catch {
-      setError("Invalid email or password.");
+    } catch (err: any) {
+      setError(
+        err?.code === "auth/user-disabled"
+          ? "Your account has been disabled. Contact your administrator."
+          : "Invalid email or password."
+      );
     } finally {
       setLoading(false);
     }

@@ -141,3 +141,14 @@ export interface StockMovement {
 export interface CartItem extends SaleItem {
   tempId: string;
 }
+
+export interface UserProfile {
+  uid: string;
+  email?: string;
+  displayName: string;
+  phone?: string;
+  role: string;
+  status?: "active" | "inactive";
+  createdAt?: any;
+  updatedAt?: any;
+}

@@ -20,6 +20,16 @@ const nav = [
   { label: "Settings", href: "/settings", icon: Settings },
 ];
 
+function getInitials(displayName: string | null | undefined, email: string | null | undefined): string {
+  if (displayName && displayName.trim()) {
+    const parts = displayName.trim().split(" ");
+    return parts.length >= 2
+      ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+      : parts[0][0].toUpperCase();
+  }
+  return email ? email[0].toUpperCase() : "U";
+}
+
 export default function Sidebar({
   open = false,
   onClose,
@@ -29,12 +39,14 @@ export default function Sidebar({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, logout } = useAuth();
+  const { user, userRole, logout } = useAuth();
 
   const handleLogout = async () => {
     await logout();
     router.push("/auth/login");
   };
+
+  const initials = getInitials(user?.displayName, user?.email);
 
   return (
     <>
@@ -91,10 +103,23 @@ export default function Sidebar({
 
         {/* User */}
         <div className="px-3 pb-4 border-t border-zinc-800 pt-4">
-          <div className="px-3 mb-2">
-            <p className="text-white text-xs font-medium truncate">{user?.email}</p>
-            <p className="text-zinc-500 text-xs">Admin</p>
-          </div>
+          <Link
+            href="/profile"
+            onClick={onClose}
+            className={`flex items-center gap-3 px-3 py-2 rounded mb-1 transition-colors group ${
+              pathname === "/profile" ? "bg-zinc-800" : "hover:bg-zinc-800"
+            }`}
+          >
+            <div className="w-7 h-7 rounded-full bg-zinc-700 group-hover:bg-zinc-600 flex items-center justify-center shrink-0 transition-colors">
+              <span className="text-white text-xs font-prata">{initials}</span>
+            </div>
+            <div className="min-w-0">
+              <p className="text-white text-xs font-medium truncate">
+                {user?.displayName || user?.email}
+              </p>
+              <p className="text-zinc-500 text-xs">{userRole ?? "Admin"} · View profile</p>
+            </div>
+          </Link>
           <button
             onClick={handleLogout}
             className="flex items-center gap-3 w-full px-3 py-2.5 rounded text-sm text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors font-poppins"
