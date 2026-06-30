@@ -174,9 +174,9 @@ export default function SalesPage() {
   };
 
   return (
-    <div className="flex flex-col lg:flex-row h-full overflow-hidden">
+    <div className="flex flex-col lg:flex-row lg:h-full lg:overflow-hidden">
       {/* Left: Product search */}
-      <div className="flex-1 min-h-0 flex flex-col border-b lg:border-b-0 lg:border-r border-zinc-200 overflow-hidden">
+      <div className="flex flex-col border-b lg:border-b-0 lg:border-r border-zinc-200 lg:flex-1 lg:min-h-0 lg:overflow-hidden">
         <div className="px-4 sm:px-6 py-4 border-b border-zinc-100">
           <h1 className="font-prata text-xl text-black mb-3">New Sale</h1>
           <div className="relative">
@@ -189,7 +189,7 @@ export default function SalesPage() {
             />
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto p-4 grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 content-start">
+        <div className="lg:flex-1 lg:overflow-y-auto p-4 grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 content-start">
           {filteredProducts.map(p => (
             <button
               key={p.id}
@@ -211,7 +211,7 @@ export default function SalesPage() {
       </div>
 
       {/* Right: Cart */}
-      <div className="flex-1 min-h-0 lg:flex-none lg:w-96 flex flex-col bg-white overflow-hidden">
+      <div className="lg:flex-none lg:w-96 lg:min-h-0 flex flex-col bg-white lg:overflow-hidden">
         {/* Customer */}
         <div className="px-4 py-3 border-b border-zinc-100">
           <button
@@ -228,10 +228,17 @@ export default function SalesPage() {
               </button>
             )}
           </button>
+          {selectedCustomer ? (
+            <p className="text-xs text-zinc-400 mt-1.5">
+              <span className="text-amber-500 font-medium">{selectedCustomer.loyaltyPoints || 0} pts</span> available · Earns 1 pt per Rs. 100 spent
+            </p>
+          ) : (
+            <p className="text-xs text-zinc-400 mt-1.5">Select a customer to earn <span className="font-medium">1% loyalty reward</span></p>
+          )}
         </div>
 
         {/* Cart items */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="lg:flex-1 lg:overflow-y-auto">
           {cart.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-zinc-300">
               <p className="text-sm">Cart is empty</p>
@@ -343,7 +350,7 @@ export default function SalesPage() {
                 className="nexora-input"
                 placeholder="Amount tendered"
               />
-              {Number(amountTendered) >= totalAmount && (
+              {Number(amountTendered) > 0 && totalAmount > 0 && Number(amountTendered) >= totalAmount && (
                 <p className="text-xs text-green-600 mt-1 font-medium">Change: Rs. {change.toLocaleString()}</p>
               )}
             </div>
