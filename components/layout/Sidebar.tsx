@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -47,6 +48,7 @@ export default function Sidebar({
   };
 
   const initials = getInitials(user?.displayName, user?.email);
+  const year = new Date().getFullYear();
 
   return (
     <>
@@ -65,9 +67,15 @@ export default function Sidebar({
       >
         {/* Logo */}
         <div className="px-6 py-6 border-b border-zinc-800 flex items-center justify-between">
-          <div>
-            <span className="font-milonga text-white text-xl tracking-tight">Nexora</span>
-            <p className="text-zinc-500 text-xs mt-0.5 font-poppins">POS System</p>
+          <div className="flex-1 flex justify-center">
+            <Image
+              src="/logo/83278238723.png"
+              alt="Nexora"
+              width={200}
+              height={80}
+              className="h-16 w-auto object-contain"
+              priority
+            />
           </div>
           <button
             onClick={onClose}
@@ -127,6 +135,11 @@ export default function Sidebar({
             <LogOut size={15} />
             Sign out
           </button>
+
+          <div className="text-zinc-600 text-[10px] font-poppins text-center mt-3 space-y-0.5">
+            <p>© {year} Nexora POS</p>
+            <p className="text-zinc-700">Design &amp; Developed by plexCode</p>
+          </div>
         </div>
       </aside>
     </>
