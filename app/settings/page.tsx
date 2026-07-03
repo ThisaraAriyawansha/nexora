@@ -313,12 +313,16 @@ export default function SettingsPage() {
           )}
         </div>
         <div className="divide-y divide-zinc-50">
-          {teamUsers.length === 0 ? (
-            <p className="text-center py-8 text-sm text-zinc-400">
-              No users yet — add one to get started
-            </p>
-          ) : (
-            teamUsers.map((u) => {
+          {(() => {
+            const visibleTeamUsers = teamUsers.filter((u) => isSuperAdmin || u.role !== "Super Admin");
+            if (visibleTeamUsers.length === 0) {
+              return (
+                <p className="text-center py-8 text-sm text-zinc-400">
+                  No users yet — add one to get started
+                </p>
+              );
+            }
+            return visibleTeamUsers.map((u) => {
               const isInactive = u.status === "inactive";
               const isSelf = u.uid === user?.uid;
               return (
@@ -361,8 +365,8 @@ export default function SettingsPage() {
                   )}
                 </div>
               );
-            })
-          )}
+            });
+          })()}
         </div>
       </div>
 
@@ -578,7 +582,7 @@ export default function SettingsPage() {
                   value={editForm.role}
                   onChange={e => setEditForm({ ...editForm, role: e.target.value })}
                 >
-                  <option value="Super Admin">Super Admin</option>
+                  {isSuperAdmin && <option value="Super Admin">Super Admin</option>}
                   <option value="Admin">Admin</option>
                   <option value="Manager">Manager</option>
                   <option value="Cashier">Cashier</option>
@@ -639,7 +643,7 @@ export default function SettingsPage() {
                   value={userForm.role}
                   onChange={e => setUserForm({ ...userForm, role: e.target.value })}
                 >
-                  <option value="Super Admin">Super Admin</option>
+                  {isSuperAdmin && <option value="Super Admin">Super Admin</option>}
                   <option value="Admin">Admin</option>
                   <option value="Manager">Manager</option>
                   <option value="Cashier">Cashier</option>
