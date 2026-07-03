@@ -19,6 +19,9 @@
     "react-dom": "^18",
     "react-to-print": "^2.15.1"
   },
+  "overrides": {
+    "jose": "4.15.9"
+  },
   "devDependencies": {
     "@types/node": "^20",
     "@types/nodemailer": "^8.0.1",
