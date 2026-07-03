@@ -26,7 +26,7 @@ export default function BillPrint({ sale }: BillPrintProps) {
       {/* Header */}
       <div className="bill-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8mm", paddingBottom: "6mm", borderBottom: "2px solid #000" }}>
         <div>
-          <div className="bill-title" style={{ fontFamily: "'Milonga', serif", fontSize: "32pt", letterSpacing: "-0.5px", lineHeight: 1 }}>{shop.name}</div>
+          <div className="bill-title" style={{ fontFamily: "'Poppins', sans-serif", fontSize: "32pt", letterSpacing: "-0.5px", lineHeight: 1 }}>{shop.name}</div>
           {shop.address && <div style={{ fontSize: "9pt", color: "#555", marginTop: "3px" }}>{shop.address}</div>}
           <div style={{ fontSize: "8pt", color: "#888", marginTop: "2px" }}>
             {shop.phone && <>Tel: {shop.phone}</>}
@@ -158,10 +158,15 @@ export default function BillPrint({ sale }: BillPrintProps) {
       )}
 
       {/* Footer */}
-      <div style={{ borderTop: "1pt solid #e4e4e7", paddingTop: "5mm", textAlign: "center" }}>
-        <div style={{ fontFamily: "'Milonga', serif", fontSize: "14pt", color: "#000", marginBottom: "2mm" }}>{shop.name}</div>
-        <div style={{ fontSize: "8pt", color: "#888" }}>Thank you for your purchase!</div>
-        {shop.email && <div style={{ fontSize: "8pt", color: "#aaa", marginTop: "2px" }}>For support, contact us at {shop.email}</div>}
+      <div style={{ borderTop: "1pt solid #e4e4e7", paddingTop: "3mm", display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+        <div style={{ textAlign: "left" }}>
+          <div style={{ fontFamily: "'Poppins', sans-serif", fontSize: "10pt", fontWeight: 600, color: "#000" }}>{shop.name}</div>
+          <div style={{ fontSize: "7pt", color: "#888", marginTop: "1px" }}>Thank you for your purchase!</div>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          {shop.email && <div style={{ fontSize: "7pt", color: "#aaa" }}>Support: {shop.email}</div>}
+          <div style={{ fontSize: "7pt", color: "#aaa", marginTop: "1px" }}>Copyright © {now.getFullYear()} {shop.name}. All Rights Reserved.</div>
+        </div>
       </div>
     </div>
   );
