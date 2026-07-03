@@ -95,6 +95,8 @@ export default function ProfilePage() {
           ? "That email is already in use by another account."
           : err?.code === "auth/too-many-requests"
           ? "Too many attempts. Please try again later."
+          : err?.code === "custom/change-email-failed"
+          ? err.message
           : "Failed to send verification email. Please try again.";
       setEmailMsg({ type: "error", text: msg });
     } finally {

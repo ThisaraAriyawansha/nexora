@@ -3,7 +3,6 @@ import { createContext, useContext, useEffect, useState, ReactNode } from "react
 import {
   onAuthStateChanged, signInWithEmailAndPassword, signOut, User,
   updateProfile, updatePassword, reauthenticateWithCredential, EmailAuthProvider,
-  verifyBeforeUpdateEmail,
 } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
@@ -82,7 +81,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!auth.currentUser || !auth.currentUser.email) throw new Error("Not authenticated");
     const credential = EmailAuthProvider.credential(auth.currentUser.email, currentPassword);
     await reauthenticateWithCredential(auth.currentUser, credential);
-    await verifyBeforeUpdateEmail(auth.currentUser, newEmail);
+
+    const idToken = await auth.currentUser.getIdToken();
+    const res = await fetch("/api/profile/change-email", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idToken, newEmail }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw Object.assign(new Error(data.error || "Failed to send verification email."), { code: "custom/change-email-failed" });
+    }
   };
 
   return (
