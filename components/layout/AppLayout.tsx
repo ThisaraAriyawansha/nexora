@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Menu } from "lucide-react";
 import Sidebar from "@/components/layout/Sidebar";
+import LoadingScreen from "@/components/LoadingScreen";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -15,11 +16,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }, [user, loading, router]);
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
-        <span className="font-milonga text-black text-2xl">Nexora</span>
-      </div>
-    );
+    return <LoadingScreen />;
   }
   if (!user) return null;
 
