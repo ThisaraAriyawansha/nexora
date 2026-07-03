@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { useAuth } from "@/hooks/useAuth";
 
 type Mode = "login" | "forgot" | "reset";
@@ -116,17 +117,16 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-white flex">
       {/* Left branding panel */}
-      <div className="hidden lg:flex w-1/2 bg-black flex-col justify-between p-12">
-        <span className="font-milonga text-white text-3xl tracking-tight">Nexora</span>
-        <div>
-          <p className="font-prata text-white text-4xl leading-tight mb-4">
-            Manage Your<br />Business<br />with Ease
-          </p>
-          <p className="text-zinc-400 text-sm font-poppins">
-            Sales · Inventory · Customers · Reports
-          </p>
-        </div>
-        <div className="text-zinc-600 text-xs font-poppins space-y-0.5">
+      <div className="hidden lg:flex w-1/2 bg-black flex-col items-center justify-center p-12 relative">
+        <Image
+          src="/logo/674647452.png"
+          alt="Nexora"
+          width={360}
+          height={360}
+          className="w-[85%] h-auto max-w-[360px]"
+          priority
+        />
+        <div className="text-zinc-600 text-xs font-poppins text-center space-y-0.5 absolute bottom-12">
           <p>© {year} Nexora POS</p>
           <p className="text-zinc-700">Design &amp; Developed by plexCode</p>
         </div>
@@ -136,8 +136,15 @@ export default function LoginPage() {
       <div className="flex-1 flex flex-col justify-center px-8 py-12 lg:px-16">
         <div className="max-w-sm w-full mx-auto">
           {/* Mobile logo */}
-          <div className="lg:hidden mb-10">
-            <span className="font-milonga text-black text-2xl">Nexora</span>
+          <div className="lg:hidden mb-10 flex justify-center">
+            <Image
+              src="/logo/5326326732673527.png"
+              alt="Nexora"
+              width={280}
+              height={280}
+              className="w-auto h-32"
+              priority
+            />
           </div>
 
           {mode === "login" && (
@@ -310,6 +317,12 @@ export default function LoginPage() {
               </form>
             </>
           )}
+
+          {/* Mobile footer */}
+          <div className="lg:hidden text-zinc-400 text-xs font-poppins text-center space-y-0.5 mt-10">
+            <p>© {year} Nexora POS</p>
+            <p className="text-zinc-500">Design &amp; Developed by plexCode</p>
+          </div>
         </div>
       </div>
     </div>
