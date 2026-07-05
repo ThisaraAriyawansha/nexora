@@ -36,7 +36,7 @@ export const metadata: Metadata = {
     siteName: "Nexora POS",
     title: "Nexora POS",
     description:
-      "Point of Sale System for Computer & Accessories — manage sales, inventory, customers, and warranty in one place.",
+      "Point of Sale System for Computer & Accessories - manage sales, inventory, customers, and warranty in one place.",
     images: [
       {
         url: ogImage,
