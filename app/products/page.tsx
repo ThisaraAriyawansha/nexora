@@ -3,10 +3,12 @@ import { useEffect, useState } from "react";
 import {
   getProducts, addProduct, updateProduct, deleteProduct,
   getBrands, getMainCategories, getSubCategories, addBatch, getAllBatches, updateBatch, getAllUnits,
+  getUnitsByBatch, updateUnitSerial, deleteUnit, addUnitsToBatch,
 } from "@/lib/firestore";
 import { useAuth } from "@/hooks/useAuth";
 import { Product, Brand, MainCategory, SubCategory } from "@/types";
-import { Plus, Search, Edit2, Trash2, Package, ChevronDown, X, Layers } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, Package, ChevronDown, X, Layers, Hash } from "lucide-react";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 export default function ProductsPage() {
   const { user } = useAuth();
@@ -22,14 +24,22 @@ export default function ProductsPage() {
   const [loading, setLoading] = useState(true);
   const [editingBatchId, setEditingBatchId] = useState<string | null>(null);
   const [editBatchForm, setEditBatchForm] = useState({ costPrice: "", sellingPrice: "", totalQty: "", remainingQty: "", note: "" });
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const [form, setForm] = useState({
     name: "", brandId: "", mainCategoryId: "", subCategoryId: "",
-    sku: "", sellingPrice: "", totalStock: "", lowStockAlert: "5",
+    sku: "", sellingPrice: "", costPrice: "", totalStock: "", lowStockAlert: "5",
     description: "", warrantyMonths: "0", trackSerial: false,
   });
   const [batchForm, setBatchForm] = useState({ costPrice: "", sellingPrice: "", qty: "", note: "", serials: "" });
   const [batchError, setBatchError] = useState("");
+  const [manageSerialsBatch, setManageSerialsBatch] = useState<any | null>(null);
+  const [editingBatchUnits, setEditingBatchUnits] = useState<any[]>([]);
+  const [newSerialsForBatch, setNewSerialsForBatch] = useState("");
+  const [unitActionError, setUnitActionError] = useState("");
+  const [deleteUnitTarget, setDeleteUnitTarget] = useState<{ unitId: string; batchId: string; serialNumber: string } | null>(null);
+  const [deletingUnit, setDeletingUnit] = useState(false);
 
   const filteredSubCats = subCats.filter(s => s.mainCategoryId === form.mainCategoryId);
 
@@ -50,7 +60,7 @@ export default function ProductsPage() {
 
   const openAdd = () => {
     setEditingProduct(null);
-    setForm({ name: "", brandId: "", mainCategoryId: "", subCategoryId: "", sku: "", sellingPrice: "", totalStock: "", lowStockAlert: "5", description: "", warrantyMonths: "0", trackSerial: false });
+    setForm({ name: "", brandId: "", mainCategoryId: "", subCategoryId: "", sku: "", sellingPrice: "", costPrice: "", totalStock: "", lowStockAlert: "5", description: "", warrantyMonths: "0", trackSerial: false });
     setShowModal(true);
   };
 
@@ -59,7 +69,7 @@ export default function ProductsPage() {
     setForm({
       name: p.name, brandId: p.brandId, mainCategoryId: p.mainCategoryId,
       subCategoryId: p.subCategoryId, sku: p.sku,
-      sellingPrice: String(p.sellingPrice), totalStock: String(p.totalStock),
+      sellingPrice: String(p.sellingPrice), costPrice: "", totalStock: String(p.totalStock),
       lowStockAlert: String(p.lowStockAlert), description: p.description || "",
       warrantyMonths: String(p.warrantyMonths || 0), trackSerial: !!p.trackSerial,
     });
@@ -69,6 +79,11 @@ export default function ProductsPage() {
   const openBatches = async (productId: string) => {
     setShowBatchModal(productId);
     setBatchError("");
+    setUnitActionError("");
+    setEditingBatchId(null);
+    setManageSerialsBatch(null);
+    setEditingBatchUnits([]);
+    setNewSerialsForBatch("");
     setBatchForm({ costPrice: "", sellingPrice: "", qty: "", note: "", serials: "" });
     const b = await getAllBatches(productId);
     setBatches(b);
@@ -83,6 +98,74 @@ export default function ProductsPage() {
       remainingQty: String(b.remainingQty),
       note: b.note || "",
     });
+  };
+
+  const openManageSerials = async (b: any) => {
+    setManageSerialsBatch(b);
+    setUnitActionError("");
+    setNewSerialsForBatch("");
+    if (!showBatchModal) return;
+    const units = await getUnitsByBatch(showBatchModal, b.id);
+    setEditingBatchUnits(units);
+  };
+
+  const refreshBatchModal = async () => {
+    if (!showBatchModal) return;
+    const b = await getAllBatches(showBatchModal);
+    setBatches(b);
+    if (manageSerialsBatch) {
+      const units = await getUnitsByBatch(showBatchModal, manageSerialsBatch.id);
+      setEditingBatchUnits(units);
+      setManageSerialsBatch(b.find((x: any) => x.id === manageSerialsBatch.id) ?? null);
+    }
+    loadData();
+  };
+
+  const handleSaveUnitSerial = async (unitId: string, serialNumber: string) => {
+    if (!showBatchModal) return;
+    const trimmed = serialNumber.trim();
+    if (!trimmed) { setUnitActionError("Serial number can't be empty."); return; }
+    const dupe = editingBatchUnits.some(u => u.id !== unitId && u.serialNumber.toLowerCase() === trimmed.toLowerCase());
+    if (dupe) { setUnitActionError(`"${trimmed}" is already used by another unit.`); return; }
+    setUnitActionError("");
+    await updateUnitSerial(showBatchModal, unitId, trimmed);
+    await refreshBatchModal();
+  };
+
+  const handleDeleteUnit = (unitId: string, batchId: string, serialNumber: string) => {
+    setDeleteUnitTarget({ unitId, batchId, serialNumber });
+  };
+
+  const confirmDeleteUnit = async () => {
+    if (!showBatchModal || !deleteUnitTarget) return;
+    setDeletingUnit(true);
+    setUnitActionError("");
+    try {
+      await deleteUnit(showBatchModal, deleteUnitTarget.unitId, deleteUnitTarget.batchId);
+      await refreshBatchModal();
+      setDeleteUnitTarget(null);
+    } catch (err: any) {
+      setUnitActionError(err.message || "Could not remove this unit.");
+      setDeleteUnitTarget(null);
+    } finally {
+      setDeletingUnit(false);
+    }
+  };
+
+  const handleAddSerialsToBatch = async (batchId: string) => {
+    if (!showBatchModal) return;
+    const serials = Array.from(new Set(
+      newSerialsForBatch.split("\n").map(s => s.trim()).filter(Boolean)
+    ));
+    if (serials.length === 0) { setUnitActionError("Enter at least one serial number."); return; }
+    const existingUnits = await getAllUnits(showBatchModal) as unknown as { serialNumber: string }[];
+    const existingSerials = new Set(existingUnits.map(u => u.serialNumber.toLowerCase()));
+    const dupes = serials.filter(s => existingSerials.has(s.toLowerCase()));
+    if (dupes.length > 0) { setUnitActionError(`Already in stock: ${dupes.join(", ")}`); return; }
+    setUnitActionError("");
+    await addUnitsToBatch(showBatchModal, batchId, serials);
+    setNewSerialsForBatch("");
+    await refreshBatchModal();
   };
 
   const handleUpdateBatch = async (e: React.FormEvent) => {
@@ -119,16 +202,29 @@ export default function ProductsPage() {
     if (editingProduct) {
       await updateProduct(editingProduct.id, data);
     } else {
-      await addProduct(data as any);
+      const productRef = await addProduct(data as any);
+      if (!form.trackSerial && Number(form.totalStock) > 0) {
+        await addBatch(productRef.id, {
+          costPrice: Number(form.costPrice),
+          sellingPrice: Number(form.sellingPrice),
+          qty: Number(form.totalStock),
+        });
+      }
     }
     setShowModal(false);
     loadData();
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Delete this product?")) return;
-    await deleteProduct(id);
-    loadData();
+  const handleDelete = async () => {
+    if (!deleteId) return;
+    setDeleting(true);
+    try {
+      await deleteProduct(deleteId);
+      setDeleteId(null);
+      loadData();
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const batchModalProduct = products.find(p => p.id === showBatchModal);
@@ -251,7 +347,7 @@ export default function ProductsPage() {
                       <button onClick={() => openEdit(p)} className="nexora-btn nexora-btn-ghost py-1 px-2">
                         <Edit2 size={13} />
                       </button>
-                      <button onClick={() => handleDelete(p.id)} className="nexora-btn nexora-btn-ghost py-1 px-2 text-red-500">
+                      <button onClick={() => setDeleteId(p.id)} className="nexora-btn nexora-btn-ghost py-1 px-2 text-red-500">
                         <Trash2 size={13} />
                       </button>
                     </div>
@@ -323,6 +419,12 @@ export default function ProductsPage() {
                   )}
                 </div>
               </div>
+              {!editingProduct && !form.trackSerial && (
+                <div>
+                  <label className="block text-xs text-zinc-500 uppercase tracking-wider mb-1.5">Cost Price (Rs.)</label>
+                  <input type="number" className="nexora-input" required value={form.costPrice} onChange={e => setForm({...form, costPrice: e.target.value})} placeholder="Cost per unit for the first batch" />
+                </div>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs text-zinc-500 uppercase tracking-wider mb-1.5">Low Stock Alert</label>
@@ -363,14 +465,14 @@ export default function ProductsPage() {
       {/* Batch Modal */}
       {showBatchModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl w-full max-w-md">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-100">
+          <div className="bg-white rounded-xl w-full max-w-md max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-100 shrink-0">
               <h2 className="font-prata text-lg text-black">Stock Batches</h2>
-              <button onClick={() => { setShowBatchModal(null); setEditingBatchId(null); setBatchError(""); }} className="text-zinc-400 hover:text-black">
+              <button onClick={() => { setShowBatchModal(null); setEditingBatchId(null); setBatchError(""); setManageSerialsBatch(null); setEditingBatchUnits([]); setUnitActionError(""); }} className="text-zinc-400 hover:text-black">
                 <X size={18} />
               </button>
             </div>
-            <div className="px-6 py-4">
+            <div className="px-6 py-4 overflow-y-auto flex-1 min-h-0">
               {/* Existing batches */}
               {batches.length === 0 ? (
                 <p className="text-sm text-zinc-400 mb-4">No batches yet</p>
@@ -379,6 +481,7 @@ export default function ProductsPage() {
                   {batches.map((b, i) =>
                     editingBatchId === b.id ? (
                       <form key={b.id} onSubmit={handleUpdateBatch} className="p-3 bg-zinc-50 rounded-lg space-y-2">
+                        <p className="text-sm font-medium text-black">Editing Batch {i + 1}</p>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <div>
                             <label className="block text-xs text-zinc-500 mb-1">Cost Price (Rs.)</label>
@@ -388,14 +491,25 @@ export default function ProductsPage() {
                             <label className="block text-xs text-zinc-500 mb-1">Selling Price (Rs.)</label>
                             <input type="number" className="nexora-input" value={editBatchForm.sellingPrice} onChange={e => setEditBatchForm({ ...editBatchForm, sellingPrice: e.target.value })} placeholder="Use product price" />
                           </div>
-                          <div>
-                            <label className="block text-xs text-zinc-500 mb-1">Total Qty</label>
-                            <input type="number" required className="nexora-input" value={editBatchForm.totalQty} onChange={e => setEditBatchForm({ ...editBatchForm, totalQty: e.target.value })} />
-                          </div>
-                          <div>
-                            <label className="block text-xs text-zinc-500 mb-1">Remaining Qty</label>
-                            <input type="number" required className="nexora-input" value={editBatchForm.remainingQty} onChange={e => setEditBatchForm({ ...editBatchForm, remainingQty: e.target.value })} />
-                          </div>
+                          {batchModalProduct?.trackSerial ? (
+                            <div className="col-span-2">
+                              <label className="block text-xs text-zinc-500 mb-1">Units</label>
+                              <div className="nexora-input flex items-center text-zinc-400 text-sm">
+                                {editBatchForm.remainingQty} / {editBatchForm.totalQty} — managed via serial numbers below
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <div>
+                                <label className="block text-xs text-zinc-500 mb-1">Total Qty</label>
+                                <input type="number" required className="nexora-input" value={editBatchForm.totalQty} onChange={e => setEditBatchForm({ ...editBatchForm, totalQty: e.target.value })} />
+                              </div>
+                              <div>
+                                <label className="block text-xs text-zinc-500 mb-1">Remaining Qty</label>
+                                <input type="number" required className="nexora-input" value={editBatchForm.remainingQty} onChange={e => setEditBatchForm({ ...editBatchForm, remainingQty: e.target.value })} />
+                              </div>
+                            </>
+                          )}
                         </div>
                         <input className="nexora-input" placeholder="Note (optional)" value={editBatchForm.note} onChange={e => setEditBatchForm({ ...editBatchForm, note: e.target.value })} />
                         <div className="flex gap-2">
@@ -404,7 +518,7 @@ export default function ProductsPage() {
                         </div>
                       </form>
                     ) : (
-                      <div key={b.id} className="flex items-center justify-between p-3 bg-zinc-50 rounded-lg">
+                      <div key={b.id} className="flex flex-wrap items-center justify-between gap-2 p-3 bg-zinc-50 rounded-lg">
                         <div>
                           <p className="text-sm font-medium text-black">Batch {i + 1}</p>
                           <p className="text-xs text-zinc-400">
@@ -413,12 +527,15 @@ export default function ProductsPage() {
                           </p>
                           {b.note && <p className="text-xs text-zinc-400">{b.note}</p>}
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 ml-auto">
                           <div className="text-right">
                             <p className="text-sm font-medium">{b.remainingQty} / {b.totalQty} units</p>
                             <span className={`badge ${b.status === "active" ? "badge-success" : "badge-default"}`}>{b.status}</span>
                           </div>
-                          <button onClick={() => openEditBatch(b)} className="nexora-btn nexora-btn-ghost p-1.5"><Edit2 size={12} /></button>
+                          {batchModalProduct?.trackSerial && (
+                            <button onClick={() => openManageSerials(b)} className="nexora-btn nexora-btn-ghost p-1.5" title="Manage serial numbers"><Hash size={12} /></button>
+                          )}
+                          <button onClick={() => openEditBatch(b)} className="nexora-btn nexora-btn-ghost p-1.5" title="Edit price"><Edit2 size={12} /></button>
                         </div>
                       </div>
                     )
@@ -472,6 +589,84 @@ export default function ProductsPage() {
           </div>
         </div>
       )}
+
+      {/* Manage Serials Modal */}
+      {manageSerialsBatch && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-xl w-full max-w-sm max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-100 shrink-0">
+              <div>
+                <h2 className="font-prata text-lg text-black">Serial Numbers</h2>
+                <p className="text-xs text-zinc-400">{editingBatchUnits.length} units in this batch</p>
+              </div>
+              <button onClick={() => { setManageSerialsBatch(null); setEditingBatchUnits([]); setUnitActionError(""); }} className="text-zinc-400 hover:text-black">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="px-5 py-4 overflow-y-auto flex-1 min-h-0 space-y-3">
+              <div className="space-y-1.5">
+                {editingBatchUnits.length === 0 ? (
+                  <p className="text-xs text-zinc-400 text-center py-3">No serials yet</p>
+                ) : (
+                  editingBatchUnits.map(u => (
+                    <div key={u.id} className="flex items-center gap-2">
+                      {u.status === "sold" ? (
+                        <>
+                          <span className="nexora-input flex-1 text-zinc-400 font-mono text-xs py-1.5">{u.serialNumber}</span>
+                          <span className="badge badge-default text-xs shrink-0">sold</span>
+                        </>
+                      ) : (
+                        <>
+                          <input
+                            className="nexora-input flex-1 font-mono text-xs py-1.5"
+                            defaultValue={u.serialNumber}
+                            onBlur={e => e.target.value.trim() !== u.serialNumber && handleSaveUnitSerial(u.id, e.target.value)}
+                          />
+                          <button type="button" onClick={() => handleDeleteUnit(u.id, manageSerialsBatch.id, u.serialNumber)} className="text-zinc-300 hover:text-red-500 shrink-0">
+                            <Trash2 size={13} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+              <div className="border-t border-zinc-100 pt-3 space-y-2">
+                <p className="text-xs text-zinc-500 uppercase tracking-wider">Add More Serials</p>
+                <textarea
+                  className="nexora-input resize-none font-mono text-xs"
+                  rows={3}
+                  placeholder={"One per line…"}
+                  value={newSerialsForBatch}
+                  onChange={e => setNewSerialsForBatch(e.target.value)}
+                />
+                {unitActionError && <p className="text-xs text-red-500">{unitActionError}</p>}
+                <button type="button" onClick={() => handleAddSerialsToBatch(manageSerialsBatch.id)} className="nexora-btn nexora-btn-outline w-full justify-center text-xs py-1.5">
+                  <Plus size={12} /> Add Serials
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={!!deleteId}
+        title="Delete product?"
+        message="This product and its batch history will be permanently removed. This action cannot be undone."
+        loading={deleting}
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteId(null)}
+      />
+
+      <ConfirmDialog
+        open={!!deleteUnitTarget}
+        title="Remove this unit?"
+        message={deleteUnitTarget ? `Serial "${deleteUnitTarget.serialNumber}" will be removed from stock. This can't be undone.` : ""}
+        loading={deletingUnit}
+        onConfirm={confirmDeleteUnit}
+        onCancel={() => setDeleteUnitTarget(null)}
+      />
     </div>
   );
 }

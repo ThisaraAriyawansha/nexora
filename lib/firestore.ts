@@ -170,6 +170,68 @@ export async function getAvailableUnits(productId: string) {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 
+export async function getUnitsByBatch(productId: string, batchId: string) {
+  const snap = await getDocs(
+    query(collection(db, "products", productId, "units"), where("batchId", "==", batchId))
+  );
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+export async function updateUnitSerial(productId: string, unitId: string, serialNumber: string) {
+  return updateDoc(doc(db, "products", productId, "units", unitId), { serialNumber });
+}
+
+// Only in-stock units can be removed — sold units stay put since they're tied to a sale/warranty.
+export async function deleteUnit(productId: string, unitId: string, batchId: string) {
+  return runTransaction(db, async (tx) => {
+    const unitRef = doc(db, "products", productId, "units", unitId);
+    const batchRef = doc(db, "products", productId, "batches", batchId);
+    const [unitSnap, batchSnap] = await Promise.all([tx.get(unitRef), tx.get(batchRef)]);
+    if (!unitSnap.exists()) throw new Error("Unit not found");
+    const unit = unitSnap.data() as { status: string };
+    if (unit.status !== "in_stock") throw new Error("Cannot remove a unit that has already been sold");
+
+    tx.delete(unitRef);
+    if (batchSnap.exists()) {
+      const batch = batchSnap.data() as { remainingQty: number };
+      const newRemaining = batch.remainingQty - 1;
+      tx.update(batchRef, {
+        totalQty: increment(-1),
+        remainingQty: increment(-1),
+        status: newRemaining <= 0 ? "depleted" : "active",
+      });
+    }
+    tx.update(doc(db, "products", productId), { totalStock: increment(-1) });
+  });
+}
+
+export async function addUnitsToBatch(productId: string, batchId: string, serials: string[]) {
+  return runTransaction(db, async (tx) => {
+    const batchRef = doc(db, "products", productId, "batches", batchId);
+    const batchSnap = await tx.get(batchRef);
+    if (!batchSnap.exists()) throw new Error("Batch not found");
+    const batch = batchSnap.data() as { costPrice: number; sellingPrice?: number | null };
+
+    for (const serialNumber of serials) {
+      const unitRef = doc(collection(db, "products", productId, "units"));
+      tx.set(unitRef, {
+        serialNumber,
+        batchId,
+        costPrice: batch.costPrice,
+        sellingPrice: batch.sellingPrice ?? null,
+        status: "in_stock",
+        createdAt: serverTimestamp(),
+      });
+    }
+    tx.update(batchRef, {
+      totalQty: increment(serials.length),
+      remainingQty: increment(serials.length),
+      status: "active",
+    });
+    tx.update(doc(db, "products", productId), { totalStock: increment(serials.length) });
+  });
+}
+
 export async function getBatches(productId: string) {
   const snap = await getDocs(
     query(collection(db, "products", productId, "batches"), orderBy("receivedAt", "asc"))
@@ -245,12 +307,14 @@ export async function addWarranty(data: {
 }) {
   const endDate = new Date(data.startDate);
   endDate.setMonth(endDate.getMonth() + data.warrantyMonths);
-  return addDoc(collection(db, "warranties"), {
+  const payload: any = {
     ...data,
     endDate,
     status: "active",
     createdAt: serverTimestamp(),
-  });
+  };
+  if (payload.serialNumber === undefined) delete payload.serialNumber;
+  return addDoc(collection(db, "warranties"), payload);
 }
 
 // ─── CUSTOMERS ────────────────────────────────────────────────────────────────

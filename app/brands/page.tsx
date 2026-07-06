@@ -3,12 +3,15 @@ import { useEffect, useState } from "react";
 import { getBrands, addBrand, updateBrand, deleteBrand } from "@/lib/firestore";
 import { Brand } from "@/types";
 import { Plus, Edit2, Trash2, X } from "lucide-react";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 export default function BrandsPage() {
   const [brands, setBrands] = useState<Brand[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Brand | null>(null);
   const [form, setForm] = useState({ name: "", description: "" });
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => { load(); }, []);
 
@@ -28,10 +31,16 @@ export default function BrandsPage() {
     load();
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Delete brand?")) return;
-    await deleteBrand(id);
-    load();
+  const handleDelete = async () => {
+    if (!deleteId) return;
+    setDeleting(true);
+    try {
+      await deleteBrand(deleteId);
+      setDeleteId(null);
+      load();
+    } finally {
+      setDeleting(false);
+    }
   };
 
   return (
@@ -55,7 +64,7 @@ export default function BrandsPage() {
             </div>
             <div className="flex gap-1 ml-2">
               <button onClick={() => openEdit(brand)} className="nexora-btn nexora-btn-ghost p-1.5"><Edit2 size={12} /></button>
-              <button onClick={() => handleDelete(brand.id)} className="nexora-btn nexora-btn-ghost p-1.5 text-red-500"><Trash2 size={12} /></button>
+              <button onClick={() => setDeleteId(brand.id)} className="nexora-btn nexora-btn-ghost p-1.5 text-red-500"><Trash2 size={12} /></button>
             </div>
           </div>
         ))}
@@ -88,6 +97,15 @@ export default function BrandsPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!deleteId}
+        title="Delete brand?"
+        message="This brand will be permanently removed. This action cannot be undone."
+        loading={deleting}
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteId(null)}
+      />
     </div>
   );
 }

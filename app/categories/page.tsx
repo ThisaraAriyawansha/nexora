@@ -6,6 +6,7 @@ import {
 } from "@/lib/firestore";
 import { MainCategory, SubCategory } from "@/types";
 import { Plus, Edit2, Trash2, X, ChevronRight } from "lucide-react";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 export default function CategoriesPage() {
   const [mainCats, setMainCats] = useState<MainCategory[]>([]);
@@ -17,6 +18,10 @@ export default function CategoriesPage() {
   const [editingSub, setEditingSub] = useState<SubCategory | null>(null);
   const [mainForm, setMainForm] = useState({ name: "", description: "" });
   const [subForm, setSubForm] = useState({ name: "", description: "" });
+  const [deleteMainId, setDeleteMainId] = useState<string | null>(null);
+  const [deleteSubId, setDeleteSubId] = useState<string | null>(null);
+  const [deletingMain, setDeletingMain] = useState(false);
+  const [deletingSub, setDeletingSub] = useState(false);
 
   useEffect(() => { load(); }, []);
 
@@ -45,17 +50,29 @@ export default function CategoriesPage() {
     load();
   };
 
-  const deleteMain = async (id: string) => {
-    if (!confirm("Delete this category?")) return;
-    await deleteMainCategory(id);
-    if (selectedMain?.id === id) setSelectedMain(null);
-    load();
+  const deleteMain = async () => {
+    if (!deleteMainId) return;
+    setDeletingMain(true);
+    try {
+      await deleteMainCategory(deleteMainId);
+      if (selectedMain?.id === deleteMainId) setSelectedMain(null);
+      setDeleteMainId(null);
+      load();
+    } finally {
+      setDeletingMain(false);
+    }
   };
 
-  const deleteSub = async (id: string) => {
-    if (!confirm("Delete this subcategory?")) return;
-    await deleteSubCategory(id);
-    load();
+  const deleteSub = async () => {
+    if (!deleteSubId) return;
+    setDeletingSub(true);
+    try {
+      await deleteSubCategory(deleteSubId);
+      setDeleteSubId(null);
+      load();
+    } finally {
+      setDeletingSub(false);
+    }
   };
 
   return (
@@ -94,7 +111,7 @@ export default function CategoriesPage() {
                     className={`p-1.5 rounded hover:bg-zinc-200 transition-colors ${selectedMain?.id === cat.id ? "text-white hover:bg-zinc-700" : "text-zinc-400"}`}>
                     <Edit2 size={11} />
                   </button>
-                  <button onClick={() => deleteMain(cat.id)}
+                  <button onClick={() => setDeleteMainId(cat.id)}
                     className={`p-1.5 rounded hover:bg-red-100 transition-colors ${selectedMain?.id === cat.id ? "text-red-300 hover:text-red-600" : "text-zinc-400 hover:text-red-500"}`}>
                     <Trash2 size={11} />
                   </button>
@@ -132,7 +149,7 @@ export default function CategoriesPage() {
                     className="p-1.5 rounded text-zinc-400 hover:text-black hover:bg-zinc-100 transition-colors">
                     <Edit2 size={11} />
                   </button>
-                  <button onClick={() => deleteSub(sub.id)}
+                  <button onClick={() => setDeleteSubId(sub.id)}
                     className="p-1.5 rounded text-zinc-400 hover:text-red-500 hover:bg-red-50 transition-colors">
                     <Trash2 size={11} />
                   </button>
@@ -194,6 +211,24 @@ export default function CategoriesPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!deleteMainId}
+        title="Delete category?"
+        message="This category and its subcategories may be affected. This action cannot be undone."
+        loading={deletingMain}
+        onConfirm={deleteMain}
+        onCancel={() => setDeleteMainId(null)}
+      />
+
+      <ConfirmDialog
+        open={!!deleteSubId}
+        title="Delete subcategory?"
+        message="This subcategory will be permanently removed. This action cannot be undone."
+        loading={deletingSub}
+        onConfirm={deleteSub}
+        onCancel={() => setDeleteSubId(null)}
+      />
     </div>
   );
 }

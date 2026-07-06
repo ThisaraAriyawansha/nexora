@@ -235,6 +235,7 @@ export default function SalesPage() {
       setAmountTendered("");
       setNote("");
     } catch (err) {
+      console.error("Checkout failed:", err);
       alert("Error processing sale. Please try again.");
     }
     setProcessing(false);
