@@ -3,15 +3,23 @@ import { useEffect, useState } from "react";
 import { getWarranties } from "@/lib/firestore";
 import { Warranty } from "@/types";
 import { Search, Shield, AlertTriangle, Check } from "lucide-react";
+import Pagination from "@/components/ui/Pagination";
+
+const PAGE_SIZE = 10;
 
 export default function WarrantyPage() {
   const [warranties, setWarranties] = useState<Warranty[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     getWarranties().then((w) => { setWarranties(w as Warranty[]); setLoading(false); });
   }, []);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
 
   const filtered = warranties.filter(
     (w) =>
@@ -19,6 +27,9 @@ export default function WarrantyPage() {
       w.productName?.toLowerCase().includes(search.toLowerCase()) ||
       w.serialNumber?.toLowerCase().includes(search.toLowerCase())
   );
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const formatDate = (val: any) => {
     if (!val) return "—";
@@ -112,7 +123,7 @@ export default function WarrantyPage() {
             ) : filtered.length === 0 ? (
               <tr><td colSpan={6} className="text-center py-10 text-zinc-400">No warranties found</td></tr>
             ) : (
-              filtered.map((w) => {
+              paginated.map((w) => {
                 const status = getStatus(w);
                 return (
                   <tr key={w.id} className="hover:bg-zinc-50 transition-colors">
@@ -131,6 +142,8 @@ export default function WarrantyPage() {
           </tbody>
         </table>
       </div>
+
+      <Pagination page={page} totalPages={totalPages} totalItems={filtered.length} pageSize={PAGE_SIZE} onPageChange={setPage} />
 
       <p className="text-xs text-zinc-400 mt-4">
         Warranties are automatically created when a product with warranty months is sold.

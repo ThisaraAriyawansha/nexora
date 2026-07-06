@@ -4,18 +4,26 @@ import { getSale, getSales } from "@/lib/firestore";
 import { Search, Printer, Eye, X } from "lucide-react";
 import BillPrint from "@/components/pos/BillPrint";
 import { useReactToPrint } from "react-to-print";
+import Pagination from "@/components/ui/Pagination";
+
+const PAGE_SIZE = 10;
 
 export default function BillsPage() {
   const [sales, setSales] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [viewSale, setViewSale] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
   const printRef = useRef<HTMLDivElement>(null);
   const handlePrint = useReactToPrint({ content: () => printRef.current });
 
   useEffect(() => {
     getSales().then((s) => { setSales(s); setLoading(false); });
   }, []);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
 
   const openSale = async (id: string) => {
     const full = await getSale(id);
@@ -27,6 +35,9 @@ export default function BillsPage() {
       s.invoiceNo?.toLowerCase().includes(search.toLowerCase()) ||
       s.customerName?.toLowerCase().includes(search.toLowerCase())
   );
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const formatDate = (ts: any) => {
     if (!ts) return "—";
@@ -72,7 +83,7 @@ export default function BillsPage() {
             ) : filtered.length === 0 ? (
               <tr><td colSpan={7} className="text-center py-10 text-zinc-400">No bills found</td></tr>
             ) : (
-              filtered.map((sale) => (
+              paginated.map((sale) => (
                 <tr key={sale.id} className="hover:bg-zinc-50 transition-colors">
                   <td className="px-4 py-3 font-medium text-black">{sale.invoiceNo}</td>
                   <td className="px-4 py-3 text-zinc-600">{sale.customerName || "Walk-in"}</td>
@@ -97,6 +108,8 @@ export default function BillsPage() {
           </tbody>
         </table>
       </div>
+
+      <Pagination page={page} totalPages={totalPages} totalItems={filtered.length} pageSize={PAGE_SIZE} onPageChange={setPage} />
 
       {/* Bill detail modal */}
       {viewSale && (

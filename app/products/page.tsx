@@ -9,6 +9,9 @@ import { useAuth } from "@/hooks/useAuth";
 import { Product, Brand, MainCategory, SubCategory } from "@/types";
 import { Plus, Search, Edit2, Trash2, Package, ChevronDown, X, Layers, Hash } from "lucide-react";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import Pagination from "@/components/ui/Pagination";
+
+const PAGE_SIZE = 10;
 
 export default function ProductsPage() {
   const { user } = useAuth();
@@ -17,6 +20,7 @@ export default function ProductsPage() {
   const [mainCats, setMainCats] = useState<MainCategory[]>([]);
   const [subCats, setSubCats] = useState<SubCategory[]>([]);
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const [showModal, setShowModal] = useState(false);
   const [showBatchModal, setShowBatchModal] = useState<string | null>(null);
   const [batches, setBatches] = useState<any[]>([]);
@@ -46,6 +50,10 @@ export default function ProductsPage() {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
 
   async function loadData() {
     const [p, b, mc, sc] = await Promise.all([
@@ -270,6 +278,9 @@ export default function ProductsPage() {
     p.sku?.toLowerCase().includes(search.toLowerCase())
   );
 
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
   const getBrand = (id: string) => brands.find(b => b.id === id)?.name || "—";
   const getMainCat = (id: string) => mainCats.find(c => c.id === id)?.name || "—";
   const getSubCat = (id: string) => subCats.find(c => c.id === id)?.name || "—";
@@ -317,7 +328,7 @@ export default function ProductsPage() {
             ) : filtered.length === 0 ? (
               <tr><td colSpan={7} className="text-center py-10 text-zinc-400">No products found</td></tr>
             ) : (
-              filtered.map(p => (
+              paginated.map(p => (
                 <tr key={p.id} className="hover:bg-zinc-50 transition-colors">
                   <td className="px-4 py-3">
                     <p className="font-medium text-black">{p.name}</p>
@@ -358,6 +369,8 @@ export default function ProductsPage() {
           </tbody>
         </table>
       </div>
+
+      <Pagination page={page} totalPages={totalPages} totalItems={filtered.length} pageSize={PAGE_SIZE} onPageChange={setPage} />
 
       {/* Product Modal */}
       {showModal && (
