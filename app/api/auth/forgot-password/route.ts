@@ -7,6 +7,7 @@ import { verifyTurnstileToken } from "@/lib/turnstile";
 export const dynamic = "force-dynamic";
 
 const OTP_TTL_MS = 10 * 60 * 1000;
+const RESEND_COOLDOWN_MS = 60 * 1000;
 
 export async function POST(req: NextRequest) {
   try {
@@ -33,18 +34,22 @@ export async function POST(req: NextRequest) {
       throw err;
     }
 
+    const otpRef = getAdminDb().collection("passwordResetOtps").doc(email.toLowerCase());
+    const existing = (await otpRef.get()).data();
+    if (existing && !existing.used && Date.now() - existing.createdAt < RESEND_COOLDOWN_MS) {
+      return NextResponse.json({ error: "Please wait a moment before requesting another code." }, { status: 429 });
+    }
+
     const otp = String(Math.floor(100000 + Math.random() * 900000));
 
-    await getAdminDb()
-      .collection("passwordResetOtps")
-      .doc(email.toLowerCase())
-      .set({
-        otp,
-        uid: user.uid,
-        expiresAt: Date.now() + OTP_TTL_MS,
-        used: false,
-        createdAt: Date.now(),
-      });
+    await otpRef.set({
+      otp,
+      uid: user.uid,
+      expiresAt: Date.now() + OTP_TTL_MS,
+      used: false,
+      attempts: 0,
+      createdAt: Date.now(),
+    });
 
     await sendMail(email, "Your password reset code - Nexora POS", passwordResetOtpTemplate(otp));
 
