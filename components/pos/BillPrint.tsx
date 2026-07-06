@@ -22,7 +22,7 @@ export default function BillPrint({ sale }: BillPrintProps) {
   const timeStr = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
 
   return (
-    <div id="bill-print" style={{ fontFamily: "'Poppins', sans-serif", padding: "15mm", width: "210mm", minHeight: "297mm", background: "#fff", color: "#000" }}>
+    <div id="bill-print" style={{ fontFamily: "'Poppins', sans-serif", padding: "15mm", width: "210mm", minHeight: "297mm", background: "#fff", color: "#000", display: "flex", flexDirection: "column" }}>
       {/* Header */}
       <div className="bill-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8mm", paddingBottom: "6mm", borderBottom: "2px solid #000" }}>
         <div>
@@ -79,6 +79,9 @@ export default function BillPrint({ sale }: BillPrintProps) {
               <td style={{ padding: "2.5mm 2mm", borderBottom: "0.5pt solid #e4e4e7", fontSize: "10pt" }}>
                 <div style={{ fontWeight: "500" }}>{item.productName}</div>
                 <div style={{ fontSize: "8pt", color: "#888" }}>SKU: {item.sku}</div>
+                {item.units?.length > 0 && (
+                  <div style={{ fontSize: "8pt", color: "#888" }}>Serial: {item.units.map((u: any) => u.serialNumber).join(", ")}</div>
+                )}
                 {item.warrantyMonths > 0 && (
                   <div style={{ fontSize: "8pt", color: "#555" }}>Warranty: {item.warrantyMonths} month{item.warrantyMonths > 1 ? "s" : ""}</div>
                 )}
@@ -139,33 +142,36 @@ export default function BillPrint({ sale }: BillPrintProps) {
         </div>
       </div>
 
-      {/* Warranty notice */}
-      {sale.items?.some((i: any) => i.warrantyMonths > 0) && (
-        <div style={{ background: "#f9f9f9", border: "0.5pt solid #e4e4e7", borderRadius: "3mm", padding: "4mm", marginBottom: "6mm" }}>
-          <div style={{ fontSize: "8pt", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "2mm" }}>Warranty Notice</div>
-          <div style={{ fontSize: "8pt", color: "#555" }}>
-            Please keep this invoice as proof of warranty. Warranty covers manufacturer defects only.
-            Visit our store with this invoice for warranty claims.
+      {/* Bottom section: warranty notice, note & footer pinned to page bottom */}
+      <div style={{ marginTop: "auto" }}>
+        {/* Warranty notice */}
+        {sale.items?.some((i: any) => i.warrantyMonths > 0) && (
+          <div style={{ background: "#f9f9f9", border: "0.5pt solid #e4e4e7", borderRadius: "3mm", padding: "4mm", marginBottom: "6mm" }}>
+            <div style={{ fontSize: "8pt", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "2mm" }}>Warranty Notice</div>
+            <div style={{ fontSize: "8pt", color: "#555" }}>
+              Please keep this invoice as proof of warranty. Warranty covers manufacturer defects only.
+              Visit our store with this invoice for warranty claims.
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Note */}
-      {sale.note && (
-        <div style={{ fontSize: "9pt", color: "#555", marginBottom: "6mm" }}>
-          <span style={{ fontWeight: "600" }}>Note: </span>{sale.note}
-        </div>
-      )}
+        {/* Note */}
+        {sale.note && (
+          <div style={{ fontSize: "9pt", color: "#555", marginBottom: "6mm" }}>
+            <span style={{ fontWeight: "600" }}>Note: </span>{sale.note}
+          </div>
+        )}
 
-      {/* Footer */}
-      <div style={{ borderTop: "1pt solid #e4e4e7", paddingTop: "3mm", display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
-        <div style={{ textAlign: "left" }}>
-          <div style={{ fontFamily: "'Poppins', sans-serif", fontSize: "10pt", fontWeight: 600, color: "#000" }}>{shop.name}</div>
-          <div style={{ fontSize: "7pt", color: "#888", marginTop: "1px" }}>Thank you for your purchase!</div>
-        </div>
-        <div style={{ textAlign: "right" }}>
-          {shop.email && <div style={{ fontSize: "7pt", color: "#aaa" }}>Support: {shop.email}</div>}
-          <div style={{ fontSize: "7pt", color: "#aaa", marginTop: "1px" }}>Copyright © {now.getFullYear()} {shop.name}. All Rights Reserved.</div>
+        {/* Footer */}
+        <div style={{ borderTop: "1pt solid #e4e4e7", paddingTop: "3mm", display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+          <div style={{ textAlign: "left" }}>
+            <div style={{ fontFamily: "'Poppins', sans-serif", fontSize: "10pt", fontWeight: 600, color: "#000" }}>{shop.name}</div>
+            <div style={{ fontSize: "7pt", color: "#888", marginTop: "1px" }}>Thank you for your purchase!</div>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            {shop.email && <div style={{ fontSize: "7pt", color: "#aaa" }}>Support: {shop.email}</div>}
+            <div style={{ fontSize: "7pt", color: "#aaa", marginTop: "1px" }}>Copyright © {now.getFullYear()} {shop.name}. All Rights Reserved.</div>
+          </div>
         </div>
       </div>
     </div>

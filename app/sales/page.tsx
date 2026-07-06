@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
-import { getProducts, getCustomers, addCustomer, createSale, getBatches, addWarranty, addLoyaltyPoints, redeemLoyaltyPoints } from "@/lib/firestore";
+import { getProducts, getCustomers, addCustomer, createSale, getBatches, getAvailableUnits, addWarranty, addLoyaltyPoints, redeemLoyaltyPoints } from "@/lib/firestore";
 import { Product, Customer, CartItem } from "@/types";
 import { Search, Plus, Minus, Trash2, Printer, User, X, Check } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
@@ -28,6 +28,10 @@ export default function SalesPage() {
   const [productBatches, setProductBatches] = useState<any[]>([]);
   const [loadingBatches, setLoadingBatches] = useState(false);
   const [pointsToRedeem, setPointsToRedeem] = useState(0);
+  const [serialPickerProduct, setSerialPickerProduct] = useState<Product | null>(null);
+  const [availableUnits, setAvailableUnits] = useState<{ id: string; serialNumber: string; batchId: string; costPrice: number; sellingPrice?: number | null }[]>([]);
+  const [selectedUnitIds, setSelectedUnitIds] = useState<string[]>([]);
+  const [loadingUnits, setLoadingUnits] = useState(false);
 
   const printRef = useRef<HTMLDivElement>(null);
   const handlePrint = useReactToPrint({ content: () => printRef.current });
@@ -50,6 +54,10 @@ export default function SalesPage() {
   );
 
   const openBatchPicker = async (product: Product) => {
+    if (product.trackSerial) {
+      openSerialPicker(product);
+      return;
+    }
     setLoadingBatches(true);
     const b = await getBatches(product.id);
     setLoadingBatches(false);
@@ -60,6 +68,72 @@ export default function SalesPage() {
     }
     setProductBatches(b);
     setBatchPickerProduct(product);
+  };
+
+  const openSerialPicker = async (product: Product) => {
+    setLoadingUnits(true);
+    const units = (await getAvailableUnits(product.id)) as { id: string; serialNumber: string; batchId: string; costPrice: number; sellingPrice?: number | null }[];
+    setLoadingUnits(false);
+    // Units already picked into another cart line for this product aren't available to pick again.
+    const takenUnitIds = new Set(cart.flatMap(i => i.units?.map(u => u.unitId) ?? []));
+    setAvailableUnits(units.filter(u => !takenUnitIds.has(u.id)));
+    setSelectedUnitIds([]);
+    setSerialPickerProduct(product);
+  };
+
+  const toggleUnitSelected = (unitId: string) => {
+    setSelectedUnitIds(ids => ids.includes(unitId) ? ids.filter(id => id !== unitId) : [...ids, unitId]);
+  };
+
+  // Each unit sells at its own batch's price (falling back to the product price),
+  // so units picked at different prices are split into separate cart lines.
+  const addSerializedToCart = (product: Product) => {
+    const chosen = availableUnits.filter(u => selectedUnitIds.includes(u.id));
+    if (chosen.length === 0) return;
+
+    const groups = new Map<number, typeof chosen>();
+    for (const u of chosen) {
+      const price = u.sellingPrice ?? product.sellingPrice;
+      groups.set(price, [...(groups.get(price) ?? []), u]);
+    }
+
+    let nextCart = cart;
+    for (const [price, units] of Array.from(groups.entries())) {
+      const newUnits = units.map(u => ({ unitId: u.id, serialNumber: u.serialNumber, batchId: u.batchId }));
+      const existing = nextCart.find(i => i.productId === product.id && i.units && i.unitPrice === price);
+      if (existing) {
+        const allUnits = [...(existing.units || []), ...newUnits];
+        nextCart = nextCart.map(i => i.tempId === existing.tempId
+          ? { ...i, qty: allUnits.length, units: allUnits, lineTotal: allUnits.length * (price - i.discount) }
+          : i);
+      } else {
+        nextCart = [...nextCart, {
+          tempId: `${Date.now()}-${price}`,
+          productId: product.id,
+          productName: product.name,
+          sku: product.sku,
+          batchId: null,
+          qty: units.length,
+          unitPrice: price,
+          costPrice: units[0].costPrice,
+          discount: 0,
+          lineTotal: units.length * price,
+          warrantyMonths: product.warrantyMonths || 0,
+          units: newUnits,
+        }];
+      }
+    }
+    setCart(nextCart);
+    setSerialPickerProduct(null);
+  };
+
+  const removeLastUnit = (item: CartItem) => {
+    if (!item.units || item.units.length === 0) return;
+    const units = item.units.slice(0, -1);
+    if (units.length === 0) { removeItem(item.tempId); return; }
+    setCart(cart.map(i => i.tempId === item.tempId
+      ? { ...i, units, qty: units.length, lineTotal: units.length * (i.unitPrice - i.discount) }
+      : i));
   };
 
   const addToCart = (product: Product, batch?: { id: string; costPrice: number; sellingPrice?: number | null } | null) => {
@@ -131,16 +205,20 @@ export default function SalesPage() {
       const warrantyItems = cart.filter((item) => (item.warrantyMonths ?? 0) > 0);
       const pointsEarned = Math.floor((subtotal - discount) / 100);
       await Promise.all([
-        ...warrantyItems.map((item) =>
-          addWarranty({
-            customerId: selectedCustomer?.id ?? null,
-            customerName: selectedCustomer?.name || "Walk-in Customer",
-            productId: item.productId,
-            productName: item.productName,
-            saleId: result.saleId,
-            warrantyMonths: item.warrantyMonths!,
-            startDate: saleDate,
-          })
+        ...warrantyItems.flatMap((item) =>
+          // Serialized products get one warranty per unit sold; everything else gets one per line.
+          (item.units && item.units.length > 0 ? item.units : [null]).map((unit) =>
+            addWarranty({
+              customerId: selectedCustomer?.id ?? null,
+              customerName: selectedCustomer?.name || "Walk-in Customer",
+              productId: item.productId,
+              productName: item.productName,
+              saleId: result.saleId,
+              serialNumber: unit?.serialNumber,
+              warrantyMonths: item.warrantyMonths!,
+              startDate: saleDate,
+            })
+          )
         ),
         ...(selectedCustomer && pointsEarned > 0
           ? [addLoyaltyPoints(selectedCustomer.id, pointsEarned)]
@@ -252,7 +330,9 @@ export default function SalesPage() {
                     <div className="flex-1 pr-2">
                       <p className="text-sm font-medium text-black">{item.productName}</p>
                       <p className="text-xs text-zinc-400">
-                        {item.batchId ? `Batch · Rs. ${item.costPrice?.toLocaleString()}/unit cost` : "Auto (FIFO)"}
+                        {item.units
+                          ? `Serial: ${item.units.map(u => u.serialNumber).join(", ")}`
+                          : item.batchId ? `Batch · Rs. ${item.costPrice?.toLocaleString()}/unit cost` : "Auto (FIFO)"}
                       </p>
                     </div>
                     <button onClick={() => removeItem(item.tempId)} className="text-zinc-300 hover:text-red-500 transition-colors">
@@ -261,11 +341,19 @@ export default function SalesPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="flex items-center border border-zinc-200 rounded">
-                      <button onClick={() => updateQty(item.tempId, item.qty - 1)} className="w-7 h-7 flex items-center justify-center hover:bg-zinc-50 transition-colors">
+                      <button
+                        onClick={() => item.units ? removeLastUnit(item) : updateQty(item.tempId, item.qty - 1)}
+                        className="w-7 h-7 flex items-center justify-center hover:bg-zinc-50 transition-colors"
+                      >
                         <Minus size={11} />
                       </button>
                       <span className="w-8 text-center text-sm font-medium">{item.qty}</span>
-                      <button onClick={() => updateQty(item.tempId, item.qty + 1)} className="w-7 h-7 flex items-center justify-center hover:bg-zinc-50 transition-colors">
+                      <button
+                        onClick={() => item.units
+                          ? openSerialPicker(products.find(p => p.id === item.productId)!)
+                          : updateQty(item.tempId, item.qty + 1)}
+                        className="w-7 h-7 flex items-center justify-center hover:bg-zinc-50 transition-colors"
+                      >
                         <Plus size={11} />
                       </button>
                     </div>
@@ -422,6 +510,54 @@ export default function SalesPage() {
         </div>
       )}
 
+      {/* Serial picker modal */}
+      {serialPickerProduct && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-sm mx-4">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100">
+              <h2 className="font-prata text-base">{serialPickerProduct.name}</h2>
+              <button onClick={() => setSerialPickerProduct(null)}><X size={16} className="text-zinc-400" /></button>
+            </div>
+            <div className="p-3">
+              <p className="text-xs text-zinc-400 mb-2">Select the unit(s) being sold by serial number</p>
+              <div className="space-y-1.5 max-h-72 overflow-y-auto">
+                {loadingUnits ? (
+                  <p className="text-xs text-zinc-400 text-center py-3">Loading serial numbers…</p>
+                ) : availableUnits.length === 0 ? (
+                  <p className="text-xs text-zinc-400 text-center py-3">No serialized units in stock for this product</p>
+                ) : (
+                  availableUnits.map(u => {
+                    const price = u.sellingPrice ?? serialPickerProduct.sellingPrice;
+                    return (
+                      <button
+                        key={u.id}
+                        onClick={() => toggleUnitSelected(u.id)}
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded border transition-colors ${
+                          selectedUnitIds.includes(u.id) ? "border-black bg-zinc-50" : "border-zinc-200 hover:border-black"
+                        }`}
+                      >
+                        <span className="text-sm font-mono">{u.serialNumber}</span>
+                        <span className="flex items-center gap-2">
+                          <span className="text-xs text-zinc-400">Rs. {price.toLocaleString()}</span>
+                          {selectedUnitIds.includes(u.id) && <Check size={13} className="text-black" />}
+                        </span>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+              <button
+                onClick={() => addSerializedToCart(serialPickerProduct)}
+                disabled={selectedUnitIds.length === 0}
+                className="nexora-btn nexora-btn-primary w-full justify-center mt-3"
+              >
+                Add {selectedUnitIds.length || ""} to Cart
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Customer picker modal */}
       {showCustomerPicker && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -479,7 +615,10 @@ export default function SalesPage() {
       {/* Completed sale modal */}
       {completedSale && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl w-full max-w-sm mx-4 text-center">
+          <div className="bg-white rounded-xl w-full max-w-sm mx-4 text-center relative">
+            <button onClick={() => setCompletedSale(null)} className="absolute top-3 right-3 text-zinc-400 hover:text-zinc-600">
+              <X size={18} />
+            </button>
             <div className="px-6 py-8">
               <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Check size={22} className="text-green-600" />

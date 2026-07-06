@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import {
   getProducts, addProduct, updateProduct, deleteProduct,
-  getBrands, getMainCategories, getSubCategories, addBatch, getAllBatches, updateBatch,
+  getBrands, getMainCategories, getSubCategories, addBatch, getAllBatches, updateBatch, getAllUnits,
 } from "@/lib/firestore";
 import { useAuth } from "@/hooks/useAuth";
 import { Product, Brand, MainCategory, SubCategory } from "@/types";
@@ -26,9 +26,10 @@ export default function ProductsPage() {
   const [form, setForm] = useState({
     name: "", brandId: "", mainCategoryId: "", subCategoryId: "",
     sku: "", sellingPrice: "", totalStock: "", lowStockAlert: "5",
-    description: "", warrantyMonths: "0",
+    description: "", warrantyMonths: "0", trackSerial: false,
   });
-  const [batchForm, setBatchForm] = useState({ costPrice: "", sellingPrice: "", qty: "", note: "" });
+  const [batchForm, setBatchForm] = useState({ costPrice: "", sellingPrice: "", qty: "", note: "", serials: "" });
+  const [batchError, setBatchError] = useState("");
 
   const filteredSubCats = subCats.filter(s => s.mainCategoryId === form.mainCategoryId);
 
@@ -49,7 +50,7 @@ export default function ProductsPage() {
 
   const openAdd = () => {
     setEditingProduct(null);
-    setForm({ name: "", brandId: "", mainCategoryId: "", subCategoryId: "", sku: "", sellingPrice: "", totalStock: "", lowStockAlert: "5", description: "", warrantyMonths: "0" });
+    setForm({ name: "", brandId: "", mainCategoryId: "", subCategoryId: "", sku: "", sellingPrice: "", totalStock: "", lowStockAlert: "5", description: "", warrantyMonths: "0", trackSerial: false });
     setShowModal(true);
   };
 
@@ -60,13 +61,15 @@ export default function ProductsPage() {
       subCategoryId: p.subCategoryId, sku: p.sku,
       sellingPrice: String(p.sellingPrice), totalStock: String(p.totalStock),
       lowStockAlert: String(p.lowStockAlert), description: p.description || "",
-      warrantyMonths: String(p.warrantyMonths || 0),
+      warrantyMonths: String(p.warrantyMonths || 0), trackSerial: !!p.trackSerial,
     });
     setShowModal(true);
   };
 
   const openBatches = async (productId: string) => {
     setShowBatchModal(productId);
+    setBatchError("");
+    setBatchForm({ costPrice: "", sellingPrice: "", qty: "", note: "", serials: "" });
     const b = await getAllBatches(productId);
     setBatches(b);
   };
@@ -107,10 +110,11 @@ export default function ProductsPage() {
       subCategoryId: form.subCategoryId,
       sku: form.sku,
       sellingPrice: Number(form.sellingPrice),
-      totalStock: Number(form.totalStock),
+      totalStock: form.trackSerial ? (editingProduct?.totalStock ?? 0) : Number(form.totalStock),
       lowStockAlert: Number(form.lowStockAlert),
       description: form.description,
       warrantyMonths: Number(form.warrantyMonths),
+      trackSerial: form.trackSerial,
     };
     if (editingProduct) {
       await updateProduct(editingProduct.id, data);
@@ -127,16 +131,39 @@ export default function ProductsPage() {
     loadData();
   };
 
+  const batchModalProduct = products.find(p => p.id === showBatchModal);
+
   const handleAddBatch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!showBatchModal) return;
+    setBatchError("");
+
+    let serials: string[] | undefined;
+    if (batchModalProduct?.trackSerial) {
+      serials = Array.from(new Set(
+        batchForm.serials.split("\n").map(s => s.trim()).filter(Boolean)
+      ));
+      if (serials.length === 0) {
+        setBatchError("Enter at least one serial number.");
+        return;
+      }
+      const existingUnits = await getAllUnits(showBatchModal) as unknown as { serialNumber: string }[];
+      const existingSerials = new Set(existingUnits.map(u => u.serialNumber.toLowerCase()));
+      const dupes = serials.filter(s => existingSerials.has(s.toLowerCase()));
+      if (dupes.length > 0) {
+        setBatchError(`Already in stock: ${dupes.join(", ")}`);
+        return;
+      }
+    }
+
     await addBatch(showBatchModal, {
       costPrice: Number(batchForm.costPrice),
       sellingPrice: batchForm.sellingPrice ? Number(batchForm.sellingPrice) : undefined,
       qty: Number(batchForm.qty),
       note: batchForm.note,
+      serials,
     });
-    setBatchForm({ costPrice: "", sellingPrice: "", qty: "", note: "" });
+    setBatchForm({ costPrice: "", sellingPrice: "", qty: "", note: "", serials: "" });
     const b = await getAllBatches(showBatchModal);
     setBatches(b);
     loadData();
@@ -287,7 +314,13 @@ export default function ProductsPage() {
                 </div>
                 <div>
                   <label className="block text-xs text-zinc-500 uppercase tracking-wider mb-1.5">Initial Stock</label>
-                  <input type="number" className="nexora-input" required value={form.totalStock} onChange={e => setForm({...form, totalStock: e.target.value})} />
+                  {form.trackSerial ? (
+                    <div className="nexora-input flex items-center text-zinc-400 text-sm">
+                      {editingProduct ? `${editingProduct.totalStock} units` : "0 — add via batches"}
+                    </div>
+                  ) : (
+                    <input type="number" className="nexora-input" required value={form.totalStock} onChange={e => setForm({...form, totalStock: e.target.value})} />
+                  )}
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -300,6 +333,18 @@ export default function ProductsPage() {
                   <input type="number" className="nexora-input" value={form.warrantyMonths} onChange={e => setForm({...form, warrantyMonths: e.target.value})} />
                 </div>
               </div>
+              <label className="flex items-start gap-2.5 p-3 rounded-lg border border-zinc-200 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={form.trackSerial}
+                  onChange={e => setForm({...form, trackSerial: e.target.checked})}
+                />
+                <span>
+                  <span className="block text-sm font-medium text-black">Track Serial Numbers</span>
+                  <span className="block text-xs text-zinc-400 mt-0.5">For items like laptops or phones — each unit is stocked in with its own serial, sold individually, and gets its own warranty record.</span>
+                </span>
+              </label>
               <div>
                 <label className="block text-xs text-zinc-500 uppercase tracking-wider mb-1.5">Description</label>
                 <textarea className="nexora-input resize-none" rows={2} value={form.description} onChange={e => setForm({...form, description: e.target.value})} />
@@ -321,7 +366,7 @@ export default function ProductsPage() {
           <div className="bg-white rounded-xl w-full max-w-md">
             <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-100">
               <h2 className="font-prata text-lg text-black">Stock Batches</h2>
-              <button onClick={() => { setShowBatchModal(null); setEditingBatchId(null); }} className="text-zinc-400 hover:text-black">
+              <button onClick={() => { setShowBatchModal(null); setEditingBatchId(null); setBatchError(""); }} className="text-zinc-400 hover:text-black">
                 <X size={18} />
               </button>
             </div>
@@ -394,11 +439,29 @@ export default function ProductsPage() {
                       <label className="block text-xs text-zinc-500 mb-1">Selling Price (Rs.)</label>
                       <input type="number" className="nexora-input" value={batchForm.sellingPrice} onChange={e => setBatchForm({...batchForm, sellingPrice: e.target.value})} placeholder="Use product price" />
                     </div>
-                    <div>
-                      <label className="block text-xs text-zinc-500 mb-1">Quantity</label>
-                      <input type="number" required className="nexora-input" value={batchForm.qty} onChange={e => setBatchForm({...batchForm, qty: e.target.value})} placeholder="e.g. 50" />
-                    </div>
+                    {!batchModalProduct?.trackSerial && (
+                      <div>
+                        <label className="block text-xs text-zinc-500 mb-1">Quantity</label>
+                        <input type="number" required className="nexora-input" value={batchForm.qty} onChange={e => setBatchForm({...batchForm, qty: e.target.value})} placeholder="e.g. 50" />
+                      </div>
+                    )}
                   </div>
+                  {batchModalProduct?.trackSerial && (
+                    <div>
+                      <label className="block text-xs text-zinc-500 mb-1">
+                        Serial Numbers (one per line) — {batchForm.serials.split("\n").map(s => s.trim()).filter(Boolean).length} units
+                      </label>
+                      <textarea
+                        className="nexora-input resize-none font-mono text-xs"
+                        rows={5}
+                        required
+                        value={batchForm.serials}
+                        onChange={e => setBatchForm({...batchForm, serials: e.target.value})}
+                        placeholder={"e.g.\nSN-0001\nSN-0002\nSN-0003"}
+                      />
+                    </div>
+                  )}
+                  {batchError && <p className="text-xs text-red-500">{batchError}</p>}
                   <input className="nexora-input" placeholder="Note (optional)" value={batchForm.note} onChange={e => setBatchForm({...batchForm, note: e.target.value})} />
                   <button type="submit" className="nexora-btn nexora-btn-primary w-full justify-center">
                     <Plus size={14} /> Add Batch

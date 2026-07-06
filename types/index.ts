@@ -47,7 +47,19 @@ export interface Product {
   lowStockAlert: number;
   description?: string;
   warrantyMonths?: number;
+  trackSerial?: boolean;
   active: boolean;
+  createdAt?: any;
+}
+
+export interface ProductUnit {
+  id: string;
+  serialNumber: string;
+  batchId: string;
+  costPrice: number;
+  status: "in_stock" | "sold";
+  saleId?: string | null;
+  soldAt?: any;
   createdAt?: any;
 }
 
@@ -78,6 +90,12 @@ export interface Supplier {
   createdAt?: any;
 }
 
+export interface SaleItemUnit {
+  unitId: string;
+  serialNumber: string;
+  batchId: string;
+}
+
 export interface SaleItem {
   productId: string;
   productName: string;
@@ -89,6 +107,7 @@ export interface SaleItem {
   discount: number;
   lineTotal: number;
   warrantyMonths?: number;
+  units?: SaleItemUnit[];
 }
 
 export interface Sale {

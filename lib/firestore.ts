@@ -93,6 +93,7 @@ export async function addProduct(data: {
   description?: string;
   warrantyMonths?: number;
   lowStockAlert?: number;
+  trackSerial?: boolean;
   active?: boolean;
 }) {
   const batch = writeBatch(db);
@@ -119,24 +120,54 @@ export async function deleteProduct(id: string) {
 
 export async function addBatch(
   productId: string,
-  data: { costPrice: number; sellingPrice?: number; qty: number; supplierId?: string; note?: string }
+  data: { costPrice: number; sellingPrice?: number; qty: number; supplierId?: string; note?: string; serials?: string[] }
 ) {
+  const qty = data.serials?.length ?? data.qty;
   return runTransaction(db, async (tx) => {
     const batchRef = doc(collection(db, "products", productId, "batches"));
     tx.set(batchRef, {
       costPrice: data.costPrice,
       sellingPrice: data.sellingPrice ?? null,
-      totalQty: data.qty,
-      remainingQty: data.qty,
+      totalQty: qty,
+      remainingQty: qty,
       supplierId: data.supplierId ?? null,
       note: data.note ?? "",
       status: "active",
       receivedAt: serverTimestamp(),
     });
+    for (const serialNumber of data.serials ?? []) {
+      const unitRef = doc(collection(db, "products", productId, "units"));
+      tx.set(unitRef, {
+        serialNumber,
+        batchId: batchRef.id,
+        costPrice: data.costPrice,
+        sellingPrice: data.sellingPrice ?? null,
+        status: "in_stock",
+        createdAt: serverTimestamp(),
+      });
+    }
     tx.update(doc(db, "products", productId), {
-      totalStock: increment(data.qty),
+      totalStock: increment(qty),
     });
   });
+}
+
+// ─── PRODUCT UNITS (serial numbers) ───────────────────────────────────────────
+
+export async function getAllUnits(productId: string) {
+  const snap = await getDocs(collection(db, "products", productId, "units"));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+export async function getAvailableUnits(productId: string) {
+  const snap = await getDocs(
+    query(
+      collection(db, "products", productId, "units"),
+      where("status", "==", "in_stock"),
+      orderBy("createdAt", "asc")
+    )
+  );
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 
 export async function getBatches(productId: string) {
@@ -273,6 +304,7 @@ export interface SaleItem {
   discount: number;
   lineTotal: number;
   warrantyMonths?: number;
+  units?: { unitId: string; serialNumber: string; batchId: string }[];
 }
 
 export interface SaleData {
@@ -344,12 +376,40 @@ async function allocateFifo(productId: string, qty: number, preferredBatchId?: s
   return { consumed, costPrice };
 }
 
+// Serialized items already know exactly which unit (and therefore which batch)
+// is being sold, so consumption is grouped by each unit's batchId instead of FIFO.
+async function allocateFromUnits(productId: string, units: { unitId: string; batchId: string }[]) {
+  const batches = (await getAllBatches(productId)) as { id: string; remainingQty: number; costPrice: number }[];
+  const remMap = new Map(batches.map((b) => [b.id, b.remainingQty]));
+  const costMap = new Map(batches.map((b) => [b.id, b.costPrice]));
+
+  const grouped = new Map<string, number>();
+  for (const u of units) grouped.set(u.batchId, (grouped.get(u.batchId) ?? 0) + 1);
+
+  const consumed = Array.from(grouped.entries()).map(([batchId, qty]) => ({
+    batchId,
+    qty,
+    remainingAfter: (remMap.get(batchId) ?? qty) - qty,
+  }));
+  const totalCost = Array.from(grouped.entries()).reduce(
+    (sum, [batchId, qty]) => sum + qty * (costMap.get(batchId) ?? 0),
+    0
+  );
+  const costPrice = units.length ? totalCost / units.length : 0;
+  return { consumed, costPrice };
+}
+
 export async function createSale(data: SaleData) {
   // Batch allocation requires querying each product's batches, which Firestore
-  // transactions can't do mid-transaction — so resolve FIFO allocation first,
-  // then apply all writes atomically.
+  // transactions can't do mid-transaction — so resolve allocation first,
+  // then apply all writes atomically. Serialized items allocate from their
+  // chosen units; everything else falls back to FIFO across active batches.
   const allocations = await Promise.all(
-    data.items.map((item) => allocateFifo(item.productId, item.qty, item.batchId))
+    data.items.map((item) =>
+      item.units && item.units.length > 0
+        ? allocateFromUnits(item.productId, item.units)
+        : allocateFifo(item.productId, item.qty, item.batchId)
+    )
   );
 
   return runTransaction(db, async (tx) => {
@@ -382,6 +442,16 @@ export async function createSale(data: SaleData) {
           remainingQty: increment(-c.qty),
           status: c.remainingAfter <= 0 ? "depleted" : "active",
         });
+      }
+
+      if (item.units && item.units.length > 0) {
+        for (const u of item.units) {
+          tx.update(doc(db, "products", item.productId, "units", u.unitId), {
+            status: "sold",
+            saleId: saleRef.id,
+            soldAt: serverTimestamp(),
+          });
+        }
       }
 
       // Log stock movement
