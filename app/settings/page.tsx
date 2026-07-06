@@ -4,8 +4,9 @@ import { useAuth } from "@/hooks/useAuth";
 import {
   addSupplier, updateSupplier, getSuppliers, getShopSettings, updateShopSettings,
   createTeamUser, getTeamUsers, updateTeamUser, getUsageStats, CollectionStat, cleanCollection,
+  getCollectionData,
 } from "@/lib/firestore";
-import { Plus, X, Store, Truck, Users, CheckCircle, AlertCircle, Pencil, ToggleLeft, ToggleRight, Database, HardDrive, BookOpen, PenLine, Trash2, AlertTriangle } from "lucide-react";
+import { Plus, X, Store, Truck, Users, CheckCircle, AlertCircle, Pencil, ToggleLeft, ToggleRight, Database, HardDrive, BookOpen, PenLine, Trash2, AlertTriangle, Download, Loader2 } from "lucide-react";
 import { UserProfile } from "@/types";
 
 function formatBytes(bytes: number): string {
@@ -13,6 +14,43 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(3)} GB`;
+}
+
+function toCSVValue(value: any): string {
+  if (value === null || value === undefined) return "";
+  if (value && typeof value === "object" && typeof value.toDate === "function") {
+    value = value.toDate().toISOString();
+  } else if (value instanceof Date) {
+    value = value.toISOString();
+  } else if (typeof value === "object") {
+    value = JSON.stringify(value);
+  }
+  const str = String(value);
+  return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+}
+
+function rowsToCSV(rows: Record<string, any>[]): string {
+  if (rows.length === 0) return "";
+  const headerSet = new Set<string>();
+  rows.forEach((r) => Object.keys(r).forEach((k) => headerSet.add(k)));
+  const headers = Array.from(headerSet);
+  const lines = [headers.join(",")];
+  for (const row of rows) {
+    lines.push(headers.map((h) => toCSVValue(row[h])).join(","));
+  }
+  return lines.join("\n");
+}
+
+function downloadCSV(filename: string, csv: string) {
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 function barColor(pct: number): string {
@@ -99,6 +137,19 @@ export default function SettingsPage() {
   const [cleanConfirm, setCleanConfirm] = useState("");
   const [cleaning, setCleaning] = useState(false);
   const [cleanResult, setCleanResult] = useState<{ count: number } | null>(null);
+  const [exportingKey, setExportingKey] = useState<string | null>(null);
+
+  const handleExportCSV = async (c: CollectionStat) => {
+    if (!isSuperAdmin) return;
+    setExportingKey(c.key);
+    try {
+      const rows = await getCollectionData(c.key);
+      const csv = rowsToCSV(rows);
+      downloadCSV(`${c.key}.csv`, csv);
+    } finally {
+      setExportingKey(null);
+    }
+  };
 
   useEffect(() => {
     getSuppliers().then(setSuppliers);
@@ -382,6 +433,13 @@ export default function SettingsPage() {
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded font-medium">Free</span>
+            <button
+              onClick={() => { setLoadingUsage(true); getUsageStats().then((s) => { setUsageStats(s); setLoadingUsage(false); }); }}
+              disabled={loadingUsage}
+              className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-black border border-zinc-200 hover:border-zinc-400 px-2 py-0.5 rounded transition-colors disabled:opacity-50"
+            >
+              <Loader2 size={11} className={loadingUsage ? "animate-spin" : ""} /> Refresh
+            </button>
             {canClean && !loadingUsage && (
               <button
                 onClick={() => { setShowCleanModal(true); setCleanTarget(null); setCleanConfirm(""); setCleanResult(null); }}
@@ -444,7 +502,7 @@ export default function SettingsPage() {
               {/* Collection breakdown */}
               <div className="space-y-2">
                 <p className="text-xs text-zinc-400 uppercase tracking-wider mb-2">Collection Breakdown</p>
-                {usageStats.map((c) => {
+                {usageStats.filter((c) => c.key !== "users" || isSuperAdmin).map((c) => {
                   const bytes = c.count * c.avgBytes;
                   return (
                     <div key={c.key} className="flex items-center gap-2 sm:gap-3">
@@ -464,6 +522,20 @@ export default function SettingsPage() {
                       <span className="hidden sm:inline-block text-xs text-zinc-300 w-10 text-right shrink-0">
                         {totalBytes > 0 ? ((bytes / totalBytes) * 100).toFixed(1) : "0.0"}%
                       </span>
+                      {isSuperAdmin && (
+                        <button
+                          onClick={() => handleExportCSV(c)}
+                          disabled={c.count === 0 || exportingKey === c.key}
+                          title={`Download ${c.label} as CSV`}
+                          className="p-1 rounded text-zinc-400 hover:text-black hover:bg-zinc-100 transition-colors shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
+                        >
+                          {exportingKey === c.key ? (
+                            <Loader2 size={13} className="animate-spin" />
+                          ) : (
+                            <Download size={13} />
+                          )}
+                        </button>
+                      )}
                     </div>
                   );
                 })}

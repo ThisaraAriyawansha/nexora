@@ -694,6 +694,11 @@ export async function getUsageStats(): Promise<CollectionStat[]> {
   return results;
 }
 
+export async function getCollectionData(collectionName: string): Promise<Record<string, any>[]> {
+  const snap = await getDocs(collection(db, collectionName));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
 // ─── CLEAN COLLECTION ─────────────────────────────────────────────────────────
 
 const SUBCOLLECTIONS: Record<string, string[]> = {
