@@ -142,6 +142,8 @@ export interface Warranty {
   startDate: any;
   endDate: any;
   status: "active" | "expired" | "claimed";
+  claimNote?: string;
+  claimedAt?: any;
   createdAt?: any;
 }
 

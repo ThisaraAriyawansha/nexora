@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
-import { getProducts, getCustomers, addCustomer, createSale, getBatches, getAvailableUnits, addWarranty, addLoyaltyPoints, redeemLoyaltyPoints } from "@/lib/firestore";
-import { Product, Customer, CartItem } from "@/types";
+import { getProducts, getCustomers, addCustomer, createSale, getBatches, getAvailableUnits, addWarranty, addLoyaltyPoints, redeemLoyaltyPoints, getMainCategories, getSubCategories } from "@/lib/firestore";
+import { Product, Customer, CartItem, MainCategory, SubCategory } from "@/types";
 import { Search, Plus, Minus, Trash2, Printer, User, X, Check } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import BillPrint from "@/components/pos/BillPrint";
@@ -11,6 +11,10 @@ export default function SalesPage() {
   const { user, userDisplayName } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [mainCats, setMainCats] = useState<MainCategory[]>([]);
+  const [subCats, setSubCats] = useState<SubCategory[]>([]);
+  const [filterMainCat, setFilterMainCat] = useState("");
+  const [filterSubCat, setFilterSubCat] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [productSearch, setProductSearch] = useState("");
   const [customerSearch, setCustomerSearch] = useState("");
@@ -38,16 +42,25 @@ export default function SalesPage() {
 
   useEffect(() => {
     async function load() {
-      const [p, c] = await Promise.all([getProducts(), getCustomers()]);
+      const [p, c, mc, sc] = await Promise.all([getProducts(), getCustomers(), getMainCategories(), getSubCategories()]);
       setProducts(p.filter((p: any) => p.active && p.totalStock > 0) as Product[]);
       setCustomers(c as Customer[]);
+      setMainCats(mc as MainCategory[]);
+      setSubCats(sc as SubCategory[]);
     }
     load();
   }, []);
 
-  const filteredProducts = products.filter(p =>
-    p.name.toLowerCase().includes(productSearch.toLowerCase()) || p.sku?.includes(productSearch)
-  );
+  const filterSubCatOptions = subCats.filter(s => s.mainCategoryId === filterMainCat);
+
+  const filteredProducts = products.filter(p => {
+    const matchesSearch =
+      p.name.toLowerCase().includes(productSearch.toLowerCase()) || p.sku?.includes(productSearch);
+    if (!matchesSearch) return false;
+    if (filterMainCat && p.mainCategoryId !== filterMainCat) return false;
+    if (filterSubCat && p.subCategoryId !== filterSubCat) return false;
+    return true;
+  });
 
   const filteredCustomers = customers.filter(c =>
     c.name.toLowerCase().includes(customerSearch.toLowerCase()) || c.phone?.includes(customerSearch)
@@ -258,14 +271,41 @@ export default function SalesPage() {
       <div className="flex flex-col border-b lg:border-b-0 lg:border-r border-zinc-200 lg:flex-1 lg:min-h-0 lg:overflow-hidden">
         <div className="px-4 sm:px-6 py-4 border-b border-zinc-100">
           <h1 className="font-prata text-xl text-black mb-3">New Sale</h1>
-          <div className="relative">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
-            <input
-              className="nexora-input pl-9"
-              placeholder="Search product by name or SKU…"
-              value={productSearch}
-              onChange={e => setProductSearch(e.target.value)}
-            />
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+              <input
+                className="nexora-input pl-9"
+                placeholder="Search product by name or SKU…"
+                value={productSearch}
+                onChange={e => setProductSearch(e.target.value)}
+              />
+            </div>
+            <select
+              className="nexora-input w-auto"
+              value={filterMainCat}
+              onChange={e => { setFilterMainCat(e.target.value); setFilterSubCat(""); }}
+            >
+              <option value="">All categories</option>
+              {mainCats.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <select
+              className="nexora-input w-auto"
+              value={filterSubCat}
+              onChange={e => setFilterSubCat(e.target.value)}
+              disabled={!filterMainCat}
+            >
+              <option value="">All subcategories</option>
+              {filterSubCatOptions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            {(filterMainCat || filterSubCat) && (
+              <button
+                onClick={() => { setFilterMainCat(""); setFilterSubCat(""); }}
+                className="nexora-btn nexora-btn-ghost text-xs py-2"
+              >
+                Clear
+              </button>
+            )}
           </div>
         </div>
         <div className="lg:flex-1 lg:overflow-y-auto p-4 grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 content-start">

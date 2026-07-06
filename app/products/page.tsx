@@ -20,6 +20,8 @@ export default function ProductsPage() {
   const [mainCats, setMainCats] = useState<MainCategory[]>([]);
   const [subCats, setSubCats] = useState<SubCategory[]>([]);
   const [search, setSearch] = useState("");
+  const [filterMainCat, setFilterMainCat] = useState("");
+  const [filterSubCat, setFilterSubCat] = useState("");
   const [page, setPage] = useState(1);
   const [showModal, setShowModal] = useState(false);
   const [showBatchModal, setShowBatchModal] = useState<string | null>(null);
@@ -53,7 +55,7 @@ export default function ProductsPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [search]);
+  }, [search, filterMainCat, filterSubCat]);
 
   async function loadData() {
     const [p, b, mc, sc] = await Promise.all([
@@ -273,10 +275,17 @@ export default function ProductsPage() {
     loadData();
   };
 
-  const filtered = products.filter(p =>
-    p.name.toLowerCase().includes(search.toLowerCase()) ||
-    p.sku?.toLowerCase().includes(search.toLowerCase())
-  );
+  const filterSubCatOptions = subCats.filter(s => s.mainCategoryId === filterMainCat);
+
+  const filtered = products.filter(p => {
+    const matchesSearch =
+      p.name.toLowerCase().includes(search.toLowerCase()) ||
+      p.sku?.toLowerCase().includes(search.toLowerCase());
+    if (!matchesSearch) return false;
+    if (filterMainCat && p.mainCategoryId !== filterMainCat) return false;
+    if (filterSubCat && p.subCategoryId !== filterSubCat) return false;
+    return true;
+  });
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -297,15 +306,42 @@ export default function ProductsPage() {
         </button>
       </div>
 
-      {/* Search */}
-      <div className="relative mb-6 sm:max-w-sm">
-        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
-        <input
-          className="nexora-input pl-9"
-          placeholder="Search by name or SKU…"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-        />
+      {/* Search & filters */}
+      <div className="flex flex-wrap items-center gap-2 mb-6">
+        <div className="relative flex-1 min-w-[200px] sm:max-w-sm">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+          <input
+            className="nexora-input pl-9"
+            placeholder="Search by name or SKU…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
+        <select
+          className="nexora-input w-auto"
+          value={filterMainCat}
+          onChange={e => { setFilterMainCat(e.target.value); setFilterSubCat(""); }}
+        >
+          <option value="">All categories</option>
+          {mainCats.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        <select
+          className="nexora-input w-auto"
+          value={filterSubCat}
+          onChange={e => setFilterSubCat(e.target.value)}
+          disabled={!filterMainCat}
+        >
+          <option value="">All subcategories</option>
+          {filterSubCatOptions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        {(filterMainCat || filterSubCat) && (
+          <button
+            onClick={() => { setFilterMainCat(""); setFilterSubCat(""); }}
+            className="nexora-btn nexora-btn-ghost text-xs py-2"
+          >
+            Clear
+          </button>
+        )}
       </div>
 
       {/* Table */}

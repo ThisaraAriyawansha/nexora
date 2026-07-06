@@ -11,6 +11,8 @@ const PAGE_SIZE = 10;
 export default function BillsPage() {
   const [sales, setSales] = useState<any[]>([]);
   const [search, setSearch] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [viewSale, setViewSale] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -23,21 +25,30 @@ export default function BillsPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [search]);
+  }, [search, fromDate, toDate]);
 
   const openSale = async (id: string) => {
     const full = await getSale(id);
     setViewSale(full);
   };
 
-  const filtered = sales.filter(
-    (s) =>
+  const filtered = sales.filter((s) => {
+    const matchesSearch =
       s.invoiceNo?.toLowerCase().includes(search.toLowerCase()) ||
-      s.customerName?.toLowerCase().includes(search.toLowerCase())
-  );
+      s.customerName?.toLowerCase().includes(search.toLowerCase());
+    if (!matchesSearch) return false;
+
+    if (fromDate || toDate) {
+      const created = s.createdAt?.toDate ? s.createdAt.toDate() : new Date(s.createdAt);
+      if (fromDate && created < new Date(`${fromDate}T00:00:00`)) return false;
+      if (toDate && created > new Date(`${toDate}T23:59:59.999`)) return false;
+    }
+    return true;
+  });
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const filteredTotal = filtered.reduce((sum, s) => sum + (s.totalAmount || 0), 0);
 
   const formatDate = (ts: any) => {
     if (!ts) return "—";
@@ -47,21 +58,52 @@ export default function BillsPage() {
 
   return (
     <div className="p-4 sm:p-8">
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6">
         <div>
           <h1 className="font-prata text-2xl text-black">Bills</h1>
           <p className="text-zinc-500 text-sm mt-1">{sales.length} total invoices</p>
         </div>
+        <div className="sm:text-right">
+          <p className="text-xs text-zinc-400 uppercase tracking-wider">Total · {filtered.length} invoices</p>
+          <p className="font-poppins font-semibold text-xl text-black">Rs. {filteredTotal.toLocaleString()}</p>
+        </div>
       </div>
 
-      <div className="relative mb-6 sm:max-w-sm">
-        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+      <div className="flex flex-wrap items-center gap-2 mb-6">
+        <div className="relative flex-1 min-w-[200px] sm:max-w-sm">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+          <input
+            className="nexora-input pl-9"
+            placeholder="Search invoice no. or customer…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
         <input
-          className="nexora-input pl-9"
-          placeholder="Search invoice no. or customer…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          type="date"
+          aria-label="From date"
+          className="nexora-input w-auto"
+          value={fromDate}
+          max={toDate || undefined}
+          onChange={(e) => setFromDate(e.target.value)}
         />
+        <span className="text-zinc-300 text-xs">–</span>
+        <input
+          type="date"
+          aria-label="To date"
+          className="nexora-input w-auto"
+          value={toDate}
+          min={fromDate || undefined}
+          onChange={(e) => setToDate(e.target.value)}
+        />
+        {(fromDate || toDate) && (
+          <button
+            onClick={() => { setFromDate(""); setToDate(""); }}
+            className="nexora-btn nexora-btn-ghost text-xs py-2"
+          >
+            Clear
+          </button>
+        )}
       </div>
 
       <div className="nexora-card overflow-x-auto">

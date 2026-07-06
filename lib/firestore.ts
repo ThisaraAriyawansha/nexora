@@ -1,5 +1,5 @@
 import {
-  collection, doc, addDoc, updateDoc, deleteDoc, setDoc,
+  collection, collectionGroup, doc, addDoc, updateDoc, deleteDoc, setDoc,
   getDocs, getDoc, query, where, orderBy, limit,
   serverTimestamp, FieldValue, increment,
   runTransaction, Timestamp, writeBatch, getCountFromServer,
@@ -317,6 +317,14 @@ export async function addWarranty(data: {
   return addDoc(collection(db, "warranties"), payload);
 }
 
+export async function claimWarranty(id: string, note: string) {
+  return updateDoc(doc(db, "warranties", id), {
+    status: "claimed",
+    claimNote: note,
+    claimedAt: serverTimestamp(),
+  });
+}
+
 // ─── CUSTOMERS ────────────────────────────────────────────────────────────────
 
 export async function getCustomers() {
@@ -545,6 +553,11 @@ export async function createSale(data: SaleData) {
 export async function getSales() {
   const snap = await getDocs(query(collection(db, "sales"), orderBy("createdAt", "desc")));
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+export async function getAllSaleItems() {
+  const snap = await getDocs(collectionGroup(db, "saleItems"));
+  return snap.docs.map((d) => d.data());
 }
 
 export async function getSale(id: string) {
