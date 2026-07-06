@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/lib/firebase-admin";
 import { sendMail } from "@/lib/mailer";
 import { passwordResetOtpTemplate } from "@/lib/email-templates";
+import { verifyTurnstileToken } from "@/lib/turnstile";
 
 export const dynamic = "force-dynamic";
 
@@ -9,10 +10,16 @@ const OTP_TTL_MS = 10 * 60 * 1000;
 
 export async function POST(req: NextRequest) {
   try {
-    const { email } = await req.json();
+    const { email, turnstileToken } = await req.json();
 
     if (typeof email !== "string" || !email.includes("@")) {
       return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
+    }
+
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+    const humanVerified = await verifyTurnstileToken(turnstileToken, ip);
+    if (!humanVerified) {
+      return NextResponse.json({ error: "Verification failed. Please try again." }, { status: 400 });
     }
 
     const adminAuth = getAdminAuth();

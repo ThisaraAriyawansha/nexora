@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useAuth } from "@/hooks/useAuth";
+import TurnstileWidget from "@/components/ui/TurnstileWidget";
 
 type Mode = "login" | "forgot" | "reset";
 
@@ -25,12 +26,29 @@ export default function LoginPage() {
   const [resetError, setResetError] = useState("");
   const [resetInfo, setResetInfo] = useState("");
   const [resetLoading, setResetLoading] = useState(false);
+  const [forgotToken, setForgotToken] = useState("");
+  const [resetToken, setResetToken] = useState("");
+  const [loginToken, setLoginToken] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    if (!loginToken) {
+      setError("Please complete the verification challenge.");
+      return;
+    }
     setLoading(true);
     try {
+      const verifyRes = await fetch("/api/auth/verify-turnstile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ turnstileToken: loginToken }),
+      });
+      if (!verifyRes.ok) {
+        setError("Verification failed. Please try again.");
+        setLoginToken("");
+        return;
+      }
       await login(email, password);
       router.push("/dashboard");
     } catch (err: any) {
@@ -51,6 +69,8 @@ export default function LoginPage() {
     setOtp("");
     setNewPassword("");
     setConfirmPassword("");
+    setForgotToken("");
+    setResetToken("");
     setMode("forgot");
   };
 
@@ -64,16 +84,21 @@ export default function LoginPage() {
     e.preventDefault();
     setResetError("");
     setResetInfo("");
+    if (!forgotToken) {
+      setResetError("Please complete the verification challenge.");
+      return;
+    }
     setResetLoading(true);
     try {
       const res = await fetch("/api/auth/forgot-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: resetEmail }),
+        body: JSON.stringify({ email: resetEmail, turnstileToken: forgotToken }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to send reset code.");
       setResetInfo(`A 6-digit code was sent to ${resetEmail}.`);
+      setResetToken("");
       setMode("reset");
     } catch (err: any) {
       setResetError(err.message || "Failed to send reset code.");
@@ -94,12 +119,16 @@ export default function LoginPage() {
       setResetError("New password must be at least 6 characters.");
       return;
     }
+    if (!resetToken) {
+      setResetError("Please complete the verification challenge.");
+      return;
+    }
     setResetLoading(true);
     try {
       const res = await fetch("/api/auth/reset-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: resetEmail, otp, newPassword }),
+        body: JSON.stringify({ email: resetEmail, otp, newPassword, turnstileToken: resetToken }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to reset password.");
@@ -190,11 +219,13 @@ export default function LoginPage() {
                   />
                 </div>
 
+                <TurnstileWidget onVerify={setLoginToken} onExpire={() => setLoginToken("")} />
+
                 {error && <p className="text-red-500 text-sm">{error}</p>}
 
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || !loginToken}
                   className="nexora-btn nexora-btn-primary w-full justify-center mt-2"
                 >
                   {loading ? "Signing in…" : "Sign in"}
@@ -225,11 +256,13 @@ export default function LoginPage() {
                   />
                 </div>
 
+                <TurnstileWidget onVerify={setForgotToken} onExpire={() => setForgotToken("")} />
+
                 {resetError && <p className="text-red-500 text-sm">{resetError}</p>}
 
                 <button
                   type="submit"
-                  disabled={resetLoading}
+                  disabled={resetLoading || !forgotToken}
                   className="nexora-btn nexora-btn-primary w-full justify-center mt-2"
                 >
                   {resetLoading ? "Sending…" : "Send code"}
@@ -297,12 +330,14 @@ export default function LoginPage() {
                   />
                 </div>
 
+                <TurnstileWidget onVerify={setResetToken} onExpire={() => setResetToken("")} />
+
                 {resetError && <p className="text-red-500 text-sm">{resetError}</p>}
                 {resetInfo && !resetError && <p className="text-green-600 text-sm">{resetInfo}</p>}
 
                 <button
                   type="submit"
-                  disabled={resetLoading}
+                  disabled={resetLoading || !resetToken}
                   className="nexora-btn nexora-btn-primary w-full justify-center mt-2"
                 >
                   {resetLoading ? "Resetting…" : "Reset password"}

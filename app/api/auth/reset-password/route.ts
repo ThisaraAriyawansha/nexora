@@ -1,17 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/lib/firebase-admin";
+import { verifyTurnstileToken } from "@/lib/turnstile";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
-    const { email, otp, newPassword } = await req.json();
+    const { email, otp, newPassword, turnstileToken } = await req.json();
 
     if (typeof email !== "string" || typeof otp !== "string" || typeof newPassword !== "string") {
       return NextResponse.json({ error: "Missing or invalid fields." }, { status: 400 });
     }
     if (newPassword.length < 6) {
       return NextResponse.json({ error: "New password must be at least 6 characters." }, { status: 400 });
+    }
+
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+    const humanVerified = await verifyTurnstileToken(turnstileToken, ip);
+    if (!humanVerified) {
+      return NextResponse.json({ error: "Verification failed. Please try again." }, { status: 400 });
     }
 
     const otpRef = getAdminDb().collection("passwordResetOtps").doc(email.toLowerCase());
