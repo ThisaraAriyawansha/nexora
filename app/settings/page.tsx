@@ -377,7 +377,7 @@ export default function SettingsPage() {
             <Database size={16} className="text-zinc-400" />
             <div>
               <h2 className="font-prata text-base text-black">Firebase Usage</h2>
-              <p className="text-xs text-zinc-400 mt-0.5">Spark (Free) plan · live count</p>
+              <p className="text-xs text-zinc-400 mt-0.5"> live count</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -487,7 +487,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Firebase collections reference */}
-      <div className="nexora-card p-4 sm:p-6">
+      <div className="nexora-card p-4 sm:p-6" style={{ display: "none" }}>
         <h2 className="font-prata text-base text-black mb-4">Firebase Collections</h2>
         <div className="space-y-1.5">
           {[
