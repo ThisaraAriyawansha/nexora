@@ -557,7 +557,7 @@ export async function getSales() {
 
 export async function getAllSaleItems() {
   const snap = await getDocs(collectionGroup(db, "saleItems"));
-  return snap.docs.map((d) => d.data());
+  return snap.docs.map((d) => ({ ...d.data(), saleId: d.ref.parent.parent?.id }));
 }
 
 export async function getSale(id: string) {
@@ -569,6 +569,118 @@ export async function getSale(id: string) {
     ...saleDoc.data(),
     items: items.docs.map((d) => d.data()),
   };
+}
+
+// Reverses a sale: restores product/batch/unit stock, undoes any loyalty points
+// earned or redeemed, drops the warranties it created, and marks the sale
+// "cancelled" (soft — the invoice and its items are kept for audit history).
+export async function cancelSale(saleId: string, cancelledBy: { uid: string; name: string }, reason: string) {
+  const saleRef = doc(db, "sales", saleId);
+  const saleSnap = await getDoc(saleRef);
+  if (!saleSnap.exists()) throw new Error("Bill not found");
+  const sale = saleSnap.data() as SaleData & { invoiceNo: string; status?: string };
+  if (sale.status === "cancelled") throw new Error("Bill is already cancelled");
+
+  const itemsSnap = await getDocs(collection(db, "sales", saleId, "saleItems"));
+  const items = itemsSnap.docs.map((d) => d.data() as SaleItem);
+
+  const warrantySnap = await getDocs(query(collection(db, "warranties"), where("saleId", "==", saleId)));
+
+  // Non-serialized sales don't persist which batch(es) FIFO actually drew from at
+  // checkout time, so restoring to the cashier-selected batch is a best-effort
+  // approximation; serialized items restore their exact batch via each unit.
+  const batchTargets = new Map<string, { productId: string; batchId: string; qty: number }>();
+  for (const item of items) {
+    if (item.units && item.units.length > 0) {
+      for (const u of item.units) {
+        const key = `${item.productId}/${u.batchId}`;
+        const t = batchTargets.get(key) ?? { productId: item.productId, batchId: u.batchId, qty: 0 };
+        t.qty += 1;
+        batchTargets.set(key, t);
+      }
+    } else if (item.batchId) {
+      const key = `${item.productId}/${item.batchId}`;
+      const t = batchTargets.get(key) ?? { productId: item.productId, batchId: item.batchId, qty: 0 };
+      t.qty += item.qty;
+      batchTargets.set(key, t);
+    }
+  }
+
+  // Batches/units could have been deleted since the sale, so check existence up
+  // front — a transaction update against a missing doc would abort the whole thing.
+  const batchChecks = await Promise.all(
+    Array.from(batchTargets.values()).map(async (t) => ({
+      ...t,
+      exists: (await getDoc(doc(db, "products", t.productId, "batches", t.batchId))).exists(),
+    }))
+  );
+  const allUnits = items.flatMap((item) =>
+    (item.units ?? []).map((u) => ({ productId: item.productId, unitId: u.unitId }))
+  );
+  const unitChecks = await Promise.all(
+    allUnits.map(async (u) => ({
+      ...u,
+      exists: (await getDoc(doc(db, "products", u.productId, "units", u.unitId))).exists(),
+    }))
+  );
+
+  return runTransaction(db, async (tx) => {
+    tx.update(saleRef, {
+      status: "cancelled",
+      cancelledAt: serverTimestamp(),
+      cancelledById: cancelledBy.uid,
+      cancelledByName: cancelledBy.name,
+      cancelReason: reason || "",
+    });
+
+    for (const item of items) {
+      tx.update(doc(db, "products", item.productId), {
+        totalStock: increment(item.qty),
+      });
+
+      const mvRef = doc(collection(db, "stock_movements"));
+      tx.set(mvRef, {
+        productId: item.productId,
+        type: "in",
+        qty: item.qty,
+        referenceId: saleId,
+        referenceType: "sale_cancel",
+        note: `Cancelled ${sale.invoiceNo}`,
+        performedBy: cancelledBy.uid,
+        createdAt: serverTimestamp(),
+      });
+    }
+
+    for (const b of batchChecks) {
+      if (!b.exists) continue;
+      tx.update(doc(db, "products", b.productId, "batches", b.batchId), {
+        remainingQty: increment(b.qty),
+        status: "active",
+      });
+    }
+
+    for (const u of unitChecks) {
+      if (!u.exists) continue;
+      tx.update(doc(db, "products", u.productId, "units", u.unitId), {
+        status: "in_stock",
+        saleId: null,
+        soldAt: null,
+      });
+    }
+
+    if (sale.customerId) {
+      const pointsEarned = Math.floor((sale.subtotal - sale.discountAmount) / 100);
+      const pointsRedeemed = sale.pointsRedeemed || 0;
+      const delta = pointsRedeemed - pointsEarned;
+      if (delta !== 0) {
+        tx.update(doc(db, "customers", sale.customerId), { loyaltyPoints: increment(delta) });
+      }
+    }
+
+    for (const w of warrantySnap.docs) {
+      tx.delete(w.ref);
+    }
+  });
 }
 
 // ─── STOCK MOVEMENTS ──────────────────────────────────────────────────────────

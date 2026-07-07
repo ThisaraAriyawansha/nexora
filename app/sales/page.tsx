@@ -241,6 +241,13 @@ export default function SalesPage() {
           : []),
       ]);
       setCompletedSale({ ...result, items: cart, subtotal, discountAmount: discount, pointsRedeemed: pointsToRedeem, totalAmount, customerName: selectedCustomer?.name || "Walk-in Customer", cashierName: userDisplayName || "Cashier", paymentMethod, amountTendered: Number(amountTendered), changeAmount: Math.max(0, change) });
+      const soldQtyByProduct = new Map<string, number>();
+      for (const item of cart) {
+        soldQtyByProduct.set(item.productId, (soldQtyByProduct.get(item.productId) || 0) + item.qty);
+      }
+      setProducts(prev => prev
+        .map(p => soldQtyByProduct.has(p.id) ? { ...p, totalStock: p.totalStock - soldQtyByProduct.get(p.id)! } : p)
+        .filter(p => p.totalStock > 0));
       setCart([]);
       setDiscount(0);
       setPointsToRedeem(0);

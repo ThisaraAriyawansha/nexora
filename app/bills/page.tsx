@@ -1,14 +1,16 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
-import { getSale, getSales } from "@/lib/firestore";
-import { Search, Printer, Eye, X } from "lucide-react";
+import { getSale, getSales, cancelSale } from "@/lib/firestore";
+import { Search, Printer, Eye, X, Ban } from "lucide-react";
 import BillPrint from "@/components/pos/BillPrint";
 import { useReactToPrint } from "react-to-print";
 import Pagination from "@/components/ui/Pagination";
+import { useAuth } from "@/hooks/useAuth";
 
 const PAGE_SIZE = 10;
 
 export default function BillsPage() {
+  const { user, userRole, userDisplayName } = useAuth();
   const [sales, setSales] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [fromDate, setFromDate] = useState("");
@@ -16,11 +18,19 @@ export default function BillsPage() {
   const [viewSale, setViewSale] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState("");
   const printRef = useRef<HTMLDivElement>(null);
   const handlePrint = useReactToPrint({ content: () => printRef.current });
 
+  const canCancelBills = userRole === "Super Admin";
+
+  const loadSales = () => getSales().then((s) => { setSales(s); setLoading(false); });
+
   useEffect(() => {
-    getSales().then((s) => { setSales(s); setLoading(false); });
+    loadSales();
   }, []);
 
   useEffect(() => {
@@ -30,6 +40,38 @@ export default function BillsPage() {
   const openSale = async (id: string) => {
     const full = await getSale(id);
     setViewSale(full);
+    setConfirmingCancel(false);
+    setCancelReason("");
+    setCancelError("");
+  };
+
+  const closeSale = () => {
+    setViewSale(null);
+    setConfirmingCancel(false);
+    setCancelReason("");
+    setCancelError("");
+  };
+
+  const handleCancelSale = async () => {
+    if (!viewSale || !cancelReason.trim()) return;
+    setCancelling(true);
+    setCancelError("");
+    try {
+      await cancelSale(
+        viewSale.id,
+        { uid: user!.uid, name: userDisplayName || "Super Admin" },
+        cancelReason.trim()
+      );
+      await loadSales();
+      const refreshed = await getSale(viewSale.id);
+      setViewSale(refreshed);
+      setConfirmingCancel(false);
+      setCancelReason("");
+    } catch (err: any) {
+      setCancelError(err?.message || "Failed to cancel bill");
+    } finally {
+      setCancelling(false);
+    }
   };
 
   const filtered = sales.filter((s) => {
@@ -48,7 +90,9 @@ export default function BillsPage() {
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  const filteredTotal = filtered.reduce((sum, s) => sum + (s.totalAmount || 0), 0);
+  const filteredTotal = filtered
+    .filter((s) => s.status !== "cancelled")
+    .reduce((sum, s) => sum + (s.totalAmount || 0), 0);
 
   const formatDate = (ts: any) => {
     if (!ts) return "—";
@@ -126,7 +170,7 @@ export default function BillsPage() {
               <tr><td colSpan={7} className="text-center py-10 text-zinc-400">No bills found</td></tr>
             ) : (
               paginated.map((sale) => (
-                <tr key={sale.id} className="hover:bg-zinc-50 transition-colors">
+                <tr key={sale.id} className={`hover:bg-zinc-50 transition-colors ${sale.status === "cancelled" ? "opacity-50" : ""}`}>
                   <td className="px-4 py-3 font-medium text-black">{sale.invoiceNo}</td>
                   <td className="px-4 py-3 text-zinc-600">{sale.customerName || "Walk-in"}</td>
                   <td className="px-4 py-3 text-zinc-500 text-xs">{formatDate(sale.createdAt)}</td>
@@ -135,9 +179,13 @@ export default function BillsPage() {
                   </td>
                   <td className="px-4 py-3 font-medium text-black">Rs. {sale.totalAmount?.toLocaleString()}</td>
                   <td className="px-4 py-3">
-                    <span className={`badge ${sale.paymentStatus === "paid" ? "badge-success" : sale.paymentStatus === "partial" ? "badge-warning" : "badge-danger"}`}>
-                      {sale.paymentStatus}
-                    </span>
+                    {sale.status === "cancelled" ? (
+                      <span className="badge badge-danger">Cancelled</span>
+                    ) : (
+                      <span className={`badge ${sale.paymentStatus === "paid" ? "badge-success" : sale.paymentStatus === "partial" ? "badge-warning" : "badge-danger"}`}>
+                        {sale.paymentStatus}
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <button onClick={() => openSale(sale.id)} className="nexora-btn nexora-btn-ghost py-1 px-2 text-xs">
@@ -157,17 +205,69 @@ export default function BillsPage() {
       {viewSale && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-100 sticky top-0 bg-white">
-              <h2 className="font-prata text-lg">{viewSale.invoiceNo}</h2>
-              <div className="flex gap-2">
-                <button onClick={handlePrint} className="nexora-btn nexora-btn-outline text-sm">
-                  <Printer size={14} /> Print A4
-                </button>
-                <button onClick={() => setViewSale(null)} className="text-zinc-400 hover:text-black ml-2">
+            <div className="px-6 py-4 border-b border-zinc-100 sticky top-0 bg-white">
+              <div className="flex items-center justify-between">
+                <h2 className="font-prata text-lg">{viewSale.invoiceNo}</h2>
+                <button onClick={closeSale} className="text-zinc-400 hover:text-black">
                   <X size={18} />
                 </button>
               </div>
+              <div className="flex flex-wrap gap-2 mt-3">
+                <button onClick={handlePrint} className="nexora-btn nexora-btn-outline text-sm">
+                  <Printer size={14} /> Print A4
+                </button>
+                {canCancelBills && viewSale.status !== "cancelled" && (
+                  <button
+                    onClick={() => setConfirmingCancel(true)}
+                    className="nexora-btn nexora-btn-outline text-sm text-red-600 border-red-200 hover:bg-red-50"
+                  >
+                    <Ban size={14} /> Reverse Bill
+                  </button>
+                )}
+              </div>
             </div>
+
+            {viewSale.status === "cancelled" && (
+              <div className="mx-6 mt-4 px-4 py-3 rounded-lg bg-red-50 border border-red-100 text-sm text-red-700">
+                <p className="font-medium">This bill has been reversed.</p>
+                <p className="text-xs text-red-500 mt-0.5">
+                  By {viewSale.cancelledByName || "—"} on {formatDate(viewSale.cancelledAt)}
+                  {viewSale.cancelReason ? ` — ${viewSale.cancelReason}` : ""}
+                </p>
+              </div>
+            )}
+
+            {confirmingCancel && (
+              <div className="mx-6 mt-4 px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 text-sm">
+                <p className="font-medium text-amber-800 mb-2">
+                  Reversing this bill restores the sold quantities back to stock and cancels any warranty/loyalty points it created. This cannot be undone. Are you sure?
+                </p>
+                <textarea
+                  className="nexora-input w-full text-sm mb-2"
+                  rows={2}
+                  placeholder="Reason for reversing this bill (required)…"
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                />
+                {cancelError && <p className="text-xs text-red-600 mb-2">{cancelError}</p>}
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleCancelSale}
+                    disabled={!cancelReason.trim() || cancelling}
+                    className="nexora-btn nexora-btn-danger text-sm disabled:opacity-50"
+                  >
+                    {cancelling ? "Reversing…" : "Confirm Reverse"}
+                  </button>
+                  <button
+                    onClick={() => { setConfirmingCancel(false); setCancelReason(""); setCancelError(""); }}
+                    className="nexora-btn nexora-btn-ghost text-sm"
+                    disabled={cancelling}
+                  >
+                    Back
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="px-6 py-4">
               {/* Summary */}

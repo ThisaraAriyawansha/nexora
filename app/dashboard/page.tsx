@@ -16,9 +16,14 @@ export default function DashboardPage() {
 
   useEffect(() => {
     async function load() {
-      const [sales, products, customers, saleItems] = await Promise.all([
+      const [allSales, products, customers, allSaleItems] = await Promise.all([
         getSales(), getProducts(), getCustomers(), getAllSaleItems(),
       ]);
+
+      // Reversed bills shouldn't count toward revenue, trends, or product performance.
+      const cancelledIds = new Set(allSales.filter((s: any) => s.status === "cancelled").map((s: any) => s.id));
+      const sales = allSales.filter((s: any) => s.status !== "cancelled");
+      const saleItems = allSaleItems.filter((it: any) => !cancelledIds.has(it.saleId));
 
       const todayRevenue = sales
         .filter((s: any) => {
