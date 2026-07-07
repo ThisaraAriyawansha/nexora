@@ -130,6 +130,35 @@ export interface Sale {
   createdAt?: any;
 }
 
+export interface QuotationItem {
+  productId?: string | null;
+  productName: string;
+  sku?: string;
+  qty: number;
+  unitPrice: number;
+  discount: number;
+  lineTotal: number;
+}
+
+export interface Quotation {
+  id: string;
+  quotationNo: string;
+  customerId?: string | null;
+  customerName?: string;
+  customerPhone?: string;
+  customerAddress?: string;
+  preparedById: string;
+  preparedByName: string;
+  items: QuotationItem[];
+  subtotal: number;
+  discountAmount: number;
+  totalAmount: number;
+  validUntil: any;
+  status: "sent" | "accepted" | "rejected" | "expired" | "converted";
+  note?: string;
+  createdAt?: any;
+}
+
 export interface Warranty {
   id: string;
   customerId: string;

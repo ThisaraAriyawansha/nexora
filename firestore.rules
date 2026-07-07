@@ -31,6 +31,7 @@ service cloud.firestore {
       }
     }
 
+    match /quotations/{id} { allow read, write: if isAuth(); }
     match /warranties/{id} { allow read, write: if isAuth(); }
     match /stock_movements/{id} { allow read, write: if isAuth(); }
     match /counters/{id} { allow read, write: if isAuth(); }

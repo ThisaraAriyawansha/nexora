@@ -6,13 +6,14 @@ import { useAuth } from "@/hooks/useAuth";
 import {
   LayoutDashboard, Package, Layers, BookMarked,
   ShoppingCart, Receipt, Shield, Settings, LogOut, X,
-  Users,
+  Users, FileText,
 } from "lucide-react";
 
 const nav = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { label: "POS / New Sale", href: "/sales", icon: ShoppingCart },
   { label: "Bills", href: "/bills", icon: Receipt },
+  { label: "Quotations", href: "/quotations", icon: FileText },
   { label: "Products", href: "/products", icon: Package },
   { label: "Brands", href: "/brands", icon: BookMarked },
   { label: "Categories", href: "/categories", icon: Layers },

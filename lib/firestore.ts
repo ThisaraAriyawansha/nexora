@@ -683,6 +683,78 @@ export async function cancelSale(saleId: string, cancelledBy: { uid: string; nam
   });
 }
 
+// ─── QUOTATIONS ───────────────────────────────────────────────────────────────
+// Quotations are informational only — unlike sales they never touch stock,
+// so creation/update is plain document writes instead of stock-aware transactions.
+
+export interface QuotationItemData {
+  productId?: string | null;
+  productName: string;
+  sku?: string;
+  qty: number;
+  unitPrice: number;
+  discount: number;
+  lineTotal: number;
+}
+
+export interface QuotationData {
+  customerId?: string | null;
+  customerName?: string;
+  customerPhone?: string;
+  customerAddress?: string;
+  preparedById: string;
+  preparedByName: string;
+  items: QuotationItemData[];
+  subtotal: number;
+  discountAmount: number;
+  totalAmount: number;
+  validUntil: Date;
+  note?: string;
+}
+
+export async function createQuotation(data: QuotationData) {
+  return runTransaction(db, async (tx) => {
+    const counterRef = doc(db, "counters", "quotation");
+    const counterDoc = await tx.get(counterRef);
+    const current = counterDoc.exists() ? (counterDoc.data().value as number) : 0;
+    const next = current + 1;
+    tx.set(counterRef, { value: next });
+    const quotationNo = `QUO-${String(next).padStart(5, "0")}`;
+
+    const quotationRef = doc(collection(db, "quotations"));
+    tx.set(quotationRef, {
+      ...data,
+      quotationNo,
+      status: "sent",
+      createdAt: serverTimestamp(),
+    });
+
+    return { quotationId: quotationRef.id, quotationNo };
+  });
+}
+
+export async function getQuotations() {
+  const snap = await getDocs(query(collection(db, "quotations"), orderBy("createdAt", "desc")));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+export async function getQuotation(id: string) {
+  const snap = await getDoc(doc(db, "quotations", id));
+  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+}
+
+export async function updateQuotation(id: string, data: Partial<QuotationData>) {
+  return updateDoc(doc(db, "quotations", id), { ...data, updatedAt: serverTimestamp() });
+}
+
+export async function updateQuotationStatus(id: string, status: string) {
+  return updateDoc(doc(db, "quotations", id), { status, updatedAt: serverTimestamp() });
+}
+
+export async function deleteQuotation(id: string) {
+  return deleteDoc(doc(db, "quotations", id));
+}
+
 // ─── STOCK MOVEMENTS ──────────────────────────────────────────────────────────
 
 export async function getStockMovements(productId?: string) {

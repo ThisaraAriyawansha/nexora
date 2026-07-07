@@ -84,6 +84,19 @@ body {
   .bill-totals { margin-top: 6mm; }
   .bill-divider { border: none; border-top: 1.5pt solid #000; margin: 4mm 0; }
   .no-print { display: none !important; }
+
+  #quotation-print, #quotation-print * { visibility: visible; }
+  #quotation-print {
+    position: absolute;
+    inset: 0;
+    width: 210mm;
+    min-height: 297mm;
+    padding: 15mm;
+    font-family: var(--font-poppins);
+    font-size: 11pt;
+    color: #000;
+    background: #fff;
+  }
 }
 
 /* Hide native number spinner arrows so they never overlap labels/icons placed inside inputs */
