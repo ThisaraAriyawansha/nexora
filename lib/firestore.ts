@@ -857,6 +857,7 @@ export interface CollectionStat {
 export async function getUsageStats(): Promise<CollectionStat[]> {
   const targets = [
     { key: "sales",           label: "Sales",            avgBytes: 1000 },
+    { key: "quotations",      label: "Quotations",       avgBytes: 900  },
     { key: "stock_movements", label: "Stock Movements",  avgBytes: 350  },
     { key: "products",        label: "Products",         avgBytes: 700  },
     { key: "customers",       label: "Customers",        avgBytes: 400  },
