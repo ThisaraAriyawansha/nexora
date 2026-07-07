@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
-import { getProducts, getCustomers, addCustomer, createSale, getBatches, getAvailableUnits, addWarranty, addLoyaltyPoints, redeemLoyaltyPoints, getMainCategories, getSubCategories } from "@/lib/firestore";
+import { getProducts, getCustomers, addCustomer, createSale, getBatches, getAvailableUnits, getMainCategories, getSubCategories } from "@/lib/firestore";
 import { Product, Customer, CartItem, MainCategory, SubCategory } from "@/types";
 import { Search, Plus, Minus, Trash2, Printer, User, X, Check } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
@@ -214,32 +214,8 @@ export default function SalesPage() {
         changeAmount: Math.max(0, change),
         note,
       });
-      const saleDate = new Date();
-      const warrantyItems = cart.filter((item) => (item.warrantyMonths ?? 0) > 0);
-      const pointsEarned = Math.floor((subtotal - discount) / 100);
-      await Promise.all([
-        ...warrantyItems.flatMap((item) =>
-          // Serialized products get one warranty per unit sold; everything else gets one per line.
-          (item.units && item.units.length > 0 ? item.units : [null]).map((unit) =>
-            addWarranty({
-              customerId: selectedCustomer?.id ?? null,
-              customerName: selectedCustomer?.name || "Walk-in Customer",
-              productId: item.productId,
-              productName: item.productName,
-              saleId: result.saleId,
-              serialNumber: unit?.serialNumber,
-              warrantyMonths: item.warrantyMonths!,
-              startDate: saleDate,
-            })
-          )
-        ),
-        ...(selectedCustomer && pointsEarned > 0
-          ? [addLoyaltyPoints(selectedCustomer.id, pointsEarned)]
-          : []),
-        ...(selectedCustomer && pointsToRedeem > 0
-          ? [redeemLoyaltyPoints(selectedCustomer.id, pointsToRedeem)]
-          : []),
-      ]);
+      // Warranties and loyalty-point adjustments are written server-side inside
+      // createSale's own transaction, so they can't drift from the sale itself.
       setCompletedSale({ ...result, items: cart, subtotal, discountAmount: discount, pointsRedeemed: pointsToRedeem, totalAmount, customerName: selectedCustomer?.name || "Walk-in Customer", cashierName: userDisplayName || "Cashier", paymentMethod, amountTendered: Number(amountTendered), changeAmount: Math.max(0, change) });
       const soldQtyByProduct = new Map<string, number>();
       for (const item of cart) {

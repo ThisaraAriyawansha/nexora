@@ -25,7 +25,7 @@ export default function BillsPage() {
   const printRef = useRef<HTMLDivElement>(null);
   const handlePrint = useReactToPrint({ content: () => printRef.current });
 
-  const canCancelBills = userRole === "Super Admin";
+  const canCancelBills = userRole === "Super Admin" || userRole === "Admin";
 
   const loadSales = () => getSales().then((s) => { setSales(s); setLoading(false); });
 
@@ -59,7 +59,7 @@ export default function BillsPage() {
     try {
       await cancelSale(
         viewSale.id,
-        { uid: user!.uid, name: userDisplayName || "Super Admin" },
+        { uid: user!.uid, name: userDisplayName || user?.email || "Admin" },
         cancelReason.trim()
       );
       await loadSales();

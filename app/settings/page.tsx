@@ -140,7 +140,7 @@ export default function SettingsPage() {
   const [exportingKey, setExportingKey] = useState<string | null>(null);
 
   const handleExportCSV = async (c: CollectionStat) => {
-    if (!isSuperAdmin) return;
+    if (!canClean) return;
     setExportingKey(c.key);
     try {
       const rows = await getCollectionData(c.key);
@@ -156,9 +156,16 @@ export default function SettingsPage() {
     getShopSettings().then((s) => {
       if (s) setShopForm({ name: s.name || "", phone: s.phone || "", email: s.email || "", address: s.address || "" });
     });
-    getTeamUsers().then(setTeamUsers);
-    getUsageStats().then((s) => { setUsageStats(s); setLoadingUsage(false); });
-  }, []);
+    // Listing every team account and counting the "users" collection require
+    // Admin+ under Firestore rules — skip them entirely for Cashier/Manager
+    // instead of letting the denied read reject and crash the page.
+    if (canClean) {
+      getTeamUsers().then(setTeamUsers);
+      getUsageStats().then((s) => { setUsageStats(s); setLoadingUsage(false); });
+    } else {
+      setLoadingUsage(false);
+    }
+  }, [canClean]);
 
   const handleAddSupplier = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -185,6 +192,7 @@ export default function SettingsPage() {
 
   const handleSaveShop = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canClean) return;
     setSavingShop(true);
     await updateShopSettings(shopForm);
     setSavingShop(false);
@@ -287,17 +295,21 @@ export default function SettingsPage() {
             </p>
             <form onSubmit={handleSaveShop} className="space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <input className="nexora-input" required placeholder="Shop name" value={shopForm.name} onChange={e => setShopForm({ ...shopForm, name: e.target.value })} />
-                <input className="nexora-input" required placeholder="Phone" value={shopForm.phone} onChange={e => setShopForm({ ...shopForm, phone: e.target.value })} />
-                <input className="nexora-input" placeholder="Email" value={shopForm.email} onChange={e => setShopForm({ ...shopForm, email: e.target.value })} />
-                <input className="nexora-input" placeholder="Address" value={shopForm.address} onChange={e => setShopForm({ ...shopForm, address: e.target.value })} />
+                <input className="nexora-input" required disabled={!canClean} placeholder="Shop name" value={shopForm.name} onChange={e => setShopForm({ ...shopForm, name: e.target.value })} />
+                <input className="nexora-input" required disabled={!canClean} placeholder="Phone" value={shopForm.phone} onChange={e => setShopForm({ ...shopForm, phone: e.target.value })} />
+                <input className="nexora-input" disabled={!canClean} placeholder="Email" value={shopForm.email} onChange={e => setShopForm({ ...shopForm, email: e.target.value })} />
+                <input className="nexora-input" disabled={!canClean} placeholder="Address" value={shopForm.address} onChange={e => setShopForm({ ...shopForm, address: e.target.value })} />
               </div>
-              <div className="flex items-center gap-3">
-                <button type="submit" disabled={savingShop} className="nexora-btn nexora-btn-primary text-xs py-1.5 px-3">
-                  {savingShop ? "Saving..." : "Save Shop Info"}
-                </button>
-                {shopSaved && <span className="text-xs text-green-600">Saved</span>}
-              </div>
+              {canClean ? (
+                <div className="flex items-center gap-3">
+                  <button type="submit" disabled={savingShop} className="nexora-btn nexora-btn-primary text-xs py-1.5 px-3">
+                    {savingShop ? "Saving..." : "Save Shop Info"}
+                  </button>
+                  {shopSaved && <span className="text-xs text-green-600">Saved</span>}
+                </div>
+              ) : (
+                <p className="text-xs text-zinc-400">Only Admin and Super Admin can edit shop info.</p>
+              )}
             </form>
             <div className="mt-4 pt-4 border-t border-zinc-100">
               <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Logged in as</p>
@@ -344,7 +356,8 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Team */}
+      {/* Team — Admin+ only; team accounts aren't listable by Cashier/Manager under Firestore rules */}
+      {canClean && (
       <div className="nexora-card overflow-hidden mb-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 sm:px-6 py-4 border-b border-zinc-100">
           <div className="flex items-center gap-3">
@@ -354,14 +367,12 @@ export default function SettingsPage() {
               <p className="text-xs text-zinc-400 mt-0.5">Users who can log in to Nexora POS</p>
             </div>
           </div>
-          {isSuperAdmin && (
-            <button
-              onClick={() => { setShowAddUserModal(true); setUserMsg(null); }}
-              className="nexora-btn nexora-btn-primary text-xs py-1.5 px-3 self-start sm:self-auto"
-            >
-              <Plus size={12} /> Add User
-            </button>
-          )}
+          <button
+            onClick={() => { setShowAddUserModal(true); setUserMsg(null); }}
+            className="nexora-btn nexora-btn-primary text-xs py-1.5 px-3 self-start sm:self-auto"
+          >
+            <Plus size={12} /> Add User
+          </button>
         </div>
         <div className="divide-y divide-zinc-50">
           {(() => {
@@ -395,16 +406,14 @@ export default function SettingsPage() {
                       Disabled
                     </span>
                   )}
-                  {isSuperAdmin && (
-                    <button
-                      onClick={() => openEditModal(u)}
-                      className="p-1.5 rounded hover:bg-zinc-200 text-zinc-400 hover:text-zinc-700 transition-colors shrink-0"
-                      title="Edit user"
-                    >
-                      <Pencil size={13} />
-                    </button>
-                  )}
-                  {isSuperAdmin && !isSelf && (
+                  <button
+                    onClick={() => openEditModal(u)}
+                    className="p-1.5 rounded hover:bg-zinc-200 text-zinc-400 hover:text-zinc-700 transition-colors shrink-0"
+                    title="Edit user"
+                  >
+                    <Pencil size={13} />
+                  </button>
+                  {!isSelf && (
                     <button
                       onClick={() => handleToggleStatus(u)}
                       disabled={togglingUid === u.uid}
@@ -420,8 +429,10 @@ export default function SettingsPage() {
           })()}
         </div>
       </div>
+      )}
 
-      {/* Firebase Usage */}
+      {/* Firebase Usage — Admin+ only; the "users" count and CSV export need Admin+ reads */}
+      {canClean && (
       <div className="nexora-card p-4 sm:p-6 mb-6">
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-3">
@@ -502,7 +513,7 @@ export default function SettingsPage() {
               {/* Collection breakdown */}
               <div className="space-y-2">
                 <p className="text-xs text-zinc-400 uppercase tracking-wider mb-2">Collection Breakdown</p>
-                {usageStats.filter((c) => c.key !== "users" || isSuperAdmin).map((c) => {
+                {usageStats.filter((c) => c.key !== "users" || canClean).map((c) => {
                   const bytes = c.count * c.avgBytes;
                   return (
                     <div key={c.key} className="flex items-center gap-2 sm:gap-3">
@@ -522,7 +533,7 @@ export default function SettingsPage() {
                       <span className="hidden sm:inline-block text-xs text-zinc-300 w-10 text-right shrink-0">
                         {totalBytes > 0 ? ((bytes / totalBytes) * 100).toFixed(1) : "0.0"}%
                       </span>
-                      {isSuperAdmin && (
+                      {canClean && (
                         <button
                           onClick={() => handleExportCSV(c)}
                           disabled={c.count === 0 || exportingKey === c.key}
@@ -557,6 +568,7 @@ export default function SettingsPage() {
           );
         })()}
       </div>
+      )}
 
       {/* Firebase collections reference */}
       <div className="nexora-card p-4 sm:p-6" style={{ display: "none" }}>

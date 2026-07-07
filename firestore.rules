@@ -2,38 +2,112 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Only authenticated users can access anything
     function isAuth() {
       return request.auth != null;
     }
 
-    match /users/{userId} {
-      allow read, write: if isAuth() && request.auth.uid == userId;
+    // Roles aren't set as auth custom claims, so the only way to gate by role
+    // is to look up the caller's own profile document.
+    function myRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
     }
 
-    match /brands/{id} { allow read, write: if isAuth(); }
-    match /main_categories/{id} { allow read, write: if isAuth(); }
-    match /sub_categories/{id} { allow read, write: if isAuth(); }
-    match /suppliers/{id} { allow read, write: if isAuth(); }
-    match /customers/{id} { allow read, write: if isAuth(); }
+    function isAdminOrAbove() {
+      return isAuth() && myRole() in ['Super Admin', 'Admin'];
+    }
+
+    function isSuperAdmin() {
+      return isAuth() && myRole() == 'Super Admin';
+    }
+
+    match /users/{userId} {
+      allow read: if isAuth() && (request.auth.uid == userId || isAdminOrAbove());
+
+      // Team members are provisioned by Admin+ (see createTeamUser in lib/firestore.ts).
+      // Admin can create Admin/Manager/Cashier accounts, but only a Super Admin
+      // can create another Super Admin.
+      allow create: if isAdminOrAbove() &&
+        (request.resource.data.role != 'Super Admin' || isSuperAdmin());
+
+      // A user may edit their own profile fields, but not their own role/status —
+      // otherwise a Cashier could grant themselves Admin by writing their own doc.
+      // Role/status changes require Admin+, and only a Super Admin can grant or
+      // modify the Super Admin role itself.
+      allow update: if isAuth() && (
+        (request.auth.uid == userId
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.status == resource.data.status)
+        || (isAdminOrAbove()
+            && (request.resource.data.role != 'Super Admin' || isSuperAdmin())
+            && (resource.data.role != 'Super Admin' || isSuperAdmin()))
+      );
+
+      allow delete: if isSuperAdmin();
+    }
+
+    match /brands/{id}          { allow read: if isAuth(); allow create, update: if isAuth(); allow delete: if isAdminOrAbove(); }
+    match /main_categories/{id} { allow read: if isAuth(); allow create, update: if isAuth(); allow delete: if isAdminOrAbove(); }
+    match /sub_categories/{id}  { allow read: if isAuth(); allow create, update: if isAuth(); allow delete: if isAdminOrAbove(); }
+    match /suppliers/{id}       { allow read: if isAuth(); allow create, update: if isAuth(); allow delete: if isAdminOrAbove(); }
+    match /customers/{id}       { allow read: if isAuth(); allow create, update: if isAuth(); allow delete: if isAdminOrAbove(); }
 
     match /products/{productId} {
-      allow read, write: if isAuth();
+      allow read: if isAuth();
+      allow create, update: if isAuth();
+      allow delete: if isAdminOrAbove();
+
       match /batches/{batchId} {
-        allow read, write: if isAuth();
+        allow read, create, update: if isAuth();
+        allow delete: if isAdminOrAbove();
+      }
+      match /units/{unitId} {
+        allow read, create, update: if isAuth();
+        allow delete: if isAdminOrAbove();
       }
     }
 
     match /sales/{saleId} {
-      allow read, write: if isAuth();
+      allow read, create: if isAuth();
+      // Cancelling a sale (status -> 'cancelled') reverses stock and loyalty
+      // points, so it's restricted the same way the Bills page UI restricts
+      // the cancel button: Admin or Super Admin. Other field updates stay open.
+      allow update: if isAuth() &&
+        (request.resource.data.status != 'cancelled' || isAdminOrAbove());
+      allow delete: if isAdminOrAbove();
+
       match /saleItems/{itemId} {
-        allow read, write: if isAuth();
+        allow read, create: if isAuth();
+        allow update, delete: if isAdminOrAbove();
       }
     }
 
-    match /quotations/{id} { allow read, write: if isAuth(); }
-    match /warranties/{id} { allow read, write: if isAuth(); }
-    match /stock_movements/{id} { allow read, write: if isAuth(); }
-    match /counters/{id} { allow read, write: if isAuth(); }
+    // Collection-group rule for saleItems — the Dashboard runs a
+    // collectionGroup("saleItems") query across every sale's line items, and
+    // Firestore only honors that against a rule declared with the {path=**}
+    // wildcard; the nested match above alone does not cover it.
+    match /{path=**}/saleItems/{itemId} {
+      allow read: if isAuth();
+    }
+
+    match /quotations/{id} { allow read, create, update: if isAuth(); allow delete: if isAdminOrAbove(); }
+    match /warranties/{id} { allow read, create, update: if isAuth(); allow delete: if isAdminOrAbove(); }
+
+    match /stock_movements/{id} {
+      allow read, create: if isAuth();
+      allow update, delete: if isAdminOrAbove();
+    }
+
+    match /counters/{id} {
+      allow read, create, update: if isAuth();
+      allow delete: if isAdminOrAbove();
+    }
+
+    // Shop info shown on printed bills/quotations — readable by all staff,
+    // editable by Admin+ only. (Previously had no rule at all, so every
+    // read/write to this doc was silently denied by Firestore's default-deny.)
+    match /shopSettings/{id} {
+      allow read: if isAuth();
+      allow write: if isAdminOrAbove();
+    }
   }
 }

@@ -61,7 +61,7 @@ export default function QuotationsPage() {
   const printRef = useRef<HTMLDivElement>(null);
   const handlePrint = useReactToPrint({ content: () => printRef.current });
 
-  const canDelete = userRole === "Super Admin";
+  const canDelete = userRole === "Super Admin" || userRole === "Admin";
 
   const loadQuotations = () => getQuotations().then((q) => { setQuotations(q); setLoading(false); });
 

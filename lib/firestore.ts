@@ -295,28 +295,6 @@ export async function getWarranties() {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 
-export async function addWarranty(data: {
-  customerId: string | null;
-  customerName: string;
-  productId: string;
-  productName: string;
-  saleId: string;
-  serialNumber?: string;
-  warrantyMonths: number;
-  startDate: Date;
-}) {
-  const endDate = new Date(data.startDate);
-  endDate.setMonth(endDate.getMonth() + data.warrantyMonths);
-  const payload: any = {
-    ...data,
-    endDate,
-    status: "active",
-    createdAt: serverTimestamp(),
-  };
-  if (payload.serialNumber === undefined) delete payload.serialNumber;
-  return addDoc(collection(db, "warranties"), payload);
-}
-
 export async function claimWarranty(id: string, note: string) {
   return updateDoc(doc(db, "warranties", id), {
     status: "claimed",
@@ -347,20 +325,6 @@ export async function addCustomer(data: {
 
 export async function updateCustomer(id: string, data: any) {
   return updateDoc(doc(db, "customers", id), { ...data, updatedAt: serverTimestamp() });
-}
-
-export async function addLoyaltyPoints(customerId: string, points: number) {
-  return updateDoc(doc(db, "customers", customerId), {
-    loyaltyPoints: increment(points),
-    updatedAt: serverTimestamp(),
-  });
-}
-
-export async function redeemLoyaltyPoints(customerId: string, points: number) {
-  return updateDoc(doc(db, "customers", customerId), {
-    loyaltyPoints: increment(-points),
-    updatedAt: serverTimestamp(),
-  });
 }
 
 // ─── SALES (POS checkout) ─────────────────────────────────────────────────────
@@ -397,40 +361,35 @@ export interface SaleData {
   note?: string;
 }
 
-async function getNextInvoiceNumber(): Promise<string> {
-  const counterRef = doc(db, "counters", "invoice");
-  let invoiceNo = "";
-  await runTransaction(db, async (tx) => {
-    const counterDoc = await tx.get(counterRef);
-    const current = counterDoc.exists() ? (counterDoc.data().value as number) : 0;
-    const next = current + 1;
-    tx.set(counterRef, { value: next });
-    invoiceNo = `INV-${String(next).padStart(5, "0")}`;
-  });
-  return invoiceNo;
+// Discovers which batches a product could draw from, oldest first. This has
+// to run outside the transaction (Firestore transactions can only get()
+// specific documents, not run queries) — their live quantities are re-read
+// fresh inside the transaction below, so Firestore's optimistic concurrency
+// retries the whole sale if another checkout changes a batch's remainingQty
+// before this one commits, instead of both sales silently oversell­ing it.
+async function getCandidateBatchIds(productId: string, preferredBatchId?: string | null): Promise<string[]> {
+  const snap = await getDocs(query(collection(db, "products", productId, "batches"), orderBy("receivedAt", "asc")));
+  let ids = snap.docs.map((d) => d.id);
+  if (preferredBatchId && ids.includes(preferredBatchId)) {
+    ids = [preferredBatchId, ...ids.filter((id) => id !== preferredBatchId)];
+  }
+  return ids;
 }
 
-// Allocates a sale qty across a product's active batches, oldest first,
-// so each batch's remainingQty reflects what's actually left and the sale
-// records the true weighted cost price (not the client-supplied one).
-async function allocateFifo(productId: string, qty: number, preferredBatchId?: string | null) {
-  const activeBatches = (await getBatches(productId)) as { id: string; remainingQty: number; costPrice: number }[];
-
-  // If the cashier picked a specific batch, draw from it first; FIFO covers any shortfall.
-  let ordered = activeBatches;
-  if (preferredBatchId) {
-    const idx = activeBatches.findIndex((b) => b.id === preferredBatchId);
-    if (idx > -1) {
-      const rest = activeBatches.slice(0, idx).concat(activeBatches.slice(idx + 1));
-      ordered = [activeBatches[idx], ...rest];
-    }
-  }
+// Allocates a sale qty across a product's active batches, oldest first (or the
+// cashier-picked batch first), from transaction-fresh batch snapshots so each
+// batch's remainingQty reflects what's actually left at commit time and the
+// sale records the true weighted cost price (not the client-supplied one).
+function allocateFifo(batchIds: string[], batchSnaps: any[], qty: number) {
+  const batches = batchIds
+    .map((id, i) => ({ id, ...(batchSnaps[i].exists() ? batchSnaps[i].data() : {}) }))
+    .filter((b) => b.status === "active") as { id: string; remainingQty: number; costPrice: number }[];
 
   let toConsume = qty;
   let totalCost = 0;
   const consumed: { batchId: string; qty: number; remainingAfter: number }[] = [];
 
-  for (const batch of ordered) {
+  for (const batch of batches) {
     if (toConsume <= 0) break;
     const take = Math.min(toConsume, batch.remainingQty);
     if (take <= 0) continue;
@@ -440,8 +399,8 @@ async function allocateFifo(productId: string, qty: number, preferredBatchId?: s
   }
 
   // Stock oversold relative to recorded batches — cost the shortfall at the last known batch price.
-  if (toConsume > 0 && activeBatches.length > 0) {
-    totalCost += toConsume * activeBatches[activeBatches.length - 1].costPrice;
+  if (toConsume > 0 && batches.length > 0) {
+    totalCost += toConsume * batches[batches.length - 1].costPrice;
   }
 
   const costPrice = qty > 0 ? totalCost / qty : 0;
@@ -450,10 +409,9 @@ async function allocateFifo(productId: string, qty: number, preferredBatchId?: s
 
 // Serialized items already know exactly which unit (and therefore which batch)
 // is being sold, so consumption is grouped by each unit's batchId instead of FIFO.
-async function allocateFromUnits(productId: string, units: { unitId: string; batchId: string }[]) {
-  const batches = (await getAllBatches(productId)) as { id: string; remainingQty: number; costPrice: number }[];
-  const remMap = new Map(batches.map((b) => [b.id, b.remainingQty]));
-  const costMap = new Map(batches.map((b) => [b.id, b.costPrice]));
+function allocateFromUnits(batchIds: string[], batchSnaps: any[], units: { unitId: string; batchId: string }[]) {
+  const remMap = new Map(batchIds.map((id, i) => [id, batchSnaps[i].exists() ? batchSnaps[i].data().remainingQty : 0]));
+  const costMap = new Map(batchIds.map((id, i) => [id, batchSnaps[i].exists() ? batchSnaps[i].data().costPrice : 0]));
 
   const grouped = new Map<string, number>();
   for (const u of units) grouped.set(u.batchId, (grouped.get(u.batchId) ?? 0) + 1);
@@ -472,28 +430,57 @@ async function allocateFromUnits(productId: string, units: { unitId: string; bat
 }
 
 export async function createSale(data: SaleData) {
-  // Batch allocation requires querying each product's batches, which Firestore
-  // transactions can't do mid-transaction — so resolve allocation first,
-  // then apply all writes atomically. Serialized items allocate from their
-  // chosen units; everything else falls back to FIFO across active batches.
-  const allocations = await Promise.all(
+  // Discover candidate batch ids up front (see getCandidateBatchIds above).
+  const candidateBatchIds = await Promise.all(
     data.items.map((item) =>
       item.units && item.units.length > 0
-        ? allocateFromUnits(item.productId, item.units)
-        : allocateFifo(item.productId, item.qty, item.batchId)
+        ? Promise.resolve(Array.from(new Set(item.units.map((u) => u.batchId))))
+        : getCandidateBatchIds(item.productId, item.batchId)
     )
   );
 
   return runTransaction(db, async (tx) => {
-    // 1. Generate invoice number
+    // ---- Reads (a transaction's reads must all happen before its writes) ----
     const counterRef = doc(db, "counters", "invoice");
     const counterDoc = await tx.get(counterRef);
+
+    const batchSnaps: any[][] = await Promise.all(
+      data.items.map((item, i) =>
+        Promise.all(candidateBatchIds[i].map((id) => tx.get(doc(db, "products", item.productId, "batches", id))))
+      )
+    );
+
+    const unitSnaps: any[][] = await Promise.all(
+      data.items.map((item) =>
+        item.units && item.units.length > 0
+          ? Promise.all(item.units.map((u) => tx.get(doc(db, "products", item.productId, "units", u.unitId))))
+          : Promise.resolve([])
+      )
+    );
+
+    // A unit picked at add-to-cart time may have been sold by someone else by
+    // the time this transaction runs — fail loudly instead of double-selling it.
+    data.items.forEach((item, i) => {
+      if (!item.units || item.units.length === 0) return;
+      unitSnaps[i].forEach((snap, j) => {
+        if (!snap.exists() || snap.data()!.status !== "in_stock") {
+          throw new Error(`"${item.units![j].serialNumber}" is no longer available for sale`);
+        }
+      });
+    });
+
+    const allocations = data.items.map((item, i) =>
+      item.units && item.units.length > 0
+        ? allocateFromUnits(candidateBatchIds[i], batchSnaps[i], item.units)
+        : allocateFifo(candidateBatchIds[i], batchSnaps[i], item.qty)
+    );
+
+    // ---- Writes ----
     const current = counterDoc.exists() ? (counterDoc.data().value as number) : 0;
     const next = current + 1;
     tx.set(counterRef, { value: next });
     const invoiceNo = `INV-${String(next).padStart(5, "0")}`;
 
-    // 2. Create sale doc
     const saleRef = doc(collection(db, "sales"));
     tx.set(saleRef, {
       ...data,
@@ -501,8 +488,8 @@ export async function createSale(data: SaleData) {
       createdAt: serverTimestamp(),
     });
 
-    // 3. Deduct stock for each item and consume from its batches (FIFO)
     const itemsWithCost = data.items.map((item, i) => ({ ...item, costPrice: allocations[i].costPrice }));
+    const saleDate = new Date();
 
     data.items.forEach((item, i) => {
       tx.update(doc(db, "products", item.productId), {
@@ -538,12 +525,51 @@ export async function createSale(data: SaleData) {
         performedBy: data.cashierId,
         createdAt: serverTimestamp(),
       });
+
+      // Warranty for this line item, created atomically with the sale itself
+      // instead of as a follow-up call — a mid-flight failure here now rolls
+      // back the whole sale rather than leaving one on record with no warranty.
+      if ((item.warrantyMonths ?? 0) > 0) {
+        const targets = item.units && item.units.length > 0 ? item.units : [null];
+        for (const unit of targets) {
+          const endDate = new Date(saleDate);
+          endDate.setMonth(endDate.getMonth() + item.warrantyMonths!);
+          const wRef = doc(collection(db, "warranties"));
+          const payload: any = {
+            customerId: data.customerId ?? null,
+            customerName: data.customerName || "Walk-in Customer",
+            productId: item.productId,
+            productName: item.productName,
+            saleId: saleRef.id,
+            warrantyMonths: item.warrantyMonths,
+            startDate: saleDate,
+            endDate,
+            status: "active",
+            createdAt: serverTimestamp(),
+          };
+          if (unit?.serialNumber) payload.serialNumber = unit.serialNumber;
+          tx.set(wRef, payload);
+        }
+      }
     });
 
-    // 4. Create sale items subcollection (with corrected cost price)
     for (const item of itemsWithCost) {
       const itemRef = doc(collection(db, "sales", saleRef.id, "saleItems"));
       tx.set(itemRef, item);
+    }
+
+    // Loyalty points earned/redeemed on this sale, applied in the same
+    // transaction as everything above so it can never drift from the sale.
+    if (data.customerId) {
+      const pointsEarned = Math.floor((data.subtotal - data.discountAmount) / 100);
+      const pointsRedeemed = data.pointsRedeemed || 0;
+      const delta = pointsEarned - pointsRedeemed;
+      if (delta !== 0) {
+        tx.update(doc(db, "customers", data.customerId), {
+          loyaltyPoints: increment(delta),
+          updatedAt: serverTimestamp(),
+        });
+      }
     }
 
     return { saleId: saleRef.id, invoiceNo };
