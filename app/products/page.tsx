@@ -32,6 +32,7 @@ export default function ProductsPage() {
   const [editBatchForm, setEditBatchForm] = useState({ costPrice: "", sellingPrice: "", totalQty: "", remainingQty: "", note: "" });
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const [form, setForm] = useState({
     name: "", brandId: "", mainCategoryId: "", subCategoryId: "",
@@ -196,33 +197,39 @@ export default function ProductsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const data = {
-      name: form.name,
-      brandId: form.brandId,
-      mainCategoryId: form.mainCategoryId,
-      subCategoryId: form.subCategoryId,
-      sku: form.sku,
-      sellingPrice: Number(form.sellingPrice),
-      totalStock: form.trackSerial ? (editingProduct?.totalStock ?? 0) : Number(form.totalStock),
-      lowStockAlert: Number(form.lowStockAlert),
-      description: form.description,
-      warrantyMonths: Number(form.warrantyMonths),
-      trackSerial: form.trackSerial,
-    };
-    if (editingProduct) {
-      await updateProduct(editingProduct.id, data);
-    } else {
-      const productRef = await addProduct(data as any);
-      if (!form.trackSerial && Number(form.totalStock) > 0) {
-        await addBatch(productRef.id, {
-          costPrice: Number(form.costPrice),
-          sellingPrice: Number(form.sellingPrice),
-          qty: Number(form.totalStock),
-        });
+    if (saving) return;
+    setSaving(true);
+    try {
+      const data = {
+        name: form.name,
+        brandId: form.brandId,
+        mainCategoryId: form.mainCategoryId,
+        subCategoryId: form.subCategoryId,
+        sku: form.sku,
+        sellingPrice: Number(form.sellingPrice),
+        totalStock: form.trackSerial ? (editingProduct?.totalStock ?? 0) : Number(form.totalStock),
+        lowStockAlert: Number(form.lowStockAlert),
+        description: form.description,
+        warrantyMonths: Number(form.warrantyMonths),
+        trackSerial: form.trackSerial,
+      };
+      if (editingProduct) {
+        await updateProduct(editingProduct.id, data);
+      } else {
+        const productRef = await addProduct(data as any);
+        if (!form.trackSerial && Number(form.totalStock) > 0) {
+          await addBatch(productRef.id, {
+            costPrice: Number(form.costPrice),
+            sellingPrice: Number(form.sellingPrice),
+            qty: Number(form.totalStock),
+          });
+        }
       }
+      setShowModal(false);
+      loadData();
+    } finally {
+      setSaving(false);
     }
-    setShowModal(false);
-    loadData();
   };
 
   const handleDelete = async () => {
@@ -414,7 +421,7 @@ export default function ProductsPage() {
           <div className="bg-white rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-100">
               <h2 className="font-prata text-lg text-black">{editingProduct ? "Edit Product" : "Add Product"}</h2>
-              <button onClick={() => setShowModal(false)} className="text-zinc-400 hover:text-black transition-colors">
+              <button disabled={saving} onClick={() => setShowModal(false)} className="text-zinc-400 hover:text-black transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
                 <X size={18} />
               </button>
             </div>
@@ -501,10 +508,10 @@ export default function ProductsPage() {
                 <textarea className="nexora-input resize-none" rows={2} value={form.description} onChange={e => setForm({...form, description: e.target.value})} />
               </div>
               <div className="flex gap-3 pt-2">
-                <button type="submit" className="nexora-btn nexora-btn-primary flex-1 justify-center">
-                  {editingProduct ? "Update" : "Add Product"}
+                <button type="submit" disabled={saving} className="nexora-btn nexora-btn-primary flex-1 justify-center disabled:opacity-60 disabled:cursor-not-allowed">
+                  {saving ? "Saving…" : editingProduct ? "Update" : "Add Product"}
                 </button>
-                <button type="button" onClick={() => setShowModal(false)} className="nexora-btn nexora-btn-outline">Cancel</button>
+                <button type="button" disabled={saving} onClick={() => setShowModal(false)} className="nexora-btn nexora-btn-outline disabled:opacity-60 disabled:cursor-not-allowed">Cancel</button>
               </div>
             </form>
           </div>
