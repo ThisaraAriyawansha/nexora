@@ -7,7 +7,7 @@ import {
 } from "@/lib/firestore";
 import { useAuth } from "@/hooks/useAuth";
 import { Product, Brand, MainCategory, SubCategory } from "@/types";
-import { Plus, Search, Edit2, Trash2, Package, ChevronDown, X, Layers, Hash } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, Package, ChevronDown, X, Layers, Hash, Check } from "lucide-react";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Pagination from "@/components/ui/Pagination";
 
@@ -33,6 +33,8 @@ export default function ProductsPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [addingBatch, setAddingBatch] = useState(false);
+  const [addingSerials, setAddingSerials] = useState(false);
 
   const [form, setForm] = useState({
     name: "", brandId: "", mainCategoryId: "", subCategoryId: "",
@@ -47,6 +49,7 @@ export default function ProductsPage() {
   const [unitActionError, setUnitActionError] = useState("");
   const [deleteUnitTarget, setDeleteUnitTarget] = useState<{ unitId: string; batchId: string; serialNumber: string } | null>(null);
   const [deletingUnit, setDeletingUnit] = useState(false);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const filteredSubCats = subCats.filter(s => s.mainCategoryId === form.mainCategoryId);
 
@@ -164,19 +167,24 @@ export default function ProductsPage() {
   };
 
   const handleAddSerialsToBatch = async (batchId: string) => {
-    if (!showBatchModal) return;
+    if (!showBatchModal || addingSerials) return;
     const serials = Array.from(new Set(
       newSerialsForBatch.split("\n").map(s => s.trim()).filter(Boolean)
     ));
     if (serials.length === 0) { setUnitActionError("Enter at least one serial number."); return; }
-    const existingUnits = await getAllUnits(showBatchModal) as unknown as { serialNumber: string }[];
-    const existingSerials = new Set(existingUnits.map(u => u.serialNumber.toLowerCase()));
-    const dupes = serials.filter(s => existingSerials.has(s.toLowerCase()));
-    if (dupes.length > 0) { setUnitActionError(`Already in stock: ${dupes.join(", ")}`); return; }
-    setUnitActionError("");
-    await addUnitsToBatch(showBatchModal, batchId, serials);
-    setNewSerialsForBatch("");
-    await refreshBatchModal();
+    setAddingSerials(true);
+    try {
+      const existingUnits = await getAllUnits(showBatchModal) as unknown as { serialNumber: string }[];
+      const existingSerials = new Set(existingUnits.map(u => u.serialNumber.toLowerCase()));
+      const dupes = serials.filter(s => existingSerials.has(s.toLowerCase()));
+      if (dupes.length > 0) { setUnitActionError(`Already in stock: ${dupes.join(", ")}`); return; }
+      setUnitActionError("");
+      await addUnitsToBatch(showBatchModal, batchId, serials);
+      setNewSerialsForBatch("");
+      await refreshBatchModal();
+    } finally {
+      setAddingSerials(false);
+    }
   };
 
   const handleUpdateBatch = async (e: React.FormEvent) => {
@@ -216,7 +224,9 @@ export default function ProductsPage() {
       if (editingProduct) {
         await updateProduct(editingProduct.id, data);
       } else {
-        const productRef = await addProduct(data as any);
+        // Seed stock at 0 — addBatch below increments it from there, so
+        // pre-filling it here would double-count the initial quantity.
+        const productRef = await addProduct({ ...data, totalStock: 0 } as any);
         if (!form.trackSerial && Number(form.totalStock) > 0) {
           await addBatch(productRef.id, {
             costPrice: Number(form.costPrice),
@@ -229,6 +239,17 @@ export default function ProductsPage() {
       loadData();
     } finally {
       setSaving(false);
+    }
+  };
+
+  const toggleActive = async (p: Product) => {
+    if (togglingId) return;
+    setTogglingId(p.id);
+    try {
+      await updateProduct(p.id, { active: !p.active });
+      setProducts(prev => prev.map(x => x.id === p.id ? { ...x, active: !p.active } : x));
+    } finally {
+      setTogglingId(null);
     }
   };
 
@@ -248,38 +269,42 @@ export default function ProductsPage() {
 
   const handleAddBatch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!showBatchModal) return;
+    if (!showBatchModal || addingBatch) return;
     setBatchError("");
+    setAddingBatch(true);
+    try {
+      let serials: string[] | undefined;
+      if (batchModalProduct?.trackSerial) {
+        serials = Array.from(new Set(
+          batchForm.serials.split("\n").map(s => s.trim()).filter(Boolean)
+        ));
+        if (serials.length === 0) {
+          setBatchError("Enter at least one serial number.");
+          return;
+        }
+        const existingUnits = await getAllUnits(showBatchModal) as unknown as { serialNumber: string }[];
+        const existingSerials = new Set(existingUnits.map(u => u.serialNumber.toLowerCase()));
+        const dupes = serials.filter(s => existingSerials.has(s.toLowerCase()));
+        if (dupes.length > 0) {
+          setBatchError(`Already in stock: ${dupes.join(", ")}`);
+          return;
+        }
+      }
 
-    let serials: string[] | undefined;
-    if (batchModalProduct?.trackSerial) {
-      serials = Array.from(new Set(
-        batchForm.serials.split("\n").map(s => s.trim()).filter(Boolean)
-      ));
-      if (serials.length === 0) {
-        setBatchError("Enter at least one serial number.");
-        return;
-      }
-      const existingUnits = await getAllUnits(showBatchModal) as unknown as { serialNumber: string }[];
-      const existingSerials = new Set(existingUnits.map(u => u.serialNumber.toLowerCase()));
-      const dupes = serials.filter(s => existingSerials.has(s.toLowerCase()));
-      if (dupes.length > 0) {
-        setBatchError(`Already in stock: ${dupes.join(", ")}`);
-        return;
-      }
+      await addBatch(showBatchModal, {
+        costPrice: Number(batchForm.costPrice),
+        sellingPrice: batchForm.sellingPrice ? Number(batchForm.sellingPrice) : undefined,
+        qty: Number(batchForm.qty),
+        note: batchForm.note,
+        serials,
+      });
+      setBatchForm({ costPrice: "", sellingPrice: "", qty: "", note: "", serials: "" });
+      const b = await getAllBatches(showBatchModal);
+      setBatches(b);
+      loadData();
+    } finally {
+      setAddingBatch(false);
     }
-
-    await addBatch(showBatchModal, {
-      costPrice: Number(batchForm.costPrice),
-      sellingPrice: batchForm.sellingPrice ? Number(batchForm.sellingPrice) : undefined,
-      qty: Number(batchForm.qty),
-      note: batchForm.note,
-      serials,
-    });
-    setBatchForm({ costPrice: "", sellingPrice: "", qty: "", note: "", serials: "" });
-    const b = await getAllBatches(showBatchModal);
-    setBatches(b);
-    loadData();
   };
 
   const filterSubCatOptions = subCats.filter(s => s.mainCategoryId === filterMainCat);
@@ -362,14 +387,15 @@ export default function ProductsPage() {
               <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase tracking-wider">Selling Price</th>
               <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase tracking-wider">Stock</th>
               <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase tracking-wider">Batches</th>
+              <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase tracking-wider">Status</th>
               <th className="px-4 py-3"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-50">
             {loading ? (
-              <tr><td colSpan={7} className="text-center py-10 text-zinc-400">Loading…</td></tr>
+              <tr><td colSpan={8} className="text-center py-10 text-zinc-400">Loading…</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={7} className="text-center py-10 text-zinc-400">No products found</td></tr>
+              <tr><td colSpan={8} className="text-center py-10 text-zinc-400">No products found</td></tr>
             ) : (
               paginated.map(p => (
                 <tr key={p.id} className="hover:bg-zinc-50 transition-colors">
@@ -394,6 +420,22 @@ export default function ProductsPage() {
                       className="nexora-btn nexora-btn-ghost text-xs py-1 px-2"
                     >
                       <Layers size={12} /> View batches
+                    </button>
+                  </td>
+                  <td className="px-4 py-3">
+                    <button
+                      onClick={() => toggleActive(p)}
+                      disabled={togglingId === p.id}
+                      className="flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                      title={p.active !== false ? "Active — visible on POS. Click to deactivate." : "Inactive — hidden from POS. Click to reactivate."}
+                    >
+                      <span className={`text-xs font-medium ${p.active !== false ? "text-black" : "text-zinc-300"}`}>Active</span>
+                      <span className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${p.active !== false ? "bg-green-500" : "bg-zinc-200"}`}>
+                        <span className={`inline-flex h-4 w-4 items-center justify-center rounded-full bg-white shadow transition-transform ${p.active !== false ? "translate-x-4" : "translate-x-0.5"}`}>
+                          {p.active !== false ? <Check size={10} className="text-green-600" strokeWidth={3} /> : <X size={10} className="text-zinc-400" strokeWidth={3} />}
+                        </span>
+                      </span>
+                      <span className={`text-xs font-medium ${p.active !== false ? "text-zinc-300" : "text-black"}`}>Inactive</span>
                     </button>
                   </td>
                   <td className="px-4 py-3">
@@ -636,8 +678,8 @@ export default function ProductsPage() {
                   )}
                   {batchError && <p className="text-xs text-red-500">{batchError}</p>}
                   <input className="nexora-input" placeholder="Note (optional)" value={batchForm.note} onChange={e => setBatchForm({...batchForm, note: e.target.value})} />
-                  <button type="submit" className="nexora-btn nexora-btn-primary w-full justify-center">
-                    <Plus size={14} /> Add Batch
+                  <button type="submit" disabled={addingBatch} className="nexora-btn nexora-btn-primary w-full justify-center disabled:opacity-60 disabled:cursor-not-allowed">
+                    <Plus size={14} /> {addingBatch ? "Adding…" : "Add Batch"}
                   </button>
                 </form>
               </div>
@@ -697,8 +739,8 @@ export default function ProductsPage() {
                   onChange={e => setNewSerialsForBatch(e.target.value)}
                 />
                 {unitActionError && <p className="text-xs text-red-500">{unitActionError}</p>}
-                <button type="button" onClick={() => handleAddSerialsToBatch(manageSerialsBatch.id)} className="nexora-btn nexora-btn-outline w-full justify-center text-xs py-1.5">
-                  <Plus size={12} /> Add Serials
+                <button type="button" disabled={addingSerials} onClick={() => handleAddSerialsToBatch(manageSerialsBatch.id)} className="nexora-btn nexora-btn-outline w-full justify-center text-xs py-1.5 disabled:opacity-60 disabled:cursor-not-allowed">
+                  <Plus size={12} /> {addingSerials ? "Adding…" : "Add Serials"}
                 </button>
               </div>
             </div>
