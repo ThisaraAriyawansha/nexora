@@ -373,10 +373,14 @@ export default function SalesPage() {
                       </button>
                       <span className="w-8 text-center text-sm font-medium">{item.qty}</span>
                       <button
-                        onClick={() => item.units
-                          ? openSerialPicker(products.find(p => p.id === item.productId)!)
-                          : updateQty(item.tempId, item.qty + 1)}
-                        className="w-7 h-7 flex items-center justify-center hover:bg-zinc-50 transition-colors"
+                        onClick={() => {
+                          if (item.units) { openSerialPicker(products.find(p => p.id === item.productId)!); return; }
+                          const product = products.find(p => p.id === item.productId);
+                          if (product && item.qty >= product.totalStock) return;
+                          updateQty(item.tempId, item.qty + 1);
+                        }}
+                        disabled={!item.units && (products.find(p => p.id === item.productId)?.totalStock ?? Infinity) <= item.qty}
+                        className="w-7 h-7 flex items-center justify-center hover:bg-zinc-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                       >
                         <Plus size={11} />
                       </button>
