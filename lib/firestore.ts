@@ -341,6 +341,7 @@ export interface SaleItem {
   lineTotal: number;
   warrantyMonths?: number;
   units?: { unitId: string; serialNumber: string; batchId: string }[];
+  batchAllocations?: { batchId: string; qty: number }[];
 }
 
 export interface SaleData {
@@ -380,7 +381,10 @@ async function getCandidateBatchIds(productId: string, preferredBatchId?: string
 // cashier-picked batch first), from transaction-fresh batch snapshots so each
 // batch's remainingQty reflects what's actually left at commit time and the
 // sale records the true weighted cost price (not the client-supplied one).
-function allocateFifo(batchIds: string[], batchSnaps: any[], qty: number) {
+// Throws if the active batches can't cover the requested qty — the caller runs
+// this before any writes are issued, so the whole sale transaction aborts
+// cleanly instead of overselling and recording a bogus cost price.
+function allocateFifo(batchIds: string[], batchSnaps: any[], qty: number, productName: string) {
   const batches = batchIds
     .map((id, i) => ({ id, ...(batchSnaps[i].exists() ? batchSnaps[i].data() : {}) }))
     .filter((b) => b.status === "active") as { id: string; remainingQty: number; costPrice: number }[];
@@ -398,9 +402,9 @@ function allocateFifo(batchIds: string[], batchSnaps: any[], qty: number) {
     toConsume -= take;
   }
 
-  // Stock oversold relative to recorded batches — cost the shortfall at the last known batch price.
-  if (toConsume > 0 && batches.length > 0) {
-    totalCost += toConsume * batches[batches.length - 1].costPrice;
+  if (toConsume > 0) {
+    const available = qty - toConsume;
+    throw new Error(`Not enough stock for "${productName}": requested ${qty}, only ${available} available.`);
   }
 
   const costPrice = qty > 0 ? totalCost / qty : 0;
@@ -472,7 +476,7 @@ export async function createSale(data: SaleData) {
     const allocations = data.items.map((item, i) =>
       item.units && item.units.length > 0
         ? allocateFromUnits(candidateBatchIds[i], batchSnaps[i], item.units)
-        : allocateFifo(candidateBatchIds[i], batchSnaps[i], item.qty)
+        : allocateFifo(candidateBatchIds[i], batchSnaps[i], item.qty, item.productName)
     );
 
     // ---- Writes ----
@@ -488,7 +492,14 @@ export async function createSale(data: SaleData) {
       createdAt: serverTimestamp(),
     });
 
-    const itemsWithCost = data.items.map((item, i) => ({ ...item, costPrice: allocations[i].costPrice }));
+    // Non-serialized items don't otherwise record which batch(es) FIFO drew
+    // from, so persist that breakdown here — cancelSale needs it to restore
+    // the exact batches instead of guessing from the cashier-picked batchId.
+    const itemsWithCost = data.items.map((item, i) => ({
+      ...item,
+      costPrice: allocations[i].costPrice,
+      batchAllocations: allocations[i].consumed.map((c) => ({ batchId: c.batchId, qty: c.qty })),
+    }));
     const saleDate = new Date();
 
     data.items.forEach((item, i) => {
@@ -612,9 +623,10 @@ export async function cancelSale(saleId: string, cancelledBy: { uid: string; nam
 
   const warrantySnap = await getDocs(query(collection(db, "warranties"), where("saleId", "==", saleId)));
 
-  // Non-serialized sales don't persist which batch(es) FIFO actually drew from at
-  // checkout time, so restoring to the cashier-selected batch is a best-effort
-  // approximation; serialized items restore their exact batch via each unit.
+  // Serialized items restore their exact batch via each unit; non-serialized
+  // items restore via the batchAllocations recorded at checkout time (the
+  // real batch(es) FIFO drew from). Sales made before batchAllocations existed
+  // fall back to the cashier-selected batchId as a best-effort approximation.
   const batchTargets = new Map<string, { productId: string; batchId: string; qty: number }>();
   for (const item of items) {
     if (item.units && item.units.length > 0) {
@@ -622,6 +634,13 @@ export async function cancelSale(saleId: string, cancelledBy: { uid: string; nam
         const key = `${item.productId}/${u.batchId}`;
         const t = batchTargets.get(key) ?? { productId: item.productId, batchId: u.batchId, qty: 0 };
         t.qty += 1;
+        batchTargets.set(key, t);
+      }
+    } else if (item.batchAllocations && item.batchAllocations.length > 0) {
+      for (const a of item.batchAllocations) {
+        const key = `${item.productId}/${a.batchId}`;
+        const t = batchTargets.get(key) ?? { productId: item.productId, batchId: a.batchId, qty: 0 };
+        t.qty += a.qty;
         batchTargets.set(key, t);
       }
     } else if (item.batchId) {
@@ -830,7 +849,11 @@ export async function upsertUserProfile(uid: string, data: Partial<Omit<UserProf
   if (snap.exists()) {
     return updateDoc(ref, { ...data, updatedAt: serverTimestamp() });
   }
-  return setDoc(ref, { uid, role: "Admin", ...data, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+  // Team members are meant to be provisioned by an Admin+ via createTeamUser,
+  // which always sets an explicit role. If this ever runs for a user with no
+  // profile doc yet, default to the least-privileged role rather than Admin —
+  // self-service profile saves should never be able to grant elevated access.
+  return setDoc(ref, { uid, role: "Cashier", ...data, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
 }
 
 export async function updateTeamUser(

@@ -108,6 +108,7 @@ export interface SaleItem {
   lineTotal: number;
   warrantyMonths?: number;
   units?: SaleItemUnit[];
+  batchAllocations?: { batchId: string; qty: number }[];
 }
 
 export interface Sale {

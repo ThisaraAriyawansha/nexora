@@ -184,7 +184,11 @@ export default function SalesPage() {
   };
 
   const updateDiscount = (tempId: string, disc: number) => {
-    setCart(cart.map(i => i.tempId === tempId ? { ...i, discount: disc, lineTotal: i.qty * (i.unitPrice - disc) } : i));
+    setCart(cart.map(i => {
+      if (i.tempId !== tempId) return i;
+      const clamped = Math.max(0, Math.min(disc, i.unitPrice));
+      return { ...i, discount: clamped, lineTotal: i.qty * (i.unitPrice - clamped) };
+    }));
   };
 
   const removeItem = (tempId: string) => setCart(cart.filter(i => i.tempId !== tempId));
@@ -230,9 +234,9 @@ export default function SalesPage() {
       setSelectedCustomer(null);
       setAmountTendered("");
       setNote("");
-    } catch (err) {
+    } catch (err: any) {
       console.error("Checkout failed:", err);
-      alert("Error processing sale. Please try again.");
+      alert(err?.message || "Error processing sale. Please try again.");
     }
     setProcessing(false);
   };
@@ -387,6 +391,8 @@ export default function SalesPage() {
                     </div>
                     <input
                       type="number"
+                      min={0}
+                      max={item.unitPrice}
                       value={item.discount || ""}
                       onChange={e => updateDiscount(item.tempId, Number(e.target.value))}
                       className="nexora-input flex-1 py-1.5 text-xs"
