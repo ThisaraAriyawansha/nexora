@@ -6,12 +6,13 @@ import {
 } from "@/lib/firestore";
 import type { Product } from "@/types";
 import {
-  Search, Printer, Eye, X, Plus, Trash2, Check, Ban, FileText,
+  Search, Printer, Eye, X, Plus, Trash2, Check, Ban, FileText, Download,
 } from "lucide-react";
 import QuotationPrint from "@/components/pos/QuotationPrint";
 import { useReactToPrint } from "react-to-print";
 import Pagination from "@/components/ui/Pagination";
 import { useAuth } from "@/hooks/useAuth";
+import { downloadElementAsPdf } from "@/lib/pdf";
 
 const PAGE_SIZE = 10;
 
@@ -60,6 +61,17 @@ export default function QuotationsPage() {
 
   const printRef = useRef<HTMLDivElement>(null);
   const handlePrint = useReactToPrint({ content: () => printRef.current });
+  const [downloadingQuotation, setDownloadingQuotation] = useState(false);
+
+  const handleDownloadQuotation = async () => {
+    if (!printRef.current || downloadingQuotation) return;
+    setDownloadingQuotation(true);
+    try {
+      await downloadElementAsPdf(printRef.current, `${viewQuotation?.quotationNo || "quotation"}.pdf`);
+    } finally {
+      setDownloadingQuotation(false);
+    }
+  };
 
   const canDelete = userRole === "Super Admin" || userRole === "Admin";
 
@@ -554,6 +566,9 @@ export default function QuotationsPage() {
                 <button onClick={handlePrint} className="nexora-btn nexora-btn-outline text-sm">
                   <Printer size={14} /> Print A4
                 </button>
+                <button onClick={handleDownloadQuotation} disabled={downloadingQuotation} className="nexora-btn nexora-btn-outline text-sm">
+                  <Download size={14} /> {downloadingQuotation ? "Downloading…" : "Download"}
+                </button>
                 {viewQuotation.status === "sent" && (
                   <>
                     <button
@@ -653,8 +668,8 @@ export default function QuotationsPage() {
         </div>
       )}
 
-      {/* Hidden print */}
-      <div className="hidden">
+      {/* Off-screen print/PDF area (kept out of view but still rendered so html2canvas can capture it) */}
+      <div style={{ position: "fixed", top: 0, left: "-10000px", zIndex: -1 }}>
         <div ref={printRef}>
           {viewQuotation && <QuotationPrint quotation={viewQuotation} />}
         </div>

@@ -46,17 +46,21 @@ body {
 @media print {
   @page {
     size: A4;
-    margin: 15mm 15mm 15mm 15mm;
+    margin: 15mm;
   }
 
   body * { visibility: hidden; }
   #bill-print, #bill-print * { visibility: visible; }
+  /* @page margin above already reserves the 15mm border on every physical
+     page (repeating on continuation pages too). Override the on-screen
+     inline width/min-height/padding - which assume a standalone 210x297mm
+     box - so the two don't stack into a double margin. */
   #bill-print {
     position: absolute;
     inset: 0;
-    width: 210mm;
-    min-height: 297mm;
-    padding: 15mm;
+    width: 180mm !important;
+    min-height: 267mm !important;
+    padding: 0 !important;
     font-family: var(--font-poppins);
     font-size: 11pt;
     color: #000;
@@ -89,9 +93,9 @@ body {
   #quotation-print {
     position: absolute;
     inset: 0;
-    width: 210mm;
-    min-height: 297mm;
-    padding: 15mm;
+    width: 180mm !important;
+    min-height: 267mm !important;
+    padding: 0 !important;
     font-family: var(--font-poppins);
     font-size: 11pt;
     color: #000;

@@ -26,8 +26,8 @@ export default function BillPrint({ sale }: BillPrintProps) {
       {/* Header */}
       <div className="bill-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8mm", paddingBottom: "6mm", borderBottom: "2px solid #000" }}>
         <div>
-          <div className="bill-title" style={{ fontFamily: "'Poppins', sans-serif", fontSize: "32pt", letterSpacing: "-0.5px", lineHeight: 1 }}>{shop.name}</div>
-          {shop.address && <div style={{ fontSize: "9pt", color: "#555", marginTop: "3px" }}>{shop.address}</div>}
+          <div className="bill-title" style={{ fontFamily: "'Poppins', sans-serif", fontSize: "32pt", letterSpacing: "-0.5px", lineHeight: 1.3 }}>{shop.name}</div>
+          {shop.address && <div style={{ fontSize: "9pt", color: "#555", marginTop: "5px" }}>{shop.address}</div>}
           <div style={{ fontSize: "8pt", color: "#888", marginTop: "2px" }}>
             {shop.phone && <>Tel: {shop.phone}</>}
             {shop.phone && shop.email && " | "}
@@ -74,7 +74,7 @@ export default function BillPrint({ sale }: BillPrintProps) {
         </thead>
         <tbody>
           {sale.items?.map((item: any, i: number) => (
-            <tr key={i}>
+            <tr key={i} style={{ breakInside: "avoid", pageBreakInside: "avoid" }}>
               <td style={{ padding: "2.5mm 2mm", borderBottom: "0.5pt solid #e4e4e7", fontSize: "9pt", color: "#555" }}>{i + 1}</td>
               <td style={{ padding: "2.5mm 2mm", borderBottom: "0.5pt solid #e4e4e7", fontSize: "10pt" }}>
                 <div style={{ fontWeight: "500" }}>{item.productName}</div>
@@ -98,7 +98,7 @@ export default function BillPrint({ sale }: BillPrintProps) {
       </table>
 
       {/* Totals */}
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "8mm" }}>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "8mm", breakInside: "avoid", pageBreakInside: "avoid" }}>
         <div style={{ width: "55mm" }}>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: "9pt", padding: "1.5mm 0", color: "#555" }}>
             <span>Subtotal</span>
@@ -142,11 +142,11 @@ export default function BillPrint({ sale }: BillPrintProps) {
         </div>
       </div>
 
-      {/* Bottom section: warranty notice, note & footer pinned to page bottom */}
-      <div style={{ marginTop: "auto" }}>
+      {/* Bottom section: warranty notice, note & footer */}
+      <div style={{ marginTop: "10mm" }}>
         {/* Warranty notice */}
         {sale.items?.some((i: any) => i.warrantyMonths > 0) && (
-          <div style={{ background: "#f9f9f9", border: "0.5pt solid #e4e4e7", borderRadius: "3mm", padding: "4mm", marginBottom: "6mm" }}>
+          <div style={{ background: "#f9f9f9", border: "0.5pt solid #e4e4e7", borderRadius: "3mm", padding: "4mm", marginBottom: "6mm", breakInside: "avoid", pageBreakInside: "avoid" }}>
             <div style={{ fontSize: "8pt", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "2mm" }}>Warranty Notice</div>
             <div style={{ fontSize: "8pt", color: "#555" }}>
               Please keep this invoice as proof of warranty. Warranty covers manufacturer defects only.
@@ -157,13 +157,13 @@ export default function BillPrint({ sale }: BillPrintProps) {
 
         {/* Note */}
         {sale.note && (
-          <div style={{ fontSize: "9pt", color: "#555", marginBottom: "6mm" }}>
+          <div style={{ fontSize: "9pt", color: "#555", marginBottom: "6mm", breakInside: "avoid", pageBreakInside: "avoid" }}>
             <span style={{ fontWeight: "600" }}>Note: </span>{sale.note}
           </div>
         )}
 
         {/* Footer */}
-        <div style={{ borderTop: "1pt solid #e4e4e7", paddingTop: "3mm", display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+        <div style={{ borderTop: "1pt solid #e4e4e7", paddingTop: "3mm", display: "flex", justifyContent: "space-between", alignItems: "flex-end", breakInside: "avoid", pageBreakInside: "avoid" }}>
           <div style={{ textAlign: "left" }}>
             <div style={{ fontFamily: "'Poppins', sans-serif", fontSize: "10pt", fontWeight: 600, color: "#000" }}>{shop.name}</div>
             <div style={{ fontSize: "7pt", color: "#888", marginTop: "1px" }}>Thank you for your purchase!</div>

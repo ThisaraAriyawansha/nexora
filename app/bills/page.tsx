@@ -1,11 +1,12 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
 import { getSale, getSales, cancelSale } from "@/lib/firestore";
-import { Search, Printer, Eye, X, Ban } from "lucide-react";
+import { Search, Printer, Eye, X, Ban, Download } from "lucide-react";
 import BillPrint from "@/components/pos/BillPrint";
 import { useReactToPrint } from "react-to-print";
 import Pagination from "@/components/ui/Pagination";
 import { useAuth } from "@/hooks/useAuth";
+import { downloadElementAsPdf } from "@/lib/pdf";
 
 const PAGE_SIZE = 10;
 
@@ -24,6 +25,17 @@ export default function BillsPage() {
   const [cancelError, setCancelError] = useState("");
   const printRef = useRef<HTMLDivElement>(null);
   const handlePrint = useReactToPrint({ content: () => printRef.current });
+  const [downloadingBill, setDownloadingBill] = useState(false);
+
+  const handleDownloadBill = async () => {
+    if (!printRef.current || downloadingBill) return;
+    setDownloadingBill(true);
+    try {
+      await downloadElementAsPdf(printRef.current, `${viewSale?.invoiceNo || "invoice"}.pdf`);
+    } finally {
+      setDownloadingBill(false);
+    }
+  };
 
   const canCancelBills = userRole === "Super Admin" || userRole === "Admin";
 
@@ -216,6 +228,9 @@ export default function BillsPage() {
                 <button onClick={handlePrint} className="nexora-btn nexora-btn-outline text-sm">
                   <Printer size={14} /> Print A4
                 </button>
+                <button onClick={handleDownloadBill} disabled={downloadingBill} className="nexora-btn nexora-btn-outline text-sm">
+                  <Download size={14} /> {downloadingBill ? "Downloading…" : "Download"}
+                </button>
                 {canCancelBills && viewSale.status !== "cancelled" && (
                   <button
                     onClick={() => setConfirmingCancel(true)}
@@ -338,8 +353,8 @@ export default function BillsPage() {
         </div>
       )}
 
-      {/* Hidden print */}
-      <div className="hidden">
+      {/* Off-screen print/PDF area (kept out of view but still rendered so html2canvas can capture it) */}
+      <div style={{ position: "fixed", top: 0, left: "-10000px", zIndex: -1 }}>
         <div ref={printRef}>
           {viewSale && <BillPrint sale={viewSale} />}
         </div>

@@ -2,10 +2,11 @@
 import { useEffect, useState, useRef } from "react";
 import { getProducts, getCustomers, addCustomer, createSale, getBatches, getAvailableUnits, getMainCategories, getSubCategories } from "@/lib/firestore";
 import { Product, Customer, CartItem, MainCategory, SubCategory } from "@/types";
-import { Search, Plus, Minus, Trash2, Printer, User, X, Check } from "lucide-react";
+import { Search, Plus, Minus, Trash2, Printer, User, X, Check, Download } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import BillPrint from "@/components/pos/BillPrint";
 import { useReactToPrint } from "react-to-print";
+import { downloadElementAsPdf } from "@/lib/pdf";
 
 export default function SalesPage() {
   const { user, userDisplayName } = useAuth();
@@ -37,8 +38,19 @@ export default function SalesPage() {
   const [selectedUnitIds, setSelectedUnitIds] = useState<string[]>([]);
   const [loadingUnits, setLoadingUnits] = useState(false);
 
+  const [downloadingBill, setDownloadingBill] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
   const handlePrint = useReactToPrint({ content: () => printRef.current });
+
+  async function handleDownloadBill() {
+    if (!printRef.current || downloadingBill) return;
+    setDownloadingBill(true);
+    try {
+      await downloadElementAsPdf(printRef.current, `${completedSale?.invoiceNo || "invoice"}.pdf`);
+    } finally {
+      setDownloadingBill(false);
+    }
+  }
 
   useEffect(() => {
     async function load() {
@@ -667,17 +679,20 @@ export default function SalesPage() {
                 <button onClick={() => { handlePrint(); }} className="nexora-btn nexora-btn-outline flex-1 justify-center">
                   <Printer size={14} /> Print Bill
                 </button>
-                <button onClick={() => setCompletedSale(null)} className="nexora-btn nexora-btn-primary flex-1 justify-center">
-                  New Sale
+                <button onClick={handleDownloadBill} disabled={downloadingBill} className="nexora-btn nexora-btn-outline flex-1 justify-center">
+                  <Download size={14} /> {downloadingBill ? "Downloading..." : "Download"}
                 </button>
               </div>
+              <button onClick={() => setCompletedSale(null)} className="nexora-btn nexora-btn-primary w-full justify-center mt-3">
+                New Sale
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Hidden print area */}
-      <div className="hidden">
+      {/* Off-screen print/PDF area (kept out of view but still rendered so html2canvas can capture it) */}
+      <div style={{ position: "fixed", top: 0, left: "-10000px", zIndex: -1 }}>
         <div ref={printRef}>
           {completedSale && <BillPrint sale={completedSale} />}
         </div>
