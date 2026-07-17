@@ -10,8 +10,20 @@ import {
 import JobPrint from "@/components/pos/JobPrint";
 import { useReactToPrint } from "react-to-print";
 import Pagination from "@/components/ui/Pagination";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { useAuth } from "@/hooks/useAuth";
 import { downloadElementAsPdf } from "@/lib/pdf";
+
+interface EmailPrompt {
+  email: string;
+  customerName: string;
+  jobNo: string;
+  statusLabel: string;
+  device: string;
+  note: string;
+  repairCost: number | null;
+  isNew: boolean;
+}
 
 const PAGE_SIZE = 10;
 
@@ -109,6 +121,10 @@ export default function JobsPage() {
   const [statusUpdating, setStatusUpdating] = useState(false);
   const [statusError, setStatusError] = useState("");
 
+  const [emailPrompt, setEmailPrompt] = useState<EmailPrompt | null>(null);
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [emailNotice, setEmailNotice] = useState("");
+
   const printRef = useRef<HTMLDivElement>(null);
   const handlePrint = useReactToPrint({ content: () => printRef.current });
   const [downloadingJob, setDownloadingJob] = useState(false);
@@ -124,6 +140,38 @@ export default function JobsPage() {
   };
 
   const loadJobs = () => getJobs().then((j) => { setJobs(j); setLoading(false); });
+
+  const confirmSendEmail = async () => {
+    if (!emailPrompt || !user) return;
+    setSendingEmail(true);
+    setEmailNotice("");
+    try {
+      const idToken = await user.getIdToken();
+      const res = await fetch("/api/jobs/notify-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          idToken,
+          customerEmail: emailPrompt.email,
+          customerName: emailPrompt.customerName,
+          jobNo: emailPrompt.jobNo,
+          statusLabel: emailPrompt.statusLabel,
+          device: emailPrompt.device,
+          note: emailPrompt.note,
+          repairCost: emailPrompt.repairCost,
+          isNew: emailPrompt.isNew,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to send email");
+      setEmailNotice(`Emailed ${emailPrompt.email}.`);
+    } catch (err: any) {
+      setEmailNotice(err?.message || "Failed to send email.");
+    } finally {
+      setSendingEmail(false);
+      setEmailPrompt(null);
+    }
+  };
 
   useEffect(() => {
     loadJobs();
@@ -209,6 +257,20 @@ export default function JobsPage() {
       setShowCreate(false);
       const full = await getJob(result.jobId);
       setViewJob(full);
+      const email = form.customerEmail.trim();
+      if (email) {
+        setEmailNotice("");
+        setEmailPrompt({
+          email,
+          customerName: form.customerName.trim(),
+          jobNo: result.jobNo,
+          statusLabel: STATUS_LABEL.pending,
+          device: form.deviceType === "Other" ? form.deviceTypeOther.trim() : form.deviceType,
+          note: "",
+          repairCost: null,
+          isNew: true,
+        });
+      }
     } catch (err: any) {
       setSaveError(err?.message || "Failed to save the job note");
     } finally {
@@ -232,19 +294,31 @@ export default function JobsPage() {
     setStatusUpdating(true);
     setStatusError("");
     try {
+      const note = statusNote.trim();
+      const repairCost = statusCost.trim() === "" ? undefined : Number(statusCost);
       await updateJobStatus(
         viewJob.id,
-        {
-          status: newStatus,
-          note: statusNote.trim(),
-          repairCost: statusCost.trim() === "" ? undefined : Number(statusCost),
-        },
+        { status: newStatus, note, repairCost },
         { uid: user!.uid, name: userDisplayName || user?.email || "Staff" }
       );
       await loadJobs();
       const refreshed = await getJob(viewJob.id);
       setViewJob(refreshed);
       setStatusNote("");
+      const email = (refreshed as any)?.customerEmail?.trim();
+      if (email) {
+        setEmailNotice("");
+        setEmailPrompt({
+          email,
+          customerName: (refreshed as any).customerName || "",
+          jobNo: (refreshed as any).jobNo,
+          statusLabel: STATUS_LABEL[newStatus],
+          device: (refreshed as any).deviceType === "Other" ? (refreshed as any).deviceTypeOther : (refreshed as any).deviceType,
+          note,
+          repairCost: repairCost ?? null,
+          isNew: false,
+        });
+      }
     } catch (err: any) {
       setStatusError(err?.message || "Failed to update job status");
     } finally {
@@ -666,6 +740,13 @@ export default function JobsPage() {
               </div>
             </div>
 
+            {emailNotice && (
+              <div className="mx-6 mt-4 px-4 py-2.5 rounded-lg bg-zinc-50 border border-zinc-200 text-sm text-zinc-600 flex items-center justify-between">
+                <span>{emailNotice}</span>
+                <button onClick={() => setEmailNotice("")} className="text-zinc-400 hover:text-black"><X size={14} /></button>
+              </div>
+            )}
+
             <div className="px-6 py-4 space-y-6">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="min-w-0">
@@ -793,6 +874,19 @@ export default function JobsPage() {
           {viewJob && <JobPrint job={viewJob} />}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={!!emailPrompt}
+        title="Email the customer?"
+        message={emailPrompt ? `Send this ${emailPrompt.isNew ? "job confirmation" : "status update"} by email to ${emailPrompt.email}?` : ""}
+        confirmText="Send Email"
+        loadingText="Sending…"
+        cancelText="Skip"
+        danger={false}
+        loading={sendingEmail}
+        onConfirm={confirmSendEmail}
+        onCancel={() => setEmailPrompt(null)}
+      />
     </div>
   );
 }
