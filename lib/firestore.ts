@@ -148,6 +148,7 @@ export async function addBatch(
     }
     tx.update(doc(db, "products", productId), {
       totalStock: increment(qty),
+      lowStockAlerted: false,
     });
   });
 }
@@ -228,7 +229,7 @@ export async function addUnitsToBatch(productId: string, batchId: string, serial
       remainingQty: increment(serials.length),
       status: "active",
     });
-    tx.update(doc(db, "products", productId), { totalStock: increment(serials.length) });
+    tx.update(doc(db, "products", productId), { totalStock: increment(serials.length), lowStockAlerted: false });
   });
 }
 
@@ -272,7 +273,10 @@ export async function updateBatch(
     // Keep the product's aggregate stock in sync with the corrected quantity.
     const delta = data.remainingQty - current.remainingQty;
     if (delta !== 0) {
-      tx.update(doc(db, "products", productId), { totalStock: increment(delta) });
+      tx.update(doc(db, "products", productId), {
+        totalStock: increment(delta),
+        ...(delta > 0 ? { lowStockAlerted: false } : {}),
+      });
       const mvRef = doc(collection(db, "stock_movements"));
       tx.set(mvRef, {
         productId,
@@ -464,6 +468,13 @@ export async function createSale(data: SaleData) {
       )
     );
 
+    // Read each sold product once (dedup'd — a serialized item can span
+    // multiple cart lines for the same product) so post-sale stock and its
+    // low-stock-alert threshold/flag can be checked against a fresh snapshot.
+    const productIds = Array.from(new Set(data.items.map((item) => item.productId)));
+    const productSnaps = await Promise.all(productIds.map((id) => tx.get(doc(db, "products", id))));
+    const productDataById = new Map(productIds.map((id, i) => [id, productSnaps[i].exists() ? productSnaps[i].data()! : null]));
+
     // A unit picked at add-to-cart time may have been sold by someone else by
     // the time this transaction runs — fail loudly instead of double-selling it.
     data.items.forEach((item, i) => {
@@ -572,6 +583,26 @@ export async function createSale(data: SaleData) {
       tx.set(itemRef, item);
     }
 
+    // Low-stock detection: a product alerts once when this sale takes it to
+    // or below its threshold, then goes quiet (lowStockAlerted) until a
+    // restock resets the flag — otherwise every subsequent sale of an
+    // already-low item would re-fire the same email.
+    const qtySoldByProduct = new Map<string, number>();
+    for (const item of data.items) {
+      qtySoldByProduct.set(item.productId, (qtySoldByProduct.get(item.productId) ?? 0) + item.qty);
+    }
+    const lowStockItems: { productId: string; productName: string; sku: string; totalStock: number; lowStockAlert: number }[] = [];
+    for (const [productId, qtySold] of Array.from(qtySoldByProduct.entries())) {
+      const productData = productDataById.get(productId);
+      if (!productData) continue;
+      const newStock = (productData.totalStock ?? 0) - qtySold;
+      const threshold = productData.lowStockAlert ?? 5;
+      if (newStock <= threshold && !productData.lowStockAlerted) {
+        tx.update(doc(db, "products", productId), { lowStockAlerted: true });
+        lowStockItems.push({ productId, productName: productData.name, sku: productData.sku, totalStock: newStock, lowStockAlert: threshold });
+      }
+    }
+
     // Loyalty points earned/redeemed on this sale, applied in the same
     // transaction as everything above so it can never drift from the sale.
     if (data.customerId) {
@@ -586,7 +617,7 @@ export async function createSale(data: SaleData) {
       }
     }
 
-    return { saleId: saleRef.id, invoiceNo };
+    return { saleId: saleRef.id, invoiceNo, lowStockItems };
   });
 }
 
@@ -684,6 +715,7 @@ export async function cancelSale(saleId: string, cancelledBy: { uid: string; nam
     for (const item of items) {
       tx.update(doc(db, "products", item.productId), {
         totalStock: increment(item.qty),
+        lowStockAlerted: false,
       });
 
       const mvRef = doc(collection(db, "stock_movements"));
@@ -963,7 +995,7 @@ export async function getShopSettings() {
   return snap.exists() ? (snap.data() as ShopSettings) : null;
 }
 
-export async function updateShopSettings(data: ShopSettings) {
+export async function updateShopSettings(data: Partial<ShopSettings>) {
   return setDoc(doc(db, "shopSettings", "main"), { ...data, updatedAt: serverTimestamp() }, { merge: true });
 }
 

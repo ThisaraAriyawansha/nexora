@@ -200,6 +200,40 @@ export function billEmailTemplate(params: {
   );
 }
 
+export function lowStockAlertTemplate(params: {
+  items: { productName: string; sku: string; totalStock: number; lowStockAlert: number }[];
+  shop: { name: string; phone?: string; email?: string };
+}) {
+  const { items, shop } = params;
+  const year = new Date().getFullYear();
+  return shopEmailShell(
+    `
+      <h1 style="font-size:16px;margin:0 0 12px">Low stock alert</h1>
+      <p style="margin:0 0 16px;font-size:14px;line-height:1.5">
+        ${items.length === 1 ? "This item has" : `These ${items.length} items have`} dropped to or below its restock threshold at ${shop.name}.
+      </p>
+      <table style="width:100%;border-collapse:collapse;margin:0 0 4px">
+        <tr>
+          <td style="padding:6px 0;font-size:10.5px;text-transform:uppercase;letter-spacing:0.05em;color:#999;border-bottom:1px solid #eee">Product</td>
+          <td style="padding:6px 0;font-size:10.5px;text-transform:uppercase;letter-spacing:0.05em;color:#999;border-bottom:1px solid #eee;text-align:right">In Stock</td>
+          <td style="padding:6px 0;font-size:10.5px;text-transform:uppercase;letter-spacing:0.05em;color:#999;border-bottom:1px solid #eee;text-align:right">Threshold</td>
+        </tr>
+        ${items.map((i) => `
+        <tr>
+          <td style="padding:8px 0;font-size:13px;border-bottom:1px solid #f4f4f5">${i.productName}${i.sku ? ` <span style="color:#999;font-size:11px">(${i.sku})</span>` : ""}</td>
+          <td style="padding:8px 0;font-size:13px;text-align:right;border-bottom:1px solid #f4f4f5;font-weight:bold;color:${i.totalStock <= 0 ? "#dc2626" : "#111"}">${i.totalStock}</td>
+          <td style="padding:8px 0;font-size:13px;text-align:right;border-bottom:1px solid #f4f4f5;color:#999">${i.lowStockAlert}</td>
+        </tr>`).join("")}
+      </table>
+      <p style="color:#999;font-size:12px;margin:16px 0 0">
+        You'll get another alert for each item once it's restocked and dips low again.
+      </p>
+    `,
+    shop,
+    year
+  );
+}
+
 export function passwordResetOtpTemplate(otp: string) {
   const year = new Date().getFullYear();
   return emailShell(

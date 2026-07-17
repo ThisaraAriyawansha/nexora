@@ -6,7 +6,7 @@ import {
   createTeamUser, getTeamUsers, updateTeamUser, getUsageStats, CollectionStat, cleanCollection,
   getCollectionData,
 } from "@/lib/firestore";
-import { Plus, X, Store, Truck, Users, CheckCircle, AlertCircle, Pencil, ToggleLeft, ToggleRight, Database, HardDrive, BookOpen, PenLine, Trash2, AlertTriangle, Download, Loader2 } from "lucide-react";
+import { Plus, X, Store, Truck, Users, CheckCircle, AlertCircle, Pencil, ToggleLeft, ToggleRight, Database, HardDrive, BookOpen, PenLine, Trash2, AlertTriangle, Download, Loader2, BellRing } from "lucide-react";
 import { UserProfile } from "@/types";
 
 function formatBytes(bytes: number): string {
@@ -115,6 +115,12 @@ export default function SettingsPage() {
   const [savingShop, setSavingShop] = useState(false);
   const [shopSaved, setShopSaved] = useState(false);
 
+  const [notifyEmails, setNotifyEmails] = useState<string[]>([]);
+  const [notifyEmailInput, setNotifyEmailInput] = useState("");
+  const [notifyEmailError, setNotifyEmailError] = useState("");
+  const [savingNotifyEmails, setSavingNotifyEmails] = useState(false);
+  const [notifyEmailsSaved, setNotifyEmailsSaved] = useState(false);
+
   const [teamUsers, setTeamUsers] = useState<UserProfile[]>([]);
   const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [userForm, setUserForm] = useState({ displayName: "", email: "", password: "", confirmPassword: "", role: "Admin" });
@@ -154,7 +160,10 @@ export default function SettingsPage() {
   useEffect(() => {
     getSuppliers().then(setSuppliers);
     getShopSettings().then((s) => {
-      if (s) setShopForm({ name: s.name || "", phone: s.phone || "", email: s.email || "", address: s.address || "" });
+      if (s) {
+        setShopForm({ name: s.name || "", phone: s.phone || "", email: s.email || "", address: s.address || "" });
+        setNotifyEmails(s.notifyEmails || []);
+      }
     });
     // Listing every team account and counting the "users" collection require
     // Admin+ under Firestore rules — skip them entirely for Cashier/Manager
@@ -198,6 +207,38 @@ export default function SettingsPage() {
     setSavingShop(false);
     setShopSaved(true);
     setTimeout(() => setShopSaved(false), 2000);
+  };
+
+  const handleAddNotifyEmail = () => {
+    const email = notifyEmailInput.trim().toLowerCase();
+    setNotifyEmailError("");
+    if (!email) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setNotifyEmailError("Enter a valid email address.");
+      return;
+    }
+    if (notifyEmails.includes(email)) {
+      setNotifyEmailError("That email is already in the list.");
+      return;
+    }
+    setNotifyEmails((prev) => [...prev, email]);
+    setNotifyEmailInput("");
+  };
+
+  const handleRemoveNotifyEmail = (email: string) => {
+    setNotifyEmails((prev) => prev.filter((e) => e !== email));
+  };
+
+  const handleSaveNotifyEmails = async () => {
+    if (!canClean) return;
+    setSavingNotifyEmails(true);
+    try {
+      await updateShopSettings({ notifyEmails });
+      setNotifyEmailsSaved(true);
+      setTimeout(() => setNotifyEmailsSaved(false), 2000);
+    } finally {
+      setSavingNotifyEmails(false);
+    }
   };
 
   const handleAddUser = async (e: React.FormEvent) => {
@@ -353,6 +394,51 @@ export default function SettingsPage() {
               )}
             </div>
           </div>
+
+          {/* Low Stock Alerts — Admin+ only, mirrors Shop Info's edit gating */}
+          {canClean && (
+            <div className="nexora-card p-4 sm:p-6 mt-6">
+              <div className="flex items-center gap-3 mb-4">
+                <BellRing size={16} className="text-zinc-400" />
+                <h2 className="font-prata text-base text-black">Low Stock Alerts</h2>
+              </div>
+              <p className="text-xs text-zinc-400 mb-4">
+                When a sale takes a product to or below its restock threshold, an email is sent to everyone listed here.
+              </p>
+              <div className="flex gap-2 mb-2">
+                <input
+                  type="email"
+                  className="nexora-input"
+                  placeholder="name@example.com"
+                  value={notifyEmailInput}
+                  onChange={(e) => { setNotifyEmailInput(e.target.value); setNotifyEmailError(""); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddNotifyEmail(); } }}
+                />
+                <button type="button" onClick={handleAddNotifyEmail} className="nexora-btn nexora-btn-outline text-xs px-3 shrink-0">
+                  <Plus size={12} /> Add
+                </button>
+              </div>
+              {notifyEmailError && <p className="text-xs text-red-600 mb-2">{notifyEmailError}</p>}
+              {notifyEmails.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {notifyEmails.map((email) => (
+                    <span key={email} className="inline-flex items-center gap-1.5 bg-zinc-100 text-zinc-700 text-xs rounded-full pl-3 pr-2 py-1">
+                      {email}
+                      <button type="button" onClick={() => handleRemoveNotifyEmail(email)} className="text-zinc-400 hover:text-red-600">
+                        <X size={12} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="flex items-center gap-3">
+                <button onClick={handleSaveNotifyEmails} disabled={savingNotifyEmails} className="nexora-btn nexora-btn-primary text-xs py-1.5 px-3">
+                  {savingNotifyEmails ? "Saving..." : "Save Alert Emails"}
+                </button>
+                {notifyEmailsSaved && <span className="text-xs text-green-600">Saved</span>}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

@@ -277,6 +277,17 @@ export default function SalesPage() {
       // createSale's own transaction, so they can't drift from the sale itself.
       setCompletedSale({ ...result, items: cart, subtotal, discountAmount: discount, pointsRedeemed: pointsToRedeem, totalAmount, customerName: selectedCustomer?.name || "Walk-in Customer", customerPhone: selectedCustomer?.phone, customerEmail: selectedCustomer?.email, cashierName: userDisplayName || "Cashier", paymentMethod, amountTendered: Number(amountTendered), changeAmount: Math.max(0, change) });
       setBillEmailNotice("");
+
+      // Fire-and-forget: don't hold up the checkout flow on the alert email.
+      if (result.lowStockItems && result.lowStockItems.length > 0) {
+        user!.getIdToken()
+          .then((idToken) => fetch("/api/products/low-stock-alert", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ idToken, items: result.lowStockItems }),
+          }))
+          .catch((err) => console.error("Low stock alert failed:", err));
+      }
       const soldQtyByProduct = new Map<string, number>();
       for (const item of cart) {
         soldQtyByProduct.set(item.productId, (soldQtyByProduct.get(item.productId) || 0) + item.qty);

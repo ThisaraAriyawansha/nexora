@@ -49,6 +49,7 @@ export interface Product {
   warrantyMonths?: number;
   trackSerial?: boolean;
   active: boolean;
+  lowStockAlerted?: boolean;
   createdAt?: any;
 }
 
@@ -78,6 +79,7 @@ export interface ShopSettings {
   phone: string;
   email?: string;
   address?: string;
+  notifyEmails?: string[];
   updatedAt?: any;
 }
 
