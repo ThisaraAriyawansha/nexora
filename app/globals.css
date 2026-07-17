@@ -113,6 +113,20 @@ body {
     color: #000;
     background: #fff;
   }
+
+  #job-print, #job-print * { visibility: visible; }
+  #job-print {
+    position: absolute;
+    inset: 0;
+    width: 180mm !important;
+    min-height: 267mm !important;
+    padding: 0 !important;
+    font-family: var(--font-poppins);
+    font-size: 11pt;
+    color: #000;
+    background: #fff;
+  }
+  .job-signature-block { margin-top: 6mm !important; }
 }
 
 /* Hide native number spinner arrows so they never overlap labels/icons placed inside inputs */

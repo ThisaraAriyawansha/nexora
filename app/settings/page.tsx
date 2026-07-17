@@ -670,6 +670,7 @@ export default function SettingsPage() {
                   <option value="Admin">Admin</option>
                   <option value="Manager">Manager</option>
                   <option value="Cashier">Cashier</option>
+                  <option value="Technician">Technician</option>
                 </select>
               </div>
               {editMsg && (
@@ -731,6 +732,7 @@ export default function SettingsPage() {
                   <option value="Admin">Admin</option>
                   <option value="Manager">Manager</option>
                   <option value="Cashier">Cashier</option>
+                  <option value="Technician">Technician</option>
                 </select>
               </div>
               <div>

@@ -8,7 +8,7 @@ import { initializeApp, deleteApp } from "firebase/app";
 import { getAuth, createUserWithEmailAndPassword, signOut } from "firebase/auth";
 import { db } from "./firebase";
 import { firebaseConfig } from "./firebase";
-import type { ShopSettings, UserProfile } from "@/types";
+import type { ShopSettings, UserProfile, JobStatus } from "@/types";
 
 // ─── BRANDS ───────────────────────────────────────────────────────────────────
 
@@ -803,6 +803,134 @@ export async function deleteQuotation(id: string) {
   return deleteDoc(doc(db, "quotations", id));
 }
 
+// ─── JOBS (service job notes) ─────────────────────────────────────────────────
+// Job intake is informational only — like quotations it never touches stock,
+// so creation is a plain document write plus a counter transaction for the
+// job number. Every status change (Pending/Ongoing/Done/Can't Repair) is
+// recorded as an entry in the jobs/{id}/statusHistory subcollection instead
+// of just overwriting the job doc, so the full "who changed what, and when"
+// audit trail required for job reporting is preserved.
+
+export interface JobData {
+  customerId?: string | null;
+  customerName: string;
+  customerCompany?: string;
+  customerAddress?: string;
+  customerCity?: string;
+  customerPhone: string;
+  customerEmail?: string;
+  deviceType: string;
+  deviceTypeOther?: string;
+  brand?: string;
+  model?: string;
+  serialNo?: string;
+  color?: string;
+  faultDescription: string;
+  accessories: string[];
+  accessoriesOther?: string;
+  physicalCondition: string[];
+  specialNotes?: string;
+  receivedById: string;
+  receivedByName: string;
+  assignedTechnicianId?: string | null;
+  assignedTechnicianName?: string;
+  estimatedCost: number;
+  advancePaid: number;
+  expectedDeliveryDate?: Date | null;
+}
+
+export async function createJob(data: JobData) {
+  return runTransaction(db, async (tx) => {
+    const counterRef = doc(db, "counters", "job");
+    const counterDoc = await tx.get(counterRef);
+    const current = counterDoc.exists() ? (counterDoc.data().value as number) : 0;
+    const next = current + 1;
+    tx.set(counterRef, { value: next });
+    const jobNo = `JOB-${String(next).padStart(5, "0")}`;
+
+    const jobRef = doc(collection(db, "jobs"));
+    const jobData = Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined));
+    tx.set(jobRef, {
+      ...jobData,
+      jobNo,
+      status: "pending",
+      repairCost: null,
+      createdAt: serverTimestamp(),
+    });
+
+    const historyRef = doc(collection(db, "jobs", jobRef.id, "statusHistory"));
+    tx.set(historyRef, {
+      status: "pending",
+      note: "Job received",
+      repairCost: null,
+      updatedById: data.receivedById,
+      updatedByName: data.receivedByName,
+      createdAt: serverTimestamp(),
+    });
+
+    return { jobId: jobRef.id, jobNo };
+  });
+}
+
+export async function getJobs() {
+  const snap = await getDocs(query(collection(db, "jobs"), orderBy("createdAt", "desc")));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+export async function getJob(id: string) {
+  const jobDoc = await getDoc(doc(db, "jobs", id));
+  if (!jobDoc.exists()) return null;
+  const history = await getDocs(
+    query(collection(db, "jobs", id, "statusHistory"), orderBy("createdAt", "desc"))
+  );
+  return {
+    id: jobDoc.id,
+    ...jobDoc.data(),
+    statusHistory: history.docs.map((d) => ({ id: d.id, ...d.data() })),
+  };
+}
+
+// Every job in the system, each carrying its full statusHistory — powers the
+// date-range job report (all jobs + every processing activity in one shot).
+export async function getAllJobsWithHistory() {
+  const jobs = await getJobs();
+  return Promise.all(
+    jobs.map(async (job: any) => {
+      const history = await getDocs(
+        query(collection(db, "jobs", job.id, "statusHistory"), orderBy("createdAt", "asc"))
+      );
+      return { ...job, statusHistory: history.docs.map((d) => ({ id: d.id, ...d.data() })) };
+    })
+  );
+}
+
+export async function updateJobStatus(
+  jobId: string,
+  change: { status: JobStatus; note?: string; repairCost?: number | null },
+  updatedBy: { uid: string; name: string }
+) {
+  return runTransaction(db, async (tx) => {
+    const jobRef = doc(db, "jobs", jobId);
+    const jobSnap = await tx.get(jobRef);
+    if (!jobSnap.exists()) throw new Error("Job not found");
+
+    const patch: Record<string, any> = { status: change.status, updatedAt: serverTimestamp() };
+    if (change.repairCost !== undefined) patch.repairCost = change.repairCost;
+    if (change.status === "done") patch.dateReturned = serverTimestamp();
+    tx.update(jobRef, patch);
+
+    const historyRef = doc(collection(db, "jobs", jobId, "statusHistory"));
+    tx.set(historyRef, {
+      status: change.status,
+      note: change.note || "",
+      repairCost: change.repairCost ?? null,
+      updatedById: updatedBy.uid,
+      updatedByName: updatedBy.name,
+      createdAt: serverTimestamp(),
+    });
+  });
+}
+
 // ─── STOCK MOVEMENTS ──────────────────────────────────────────────────────────
 
 export async function getStockMovements(productId?: string) {
@@ -871,6 +999,18 @@ export async function getTeamUsers(): Promise<UserProfile[]> {
   return snap.docs.map((d) => ({ uid: d.id, ...d.data() } as UserProfile));
 }
 
+// Equality-only (no orderBy) so it doesn't need a composite index, and so the
+// firestore.rules `resource.data.role == 'Technician'` read rule can hold for
+// every doc the query returns — letting any staff member (not just Admin+)
+// list technicians to assign a job to.
+export async function getTechnicians(): Promise<UserProfile[]> {
+  const snap = await getDocs(query(collection(db, "users"), where("role", "==", "Technician")));
+  return snap.docs
+    .map((d) => ({ uid: d.id, ...d.data() } as UserProfile))
+    .filter((u) => u.status !== "inactive")
+    .sort((a, b) => a.displayName.localeCompare(b.displayName));
+}
+
 export async function createTeamUser(
   email: string,
   password: string,
@@ -910,6 +1050,7 @@ export async function getUsageStats(): Promise<CollectionStat[]> {
   const targets = [
     { key: "sales",           label: "Sales",            avgBytes: 1000 },
     { key: "quotations",      label: "Quotations",       avgBytes: 900  },
+    { key: "jobs",            label: "Jobs",             avgBytes: 900  },
     { key: "stock_movements", label: "Stock Movements",  avgBytes: 350  },
     { key: "products",        label: "Products",         avgBytes: 700  },
     { key: "customers",       label: "Customers",        avgBytes: 400  },
@@ -941,6 +1082,7 @@ export async function getCollectionData(collectionName: string): Promise<Record<
 const SUBCOLLECTIONS: Record<string, string[]> = {
   products: ["batches"],
   sales: ["saleItems"],
+  jobs: ["statusHistory"],
 };
 
 export async function cleanCollection(collectionName: string): Promise<number> {

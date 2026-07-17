@@ -195,6 +195,52 @@ export interface CartItem extends SaleItem {
   tempId: string;
 }
 
+export type JobStatus = "pending" | "ongoing" | "done" | "unrepairable";
+
+export interface JobStatusEntry {
+  id: string;
+  status: JobStatus;
+  note?: string;
+  repairCost?: number | null;
+  updatedById: string;
+  updatedByName: string;
+  createdAt?: any;
+}
+
+export interface Job {
+  id: string;
+  jobNo: string;
+  customerId?: string | null;
+  customerName: string;
+  customerCompany?: string;
+  customerAddress?: string;
+  customerCity?: string;
+  customerPhone: string;
+  customerEmail?: string;
+  deviceType: string;
+  deviceTypeOther?: string;
+  brand?: string;
+  model?: string;
+  serialNo?: string;
+  color?: string;
+  faultDescription: string;
+  accessories: string[];
+  accessoriesOther?: string;
+  physicalCondition: string[];
+  specialNotes?: string;
+  receivedById: string;
+  receivedByName: string;
+  assignedTechnicianId?: string | null;
+  assignedTechnicianName?: string;
+  estimatedCost: number;
+  advancePaid: number;
+  expectedDeliveryDate?: any;
+  status: JobStatus;
+  repairCost?: number | null;
+  dateReturned?: any;
+  createdAt?: any;
+}
+
 export interface UserProfile {
   uid: string;
   email?: string;

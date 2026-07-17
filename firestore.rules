@@ -21,7 +21,11 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow read: if isAuth() && (request.auth.uid == userId || isAdminOrAbove());
+      // Job intake needs to list technicians to assign a job to, so any staff
+      // member (not just Admin+) can read profiles with role == 'Technician' —
+      // the rule only holds documents-that-are-technicians open, not the
+      // full team roster.
+      allow read: if isAuth() && (request.auth.uid == userId || isAdminOrAbove() || resource.data.role == 'Technician');
 
       // Team members are provisioned by Admin+ (see createTeamUser in lib/firestore.ts).
       // Admin can create Admin/Manager/Cashier accounts, but only a Super Admin
@@ -90,6 +94,20 @@ service cloud.firestore {
     }
 
     match /quotations/{id} { allow read, create, update: if isAuth(); allow delete: if isAdminOrAbove(); }
+
+    match /jobs/{id} {
+      allow read, create, update: if isAuth();
+      allow delete: if isAdminOrAbove();
+
+      // Every job status change is logged here — an audit trail, so entries
+      // are append-only for regular staff (no update/delete). Admin+ can
+      // still delete them, same as saleItems, so the Settings "Clean
+      // Collection" tool can purge a job's history along with the job itself.
+      match /statusHistory/{entryId} {
+        allow read, create: if isAuth();
+        allow update, delete: if isAdminOrAbove();
+      }
+    }
     match /warranties/{id} { allow read, create, update: if isAuth(); allow delete: if isAdminOrAbove(); }
 
     match /stock_movements/{id} {
