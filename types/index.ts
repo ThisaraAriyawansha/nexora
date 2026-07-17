@@ -116,6 +116,8 @@ export interface Sale {
   invoiceNo: string;
   customerId?: string | null;
   customerName?: string;
+  customerPhone?: string;
+  customerEmail?: string;
   cashierId: string;
   cashierName: string;
   items: SaleItem[];

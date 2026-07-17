@@ -347,6 +347,8 @@ export interface SaleItem {
 export interface SaleData {
   customerId?: string | null;
   customerName?: string;
+  customerPhone?: string;
+  customerEmail?: string;
   cashierId: string;
   cashierName: string;
   items: SaleItem[];
@@ -486,8 +488,9 @@ export async function createSale(data: SaleData) {
     const invoiceNo = `INV-${String(next).padStart(5, "0")}`;
 
     const saleRef = doc(collection(db, "sales"));
+    const saleData = Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined));
     tx.set(saleRef, {
-      ...data,
+      ...saleData,
       invoiceNo,
       createdAt: serverTimestamp(),
     });

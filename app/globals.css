@@ -89,6 +89,18 @@ body {
   .bill-divider { border: none; border-top: 1.5pt solid #000; margin: 4mm 0; }
   .no-print { display: none !important; }
 
+  /* Chrome's print/save-to-PDF engine does not actually repeat position:fixed
+     content per physical page despite the spec allowing it — it renders a
+     single instance at one vertical offset, which gets sliced wherever the
+     page boundary happens to land on a multi-page document. So for native
+     print, this block just flows normally instead (safe, never split/duplicated).
+     Only the html2canvas-based "Download" PDF (a single flat capture, not
+     real print pagination) can safely pin it to the page bottom — see the
+     marginTop:auto inline style in BillPrint.tsx. */
+  .bill-signature-block {
+    margin-top: 6mm !important;
+  }
+
   #quotation-print, #quotation-print * { visibility: visible; }
   #quotation-print {
     position: absolute;

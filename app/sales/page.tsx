@@ -216,6 +216,8 @@ export default function SalesPage() {
       const result = await createSale({
         customerId: selectedCustomer?.id || null,
         customerName: selectedCustomer?.name || "Walk-in Customer",
+        customerPhone: selectedCustomer?.phone || undefined,
+        customerEmail: selectedCustomer?.email || undefined,
         cashierId: user!.uid,
         cashierName: userDisplayName || "Cashier",
         items: cart,
@@ -232,7 +234,7 @@ export default function SalesPage() {
       });
       // Warranties and loyalty-point adjustments are written server-side inside
       // createSale's own transaction, so they can't drift from the sale itself.
-      setCompletedSale({ ...result, items: cart, subtotal, discountAmount: discount, pointsRedeemed: pointsToRedeem, totalAmount, customerName: selectedCustomer?.name || "Walk-in Customer", cashierName: userDisplayName || "Cashier", paymentMethod, amountTendered: Number(amountTendered), changeAmount: Math.max(0, change) });
+      setCompletedSale({ ...result, items: cart, subtotal, discountAmount: discount, pointsRedeemed: pointsToRedeem, totalAmount, customerName: selectedCustomer?.name || "Walk-in Customer", customerPhone: selectedCustomer?.phone, customerEmail: selectedCustomer?.email, cashierName: userDisplayName || "Cashier", paymentMethod, amountTendered: Number(amountTendered), changeAmount: Math.max(0, change) });
       const soldQtyByProduct = new Map<string, number>();
       for (const item of cart) {
         soldQtyByProduct.set(item.productId, (soldQtyByProduct.get(item.productId) || 0) + item.qty);
