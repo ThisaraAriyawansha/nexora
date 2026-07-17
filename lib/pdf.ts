@@ -23,7 +23,10 @@ function findSafeBreakRow(
   return null;
 }
 
-export async function downloadElementAsPdf(element: HTMLElement, fileName: string) {
+// Shared by downloadElementAsPdf (saves to disk) and getElementPdfBase64
+// (attaches to an email) so the two paths can never drift in how they
+// paginate/render the element.
+async function renderElementToPdf(element: HTMLElement) {
   const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
     import("html2canvas"),
     import("jspdf"),
@@ -82,5 +85,18 @@ export async function downloadElementAsPdf(element: HTMLElement, fileName: strin
     firstPage = false;
   }
 
+  return pdf;
+}
+
+export async function downloadElementAsPdf(element: HTMLElement, fileName: string) {
+  const pdf = await renderElementToPdf(element);
   pdf.save(fileName);
+}
+
+// Raw base64 (no "data:application/pdf;base64," prefix) — ready to hand
+// straight to nodemailer's attachment `content` field.
+export async function getElementPdfBase64(element: HTMLElement): Promise<string> {
+  const pdf = await renderElementToPdf(element);
+  const dataUri = pdf.output("datauristring") as string;
+  return dataUri.slice(dataUri.indexOf(",") + 1);
 }

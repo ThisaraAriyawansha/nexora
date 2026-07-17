@@ -1,12 +1,13 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
 import { getSale, getSales, cancelSale } from "@/lib/firestore";
-import { Search, Printer, Eye, X, Ban, Download } from "lucide-react";
+import { Search, Printer, Eye, X, Ban, Download, Mail } from "lucide-react";
 import BillPrint from "@/components/pos/BillPrint";
 import { useReactToPrint } from "react-to-print";
 import Pagination from "@/components/ui/Pagination";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { useAuth } from "@/hooks/useAuth";
-import { downloadElementAsPdf } from "@/lib/pdf";
+import { downloadElementAsPdf, getElementPdfBase64 } from "@/lib/pdf";
 
 const PAGE_SIZE = 10;
 
@@ -27,6 +28,10 @@ export default function BillsPage() {
   const handlePrint = useReactToPrint({ content: () => printRef.current });
   const [downloadingBill, setDownloadingBill] = useState(false);
 
+  const [confirmingEmailBill, setConfirmingEmailBill] = useState(false);
+  const [sendingBillEmail, setSendingBillEmail] = useState(false);
+  const [billEmailNotice, setBillEmailNotice] = useState("");
+
   const handleDownloadBill = async () => {
     if (!printRef.current || downloadingBill) return;
     setDownloadingBill(true);
@@ -34,6 +39,42 @@ export default function BillsPage() {
       await downloadElementAsPdf(printRef.current, `${viewSale?.invoiceNo || "invoice"}.pdf`);
     } finally {
       setDownloadingBill(false);
+    }
+  };
+
+  const handleSendBillEmail = async () => {
+    if (!printRef.current || !viewSale?.customerEmail || sendingBillEmail) return;
+    setSendingBillEmail(true);
+    setBillEmailNotice("");
+    try {
+      const [pdfBase64, idToken] = await Promise.all([
+        getElementPdfBase64(printRef.current),
+        user!.getIdToken(),
+      ]);
+      const res = await fetch("/api/bills/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          idToken,
+          customerEmail: viewSale.customerEmail,
+          customerName: viewSale.customerName,
+          invoiceNo: viewSale.invoiceNo,
+          items: viewSale.items?.map((i: any) => ({ productName: i.productName, qty: i.qty, unitPrice: i.unitPrice, lineTotal: i.lineTotal })),
+          subtotal: viewSale.subtotal,
+          discountAmount: viewSale.discountAmount,
+          totalAmount: viewSale.totalAmount,
+          paymentMethod: viewSale.paymentMethod,
+          pdfBase64,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to send email");
+      setBillEmailNotice(`Emailed ${viewSale.customerEmail}.`);
+    } catch (err: any) {
+      setBillEmailNotice(err?.message || "Failed to send email.");
+    } finally {
+      setSendingBillEmail(false);
+      setConfirmingEmailBill(false);
     }
   };
 
@@ -55,6 +96,7 @@ export default function BillsPage() {
     setConfirmingCancel(false);
     setCancelReason("");
     setCancelError("");
+    setBillEmailNotice("");
   };
 
   const closeSale = () => {
@@ -231,6 +273,11 @@ export default function BillsPage() {
                 <button onClick={handleDownloadBill} disabled={downloadingBill} className="nexora-btn nexora-btn-outline text-sm">
                   <Download size={14} /> {downloadingBill ? "Downloading…" : "Download"}
                 </button>
+                {viewSale.customerEmail && (
+                  <button onClick={() => { setBillEmailNotice(""); setConfirmingEmailBill(true); }} className="nexora-btn nexora-btn-outline text-sm">
+                    <Mail size={14} /> Send Mail
+                  </button>
+                )}
                 {canCancelBills && viewSale.status !== "cancelled" && (
                   <button
                     onClick={() => setConfirmingCancel(true)}
@@ -241,6 +288,13 @@ export default function BillsPage() {
                 )}
               </div>
             </div>
+
+            {billEmailNotice && (
+              <div className="mx-6 mt-4 px-4 py-2.5 rounded-lg bg-zinc-50 border border-zinc-200 text-sm text-zinc-600 flex items-center justify-between">
+                <span>{billEmailNotice}</span>
+                <button onClick={() => setBillEmailNotice("")} className="text-zinc-400 hover:text-black"><X size={14} /></button>
+              </div>
+            )}
 
             {viewSale.status === "cancelled" && (
               <div className="mx-6 mt-4 px-4 py-3 rounded-lg bg-red-50 border border-red-100 text-sm text-red-700">
@@ -359,6 +413,19 @@ export default function BillsPage() {
           {viewSale && <BillPrint sale={viewSale} />}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmingEmailBill}
+        title="Email the receipt?"
+        message={`Send this bill by email to ${viewSale?.customerEmail} with the PDF invoice attached?`}
+        confirmText="Send Email"
+        loadingText="Sending…"
+        cancelText="Cancel"
+        danger={false}
+        loading={sendingBillEmail}
+        onConfirm={handleSendBillEmail}
+        onCancel={() => setConfirmingEmailBill(false)}
+      />
     </div>
   );
 }

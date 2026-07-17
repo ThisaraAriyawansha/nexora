@@ -23,7 +23,12 @@ function getTransporter() {
   return transporter;
 }
 
-export async function sendMail(to: string, subject: string, html: string) {
+export async function sendMail(
+  to: string,
+  subject: string,
+  html: string,
+  attachments?: { filename: string; content: string; encoding?: string }[]
+) {
   const fromName = process.env.MAIL_FROM_NAME || "Nexora POS";
   const fromAddress = process.env.MAIL_FROM_ADDRESS || process.env.MAIL_USERNAME;
   await getTransporter().sendMail({
@@ -31,5 +36,6 @@ export async function sendMail(to: string, subject: string, html: string) {
     to,
     subject,
     html,
+    attachments,
   });
 }

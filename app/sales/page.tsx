@@ -2,11 +2,12 @@
 import { useEffect, useState, useRef } from "react";
 import { getProducts, getCustomers, addCustomer, createSale, getBatches, getAvailableUnits, getMainCategories, getSubCategories } from "@/lib/firestore";
 import { Product, Customer, CartItem, MainCategory, SubCategory } from "@/types";
-import { Search, Plus, Minus, Trash2, Printer, User, X, Check, Download } from "lucide-react";
+import { Search, Plus, Minus, Trash2, Printer, User, X, Check, Download, Mail } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import BillPrint from "@/components/pos/BillPrint";
 import { useReactToPrint } from "react-to-print";
-import { downloadElementAsPdf } from "@/lib/pdf";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { downloadElementAsPdf, getElementPdfBase64 } from "@/lib/pdf";
 
 export default function SalesPage() {
   const { user, userDisplayName } = useAuth();
@@ -42,6 +43,10 @@ export default function SalesPage() {
   const printRef = useRef<HTMLDivElement>(null);
   const handlePrint = useReactToPrint({ content: () => printRef.current });
 
+  const [confirmingEmailBill, setConfirmingEmailBill] = useState(false);
+  const [sendingBillEmail, setSendingBillEmail] = useState(false);
+  const [billEmailNotice, setBillEmailNotice] = useState("");
+
   async function handleDownloadBill() {
     if (!printRef.current || downloadingBill) return;
     setDownloadingBill(true);
@@ -49,6 +54,42 @@ export default function SalesPage() {
       await downloadElementAsPdf(printRef.current, `${completedSale?.invoiceNo || "invoice"}.pdf`);
     } finally {
       setDownloadingBill(false);
+    }
+  }
+
+  async function handleSendBillEmail() {
+    if (!printRef.current || !completedSale?.customerEmail || sendingBillEmail) return;
+    setSendingBillEmail(true);
+    setBillEmailNotice("");
+    try {
+      const [pdfBase64, idToken] = await Promise.all([
+        getElementPdfBase64(printRef.current),
+        user!.getIdToken(),
+      ]);
+      const res = await fetch("/api/bills/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          idToken,
+          customerEmail: completedSale.customerEmail,
+          customerName: completedSale.customerName,
+          invoiceNo: completedSale.invoiceNo,
+          items: completedSale.items?.map((i: any) => ({ productName: i.productName, qty: i.qty, unitPrice: i.unitPrice, lineTotal: i.lineTotal })),
+          subtotal: completedSale.subtotal,
+          discountAmount: completedSale.discountAmount,
+          totalAmount: completedSale.totalAmount,
+          paymentMethod: completedSale.paymentMethod,
+          pdfBase64,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to send email");
+      setBillEmailNotice(`Emailed ${completedSale.customerEmail}.`);
+    } catch (err: any) {
+      setBillEmailNotice(err?.message || "Failed to send email.");
+    } finally {
+      setSendingBillEmail(false);
+      setConfirmingEmailBill(false);
     }
   }
 
@@ -235,6 +276,7 @@ export default function SalesPage() {
       // Warranties and loyalty-point adjustments are written server-side inside
       // createSale's own transaction, so they can't drift from the sale itself.
       setCompletedSale({ ...result, items: cart, subtotal, discountAmount: discount, pointsRedeemed: pointsToRedeem, totalAmount, customerName: selectedCustomer?.name || "Walk-in Customer", customerPhone: selectedCustomer?.phone, customerEmail: selectedCustomer?.email, cashierName: userDisplayName || "Cashier", paymentMethod, amountTendered: Number(amountTendered), changeAmount: Math.max(0, change) });
+      setBillEmailNotice("");
       const soldQtyByProduct = new Map<string, number>();
       for (const item of cart) {
         soldQtyByProduct.set(item.productId, (soldQtyByProduct.get(item.productId) || 0) + item.qty);
@@ -677,14 +719,22 @@ export default function SalesPage() {
               {completedSale.change > 0 && (
                 <p className="text-green-600 text-sm mt-1">Change: Rs. {completedSale.change.toLocaleString()}</p>
               )}
-              <div className="flex gap-3 mt-6">
-                <button onClick={() => { handlePrint(); }} className="nexora-btn nexora-btn-outline flex-1 justify-center">
+              {billEmailNotice && (
+                <p className="text-xs text-zinc-500 mt-3 bg-zinc-50 border border-zinc-200 rounded px-3 py-2">{billEmailNotice}</p>
+              )}
+              <div className="grid grid-cols-2 gap-3 mt-6">
+                <button onClick={() => { handlePrint(); }} className="nexora-btn nexora-btn-outline justify-center">
                   <Printer size={14} /> Print Bill
                 </button>
-                <button onClick={handleDownloadBill} disabled={downloadingBill} className="nexora-btn nexora-btn-outline flex-1 justify-center">
+                <button onClick={handleDownloadBill} disabled={downloadingBill} className="nexora-btn nexora-btn-outline justify-center">
                   <Download size={14} /> {downloadingBill ? "Downloading..." : "Download"}
                 </button>
               </div>
+              {completedSale.customerEmail && (
+                <button onClick={() => { setBillEmailNotice(""); setConfirmingEmailBill(true); }} className="nexora-btn nexora-btn-outline w-full justify-center mt-3">
+                  <Mail size={14} /> Send Mail
+                </button>
+              )}
               <button onClick={() => setCompletedSale(null)} className="nexora-btn nexora-btn-primary w-full justify-center mt-3">
                 New Sale
               </button>
@@ -692,6 +742,19 @@ export default function SalesPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmingEmailBill}
+        title="Email the receipt?"
+        message={`Send this bill by email to ${completedSale?.customerEmail} with the PDF invoice attached?`}
+        confirmText="Send Email"
+        loadingText="Sending…"
+        cancelText="Cancel"
+        danger={false}
+        loading={sendingBillEmail}
+        onConfirm={handleSendBillEmail}
+        onCancel={() => setConfirmingEmailBill(false)}
+      />
 
       {/* Off-screen print/PDF area (kept out of view but still rendered so html2canvas can capture it) */}
       <div style={{ position: "fixed", top: 0, left: "-10000px", zIndex: -1 }}>

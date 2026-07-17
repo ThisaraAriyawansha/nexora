@@ -51,11 +51,21 @@ export function changeEmailTemplate(newEmail: string, link: string, currentEmail
 // Nexora product itself, so they get their own shell branded with the
 // shop's own name/contact details (from ShopSettings) instead of "Nexora".
 function shopEmailFooter(shop: { name: string; phone?: string; email?: string }, year: number) {
-  const contact = [shop.phone, shop.email].filter(Boolean).join(" · ");
+  // Explicit tel:/mailto: links styled to match the surrounding text — plain
+  // text phone numbers/emails get auto-linked by Gmail et al. into their own
+  // blue, underlined style that ignores the muted look the rest of the
+  // footer uses, which is what made this look inconsistent before.
+  const linkStyle = "color:#999;text-decoration:none";
+  const parts = [
+    shop.phone ? `<a href="tel:${shop.phone}" style="${linkStyle}">${shop.phone}</a>` : "",
+    shop.email ? `<a href="mailto:${shop.email}" style="${linkStyle}">${shop.email}</a>` : "",
+  ].filter(Boolean);
+  const contact = parts.join('<span style="color:#ddd;padding:0 6px">&middot;</span>');
+
   return `
-    <div style="padding:16px 24px;border-top:1px solid #eee;font-family:Arial,Helvetica,sans-serif">
-      ${contact ? `<p style="color:#999;font-size:12px;margin:0 0 4px">${contact}</p>` : ""}
-      <p style="color:#ccc;font-size:11px;margin:0">© ${year} ${shop.name}. All Rights Reserved.</p>
+    <div style="padding:18px 24px;border-top:1px solid #f0f0f0;font-family:Arial,Helvetica,sans-serif;text-align:center">
+      ${contact ? `<p style="font-size:11.5px;margin:0 0 6px">${contact}</p>` : ""}
+      <p style="color:#ccc;font-size:10.5px;margin:0">© ${year} ${shop.name}</p>
     </div>
   `;
 }
@@ -121,6 +131,69 @@ export function jobUpdateTemplate(params: {
       <p style="color:#999;font-size:12px;margin:16px 0 0">
         Please bring this job number when collecting your device. Contact us if you have any questions.
       </p>
+    `,
+    shop,
+    year
+  );
+}
+
+const WARRANTY_TERMS_TEXT =
+  "Warranty replacement period: 14 days, warranty covers manufacturing defects only, no warranty for physical, liquid, electrical, or accidental damage, no warranty for software issues, OS installation, formatting, virus removal, or service/labor charges, warranty is void if the warranty sticker or serial number is removed, damaged, altered, or unreadable, all warranty claims are subject to inspection by our technicians.";
+
+export function billEmailTemplate(params: {
+  customerName: string;
+  invoiceNo: string;
+  items: { productName: string; qty: number; unitPrice: number; lineTotal: number }[];
+  subtotal: number;
+  discountAmount: number;
+  totalAmount: number;
+  paymentMethod: string;
+  shop: { name: string; phone?: string; email?: string };
+}) {
+  const { customerName, invoiceNo, items, subtotal, discountAmount, totalAmount, paymentMethod, shop } = params;
+  const year = new Date().getFullYear();
+  return shopEmailShell(
+    `
+      <h1 style="font-size:16px;margin:0 0 12px">Thank you for your purchase!</h1>
+      <p style="margin:0 0 16px;font-size:14px;line-height:1.5">
+        Hi ${customerName}, here's your receipt from ${shop.name}. The full invoice is also attached as a PDF.
+      </p>
+      <table style="width:100%;border-collapse:collapse;margin:0 0 12px">
+        <tr>
+          <td style="padding:6px 0;color:#999;font-size:12px;width:110px">Invoice No.</td>
+          <td style="padding:6px 0;font-size:13px;font-weight:bold">${invoiceNo}</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 0;color:#999;font-size:12px">Payment</td>
+          <td style="padding:6px 0;font-size:13px;text-transform:capitalize">${paymentMethod}</td>
+        </tr>
+      </table>
+      <table style="width:100%;border-collapse:collapse;margin:0 0 12px;border-top:1px solid #eee">
+        ${items.map((i) => `
+        <tr>
+          <td style="padding:6px 0;font-size:12px;border-bottom:1px solid #f4f4f5">${i.productName} <span style="color:#999">x${i.qty}</span></td>
+          <td style="padding:6px 0;font-size:12px;text-align:right;border-bottom:1px solid #f4f4f5;white-space:nowrap">Rs. ${i.lineTotal.toLocaleString()}</td>
+        </tr>`).join("")}
+      </table>
+      <table style="width:100%;border-collapse:collapse;margin:0 0 16px">
+        <tr>
+          <td style="padding:3px 0;font-size:12px;color:#999">Subtotal</td>
+          <td style="padding:3px 0;font-size:12px;text-align:right">Rs. ${subtotal.toLocaleString()}</td>
+        </tr>
+        ${discountAmount > 0 ? `
+        <tr>
+          <td style="padding:3px 0;font-size:12px;color:#999">Discount</td>
+          <td style="padding:3px 0;font-size:12px;text-align:right;color:#dc2626">- Rs. ${discountAmount.toLocaleString()}</td>
+        </tr>` : ""}
+        <tr>
+          <td style="padding:6px 0;font-size:14px;font-weight:bold;border-top:1px solid #eee">Total</td>
+          <td style="padding:6px 0;font-size:14px;font-weight:bold;text-align:right;border-top:1px solid #eee">Rs. ${totalAmount.toLocaleString()}</td>
+        </tr>
+      </table>
+      <div style="background:#f9f9f9;border-radius:6px;padding:12px 14px;margin:0 0 4px">
+        <p style="font-size:10.5px;font-weight:bold;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 4px;color:#555">Warranty Terms &amp; Conditions</p>
+        <p style="font-size:10.5px;color:#888;line-height:1.5;margin:0">${WARRANTY_TERMS_TEXT}</p>
+      </div>
     `,
     shop,
     year
