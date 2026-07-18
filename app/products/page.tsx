@@ -14,7 +14,7 @@ import Pagination from "@/components/ui/Pagination";
 const PAGE_SIZE = 10;
 
 export default function ProductsPage() {
-  const { user } = useAuth();
+  const { user, userDisplayName } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [mainCats, setMainCats] = useState<MainCategory[]>([]);
@@ -196,7 +196,7 @@ export default function ProductsPage() {
       totalQty: Number(editBatchForm.totalQty),
       remainingQty: Number(editBatchForm.remainingQty),
       note: editBatchForm.note,
-    }, user?.uid);
+    }, user?.uid, userDisplayName);
     setEditingBatchId(null);
     const b = await getAllBatches(showBatchModal);
     setBatches(b);
@@ -413,6 +413,9 @@ export default function ProductsPage() {
                     <span className={`badge ${p.totalStock <= p.lowStockAlert ? "badge-danger" : "badge-success"}`}>
                       {p.totalStock} units
                     </span>
+                    <p className="text-xs text-zinc-400 mt-1">
+                      Stores: {p.storesStock ?? 0} · Showroom: {p.showroomStock ?? 0}
+                    </p>
                   </td>
                   <td className="px-4 py-3">
                     <button
@@ -618,7 +621,12 @@ export default function ProductsPage() {
                     ) : (
                       <div key={b.id} className="flex flex-wrap items-center justify-between gap-2 p-3 bg-zinc-50 rounded-lg">
                         <div>
-                          <p className="text-sm font-medium text-black">Batch {i + 1}</p>
+                          <p className="text-sm font-medium text-black flex items-center gap-1.5">
+                            Batch {i + 1}
+                            <span className={`badge text-[10px] ${(b.location ?? "stores") === "showroom" ? "badge-success" : "badge-default"}`}>
+                              {(b.location ?? "stores") === "showroom" ? "Showroom" : "Stores"}
+                            </span>
+                          </p>
                           <p className="text-xs text-zinc-400">
                             Cost: Rs. {b.costPrice?.toLocaleString()}
                             {b.sellingPrice != null && <> · Sells: Rs. {b.sellingPrice.toLocaleString()}</>}
@@ -643,7 +651,8 @@ export default function ProductsPage() {
 
               {/* Add new batch */}
               <div className="border-t border-zinc-100 pt-4">
-                <p className="text-xs text-zinc-500 uppercase tracking-wider mb-3">Add New Batch</p>
+                <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Add New Batch</p>
+                <p className="text-xs text-zinc-400 mb-3">Goes to Stores Stock — use Stock Transfer to move it to Showroom.</p>
                 <form onSubmit={handleAddBatch} className="space-y-3">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>

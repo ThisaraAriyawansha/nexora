@@ -16,6 +16,13 @@ service cloud.firestore {
       return isAuth() && myRole() in ['Super Admin', 'Admin'];
     }
 
+    // GRN/Transfer/Stock-Out creation is authorized for Manager as well as
+    // Admin+ — kept as its own helper so isAdminOrAbove() stays untouched for
+    // its existing Admin-only uses (sale cancellation, team management, etc).
+    function isManagerOrAbove() {
+      return isAuth() && myRole() in ['Super Admin', 'Admin', 'Manager'];
+    }
+
     function isSuperAdmin() {
       return isAuth() && myRole() == 'Super Admin';
     }
@@ -118,6 +125,49 @@ service cloud.firestore {
     match /counters/{id} {
       allow read, create, update: if isAuth();
       allow delete: if isAdminOrAbove();
+    }
+
+    match /grns/{id} {
+      allow read: if isAuth();
+      allow create: if isManagerOrAbove();
+      allow update, delete: if isAdminOrAbove();
+
+      match /grnItems/{itemId} {
+        allow read: if isAuth();
+        allow create: if isManagerOrAbove();
+        allow update, delete: if isAdminOrAbove();
+      }
+    }
+
+    match /stockTransfers/{id} {
+      allow read: if isAuth();
+      allow create: if isManagerOrAbove();
+      allow update, delete: if isAdminOrAbove();
+
+      match /transferItems/{itemId} {
+        allow read: if isAuth();
+        allow create: if isManagerOrAbove();
+        allow update, delete: if isAdminOrAbove();
+      }
+    }
+
+    match /stockOuts/{id} {
+      allow read: if isAuth();
+      allow create: if isManagerOrAbove();
+      allow update, delete: if isAdminOrAbove();
+
+      match /stockOutItems/{itemId} {
+        allow read: if isAuth();
+        allow create: if isManagerOrAbove();
+        allow update, delete: if isAdminOrAbove();
+      }
+    }
+
+    // One-time migration guard docs (e.g. migrations/stockLocation) — only a
+    // Super Admin can run/re-run a migration.
+    match /migrations/{id} {
+      allow read: if isAuth();
+      allow write: if isSuperAdmin();
     }
 
     // Shop info shown on printed bills/quotations — readable by all staff,

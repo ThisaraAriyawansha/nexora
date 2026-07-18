@@ -96,7 +96,9 @@ export default function SalesPage() {
   useEffect(() => {
     async function load() {
       const [p, c, mc, sc] = await Promise.all([getProducts(), getCustomers(), getMainCategories(), getSubCategories()]);
-      setProducts(p.filter((p: any) => p.active && p.totalStock > 0) as Product[]);
+      // POS only sells from Showroom Stock — items with stock only in Stores
+      // must be Transferred to Showroom first.
+      setProducts(p.filter((p: any) => p.active && p.showroomStock > 0) as Product[]);
       setCustomers(c as Customer[]);
       setMainCats(mc as MainCategory[]);
       setSubCats(sc as SubCategory[]);
@@ -125,7 +127,7 @@ export default function SalesPage() {
       return;
     }
     setLoadingBatches(true);
-    const b = await getBatches(product.id);
+    const b = await getBatches(product.id, "showroom");
     setLoadingBatches(false);
     if (b.length === 0) {
       // Nothing to pick between — add straight to cart.
@@ -138,7 +140,7 @@ export default function SalesPage() {
 
   const openSerialPicker = async (product: Product) => {
     setLoadingUnits(true);
-    const units = (await getAvailableUnits(product.id)) as { id: string; serialNumber: string; batchId: string; costPrice: number; sellingPrice?: number | null }[];
+    const units = (await getAvailableUnits(product.id, "showroom")) as { id: string; serialNumber: string; batchId: string; costPrice: number; sellingPrice?: number | null }[];
     setLoadingUnits(false);
     // Units already picked into another cart line for this product aren't available to pick again.
     const takenUnitIds = new Set(cart.flatMap(i => i.units?.map(u => u.unitId) ?? []));
@@ -207,7 +209,7 @@ export default function SalesPage() {
     const unitPrice = batch?.sellingPrice ?? product.sellingPrice;
     const existing = cart.find(i => i.productId === product.id && (i.batchId || null) === batchId);
     if (existing) {
-      if (existing.qty >= product.totalStock) return;
+      if (existing.qty >= product.showroomStock) return;
       setCart(cart.map(i =>
         i.tempId === existing.tempId
           ? { ...i, qty: i.qty + 1, lineTotal: (i.qty + 1) * (i.unitPrice - i.discount) }
@@ -293,8 +295,10 @@ export default function SalesPage() {
         soldQtyByProduct.set(item.productId, (soldQtyByProduct.get(item.productId) || 0) + item.qty);
       }
       setProducts(prev => prev
-        .map(p => soldQtyByProduct.has(p.id) ? { ...p, totalStock: p.totalStock - soldQtyByProduct.get(p.id)! } : p)
-        .filter(p => p.totalStock > 0));
+        .map(p => soldQtyByProduct.has(p.id)
+          ? { ...p, totalStock: p.totalStock - soldQtyByProduct.get(p.id)!, showroomStock: p.showroomStock - soldQtyByProduct.get(p.id)! }
+          : p)
+        .filter(p => p.showroomStock > 0));
       setCart([]);
       setDiscount(0);
       setPointsToRedeem(0);
@@ -373,7 +377,7 @@ export default function SalesPage() {
               <p className="text-xs text-zinc-400 mt-0.5">{p.sku}</p>
               <div className="flex items-center justify-between mt-2">
                 <span className="text-sm font-medium">Rs. {p.sellingPrice?.toLocaleString()}</span>
-                <span className={`badge ${p.totalStock <= 5 ? "badge-warning" : "badge-default"}`}>{p.totalStock}</span>
+                <span className={`badge ${p.showroomStock <= 5 ? "badge-warning" : "badge-default"}`}>{p.showroomStock}</span>
               </div>
             </button>
           ))}
@@ -447,10 +451,10 @@ export default function SalesPage() {
                         onClick={() => {
                           if (item.units) { openSerialPicker(products.find(p => p.id === item.productId)!); return; }
                           const product = products.find(p => p.id === item.productId);
-                          if (product && item.qty >= product.totalStock) return;
+                          if (product && item.qty >= product.showroomStock) return;
                           updateQty(item.tempId, item.qty + 1);
                         }}
-                        disabled={!item.units && (products.find(p => p.id === item.productId)?.totalStock ?? Infinity) <= item.qty}
+                        disabled={!item.units && (products.find(p => p.id === item.productId)?.showroomStock ?? Infinity) <= item.qty}
                         className="w-7 h-7 flex items-center justify-center hover:bg-zinc-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                       >
                         <Plus size={11} />

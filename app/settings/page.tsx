@@ -4,53 +4,17 @@ import { useAuth } from "@/hooks/useAuth";
 import {
   addSupplier, updateSupplier, getSuppliers, getShopSettings, updateShopSettings,
   createTeamUser, getTeamUsers, updateTeamUser, getUsageStats, CollectionStat, cleanCollection,
-  getCollectionData,
+  getCollectionData, migrateStockToLocations, getStockLocationMigrationStatus,
 } from "@/lib/firestore";
-import { Plus, X, Store, Truck, Users, CheckCircle, AlertCircle, Pencil, ToggleLeft, ToggleRight, Database, HardDrive, BookOpen, PenLine, Trash2, AlertTriangle, Download, Loader2, BellRing } from "lucide-react";
+import { Plus, X, Store, Truck, Users, CheckCircle, AlertCircle, Pencil, ToggleLeft, ToggleRight, Database, HardDrive, BookOpen, PenLine, Trash2, AlertTriangle, Download, Loader2, BellRing, Boxes } from "lucide-react";
 import { UserProfile } from "@/types";
+import { rowsToCSV, downloadCSV } from "@/lib/csv";
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(3)} GB`;
-}
-
-function toCSVValue(value: any): string {
-  if (value === null || value === undefined) return "";
-  if (value && typeof value === "object" && typeof value.toDate === "function") {
-    value = value.toDate().toISOString();
-  } else if (value instanceof Date) {
-    value = value.toISOString();
-  } else if (typeof value === "object") {
-    value = JSON.stringify(value);
-  }
-  const str = String(value);
-  return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
-}
-
-function rowsToCSV(rows: Record<string, any>[]): string {
-  if (rows.length === 0) return "";
-  const headerSet = new Set<string>();
-  rows.forEach((r) => Object.keys(r).forEach((k) => headerSet.add(k)));
-  const headers = Array.from(headerSet);
-  const lines = [headers.join(",")];
-  for (const row of rows) {
-    lines.push(headers.map((h) => toCSVValue(row[h])).join(","));
-  }
-  return lines.join("\n");
-}
-
-function downloadCSV(filename: string, csv: string) {
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
 }
 
 function barColor(pct: number): string {
@@ -145,6 +109,12 @@ export default function SettingsPage() {
   const [cleanResult, setCleanResult] = useState<{ count: number } | null>(null);
   const [exportingKey, setExportingKey] = useState<string | null>(null);
 
+  const [migrationStatus, setMigrationStatus] = useState<{ done: boolean; migratedAt?: any; migratedByName?: string } | null>(null);
+  const [loadingMigrationStatus, setLoadingMigrationStatus] = useState(true);
+  const [migrating, setMigrating] = useState(false);
+  const [migrationResult, setMigrationResult] = useState<{ productsTouched: number; batchesTouched: number; unitsTouched: number } | null>(null);
+  const [migrationError, setMigrationError] = useState("");
+
   const handleExportCSV = async (c: CollectionStat) => {
     if (!canClean) return;
     setExportingKey(c.key);
@@ -174,7 +144,28 @@ export default function SettingsPage() {
     } else {
       setLoadingUsage(false);
     }
-  }, [canClean]);
+    if (isSuperAdmin) {
+      getStockLocationMigrationStatus().then((s) => { setMigrationStatus(s); setLoadingMigrationStatus(false); });
+    } else {
+      setLoadingMigrationStatus(false);
+    }
+  }, [canClean, isSuperAdmin]);
+
+  const handleMigrateStock = async () => {
+    if (!isSuperAdmin || migrating || migrationStatus?.done) return;
+    setMigrating(true);
+    setMigrationError("");
+    try {
+      const result = await migrateStockToLocations({ uid: user!.uid, name: user!.displayName || user!.email || "Super Admin" });
+      setMigrationResult(result);
+      const status = await getStockLocationMigrationStatus();
+      setMigrationStatus(status);
+    } catch (err: any) {
+      setMigrationError(err.message || "Migration failed.");
+    } finally {
+      setMigrating(false);
+    }
+  };
 
   const handleAddSupplier = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -653,6 +644,48 @@ export default function SettingsPage() {
             </>
           );
         })()}
+      </div>
+      )}
+
+      {/* Stock Location Migration — Super Admin only, one-time, resumable */}
+      {isSuperAdmin && (
+      <div className="nexora-card p-4 sm:p-6 mb-6">
+        <div className="flex items-center gap-3 mb-3">
+          <Boxes size={16} className="text-zinc-400" />
+          <div>
+            <h2 className="font-prata text-base text-black">Stock Location Migration</h2>
+            <p className="text-xs text-zinc-400 mt-0.5">Splits stock into Stores Stock and Showroom Stock</p>
+          </div>
+        </div>
+
+        {loadingMigrationStatus ? (
+          <p className="text-sm text-zinc-400 py-2">Checking status…</p>
+        ) : migrationStatus?.done ? (
+          <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 flex items-center gap-2">
+            <CheckCircle size={14} /> Already migrated{migrationStatus.migratedByName ? ` by ${migrationStatus.migratedByName}` : ""}.
+          </p>
+        ) : (
+          <>
+            <p className="text-xs text-zinc-500 mb-3">
+              One-time step: tags every existing batch/unit as Stores Stock and adds the Stores/Showroom split to every product.
+              Nothing is sellable via POS until it's transferred to Showroom afterward. Safe to re-run if interrupted.
+            </p>
+            <button
+              onClick={handleMigrateStock}
+              disabled={migrating}
+              className="nexora-btn nexora-btn-primary text-xs disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {migrating ? <Loader2 size={12} className="animate-spin" /> : <Boxes size={12} />}
+              {migrating ? "Migrating…" : "Migrate Stock to Stores/Showroom"}
+            </button>
+            {migrationError && <p className="text-xs text-red-500 mt-2">{migrationError}</p>}
+            {migrationResult && (
+              <p className="text-xs text-zinc-500 mt-2">
+                Done — {migrationResult.productsTouched} products, {migrationResult.batchesTouched} batches, {migrationResult.unitsTouched} units updated.
+              </p>
+            )}
+          </>
+        )}
       </div>
       )}
 

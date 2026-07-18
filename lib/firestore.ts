@@ -8,7 +8,7 @@ import { initializeApp, deleteApp } from "firebase/app";
 import { getAuth, createUserWithEmailAndPassword, signOut } from "firebase/auth";
 import { db } from "./firebase";
 import { firebaseConfig } from "./firebase";
-import type { ShopSettings, UserProfile, JobStatus } from "@/types";
+import type { ShopSettings, UserProfile, JobStatus, StockLocation, StockMovementReason } from "@/types";
 
 // ─── BRANDS ───────────────────────────────────────────────────────────────────
 
@@ -120,9 +120,21 @@ export async function deleteProduct(id: string) {
 
 export async function addBatch(
   productId: string,
-  data: { costPrice: number; sellingPrice?: number; qty: number; supplierId?: string; note?: string; serials?: string[] }
+  data: {
+    costPrice: number;
+    sellingPrice?: number;
+    qty: number;
+    supplierId?: string;
+    note?: string;
+    serials?: string[];
+    location?: StockLocation;
+  }
 ) {
   const qty = data.serials?.length ?? data.qty;
+  // Ad-hoc batch adds (the Products page "Add Batch" quick-add) land in
+  // Stores by default, same as a GRN — stock always arrives there first and
+  // must be Transferred to Showroom before it's sellable via POS.
+  const location: StockLocation = data.location ?? "stores";
   return runTransaction(db, async (tx) => {
     const batchRef = doc(collection(db, "products", productId, "batches"));
     tx.set(batchRef, {
@@ -133,6 +145,7 @@ export async function addBatch(
       supplierId: data.supplierId ?? null,
       note: data.note ?? "",
       status: "active",
+      location,
       receivedAt: serverTimestamp(),
     });
     for (const serialNumber of data.serials ?? []) {
@@ -143,11 +156,13 @@ export async function addBatch(
         costPrice: data.costPrice,
         sellingPrice: data.sellingPrice ?? null,
         status: "in_stock",
+        location,
         createdAt: serverTimestamp(),
       });
     }
     tx.update(doc(db, "products", productId), {
       totalStock: increment(qty),
+      [location === "showroom" ? "showroomStock" : "storesStock"]: increment(qty),
       lowStockAlerted: false,
     });
   });
@@ -160,7 +175,10 @@ export async function getAllUnits(productId: string) {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 
-export async function getAvailableUnits(productId: string) {
+// Location filtered client-side (not via an extra `where`) so this keeps
+// using the existing status+createdAt composite index instead of needing a
+// new one provisioned in the Firebase console.
+export async function getAvailableUnits(productId: string, location?: StockLocation) {
   const snap = await getDocs(
     query(
       collection(db, "products", productId, "units"),
@@ -168,7 +186,23 @@ export async function getAvailableUnits(productId: string) {
       orderBy("createdAt", "asc")
     )
   );
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .filter((u: any) => !location || u.location === location);
+}
+
+// Chunked `in` lookup (Firestore caps `in` at 30 values) — used by Stock
+// Transfer / Stock-Out to resolve cashier/manager-picked serial numbers back
+// to their unit docs.
+export async function getUnitsBySerialNumbers(productId: string, serialNumbers: string[]) {
+  const chunks: string[][] = [];
+  for (let i = 0; i < serialNumbers.length; i += 30) chunks.push(serialNumbers.slice(i, i + 30));
+  const results = await Promise.all(
+    chunks.map((chunk) =>
+      getDocs(query(collection(db, "products", productId, "units"), where("serialNumber", "in", chunk)))
+    )
+  );
+  return results.flatMap((snap) => snap.docs.map((d) => ({ id: d.id, ...d.data() })));
 }
 
 export async function getUnitsByBatch(productId: string, batchId: string) {
@@ -189,8 +223,9 @@ export async function deleteUnit(productId: string, unitId: string, batchId: str
     const batchRef = doc(db, "products", productId, "batches", batchId);
     const [unitSnap, batchSnap] = await Promise.all([tx.get(unitRef), tx.get(batchRef)]);
     if (!unitSnap.exists()) throw new Error("Unit not found");
-    const unit = unitSnap.data() as { status: string };
+    const unit = unitSnap.data() as { status: string; location?: StockLocation };
     if (unit.status !== "in_stock") throw new Error("Cannot remove a unit that has already been sold");
+    const location: StockLocation = unit.location ?? "stores";
 
     tx.delete(unitRef);
     if (batchSnap.exists()) {
@@ -202,7 +237,10 @@ export async function deleteUnit(productId: string, unitId: string, batchId: str
         status: newRemaining <= 0 ? "depleted" : "active",
       });
     }
-    tx.update(doc(db, "products", productId), { totalStock: increment(-1) });
+    tx.update(doc(db, "products", productId), {
+      totalStock: increment(-1),
+      [location === "showroom" ? "showroomStock" : "storesStock"]: increment(-1),
+    });
   });
 }
 
@@ -211,7 +249,8 @@ export async function addUnitsToBatch(productId: string, batchId: string, serial
     const batchRef = doc(db, "products", productId, "batches", batchId);
     const batchSnap = await tx.get(batchRef);
     if (!batchSnap.exists()) throw new Error("Batch not found");
-    const batch = batchSnap.data() as { costPrice: number; sellingPrice?: number | null };
+    const batch = batchSnap.data() as { costPrice: number; sellingPrice?: number | null; location?: StockLocation };
+    const location: StockLocation = batch.location ?? "stores";
 
     for (const serialNumber of serials) {
       const unitRef = doc(collection(db, "products", productId, "units"));
@@ -221,6 +260,7 @@ export async function addUnitsToBatch(productId: string, batchId: string, serial
         costPrice: batch.costPrice,
         sellingPrice: batch.sellingPrice ?? null,
         status: "in_stock",
+        location,
         createdAt: serverTimestamp(),
       });
     }
@@ -229,17 +269,21 @@ export async function addUnitsToBatch(productId: string, batchId: string, serial
       remainingQty: increment(serials.length),
       status: "active",
     });
-    tx.update(doc(db, "products", productId), { totalStock: increment(serials.length), lowStockAlerted: false });
+    tx.update(doc(db, "products", productId), {
+      totalStock: increment(serials.length),
+      [location === "showroom" ? "showroomStock" : "storesStock"]: increment(serials.length),
+      lowStockAlerted: false,
+    });
   });
 }
 
-export async function getBatches(productId: string) {
+export async function getBatches(productId: string, location?: StockLocation) {
   const snap = await getDocs(
     query(collection(db, "products", productId, "batches"), orderBy("receivedAt", "asc"))
   );
   return snap.docs
     .map((d) => ({ id: d.id, ...d.data() }))
-    .filter((b: any) => b.status === "active");
+    .filter((b: any) => b.status === "active" && (!location || b.location === location));
 }
 
 export async function getAllBatches(productId: string) {
@@ -253,13 +297,15 @@ export async function updateBatch(
   productId: string,
   batchId: string,
   data: { costPrice: number; sellingPrice?: number; totalQty: number; remainingQty: number; note?: string },
-  performedBy?: string
+  performedBy?: string,
+  performedByName?: string | null
 ) {
   return runTransaction(db, async (tx) => {
     const batchRef = doc(db, "products", productId, "batches", batchId);
     const batchSnap = await tx.get(batchRef);
     if (!batchSnap.exists()) throw new Error("Batch not found");
-    const current = batchSnap.data() as { remainingQty: number };
+    const current = batchSnap.data() as { remainingQty: number; location?: StockLocation };
+    const location: StockLocation = current.location ?? "stores";
 
     tx.update(batchRef, {
       costPrice: data.costPrice,
@@ -275,6 +321,7 @@ export async function updateBatch(
     if (delta !== 0) {
       tx.update(doc(db, "products", productId), {
         totalStock: increment(delta),
+        [location === "showroom" ? "showroomStock" : "storesStock"]: increment(delta),
         ...(delta > 0 ? { lowStockAlerted: false } : {}),
       });
       const mvRef = doc(collection(db, "stock_movements"));
@@ -286,6 +333,8 @@ export async function updateBatch(
         referenceType: "batch_edit",
         note: "Batch quantity corrected",
         performedBy: performedBy || "unknown",
+        performedByName: performedByName || "",
+        location,
         createdAt: serverTimestamp(),
       });
     }
@@ -368,15 +417,22 @@ export interface SaleData {
   note?: string;
 }
 
-// Discovers which batches a product could draw from, oldest first. This has
-// to run outside the transaction (Firestore transactions can only get()
-// specific documents, not run queries) — their live quantities are re-read
-// fresh inside the transaction below, so Firestore's optimistic concurrency
-// retries the whole sale if another checkout changes a batch's remainingQty
-// before this one commits, instead of both sales silently oversell­ing it.
-async function getCandidateBatchIds(productId: string, preferredBatchId?: string | null): Promise<string[]> {
+// Discovers which batches a product could draw from, oldest first, scoped to
+// a single location (Stores or Showroom — the two pools are never mixed in
+// one allocation). This has to run outside the transaction (Firestore
+// transactions can only get() specific documents, not run queries) — their
+// live quantities are re-read fresh inside the transaction below, so
+// Firestore's optimistic concurrency retries the whole operation if another
+// checkout/transfer changes a batch's remainingQty before this one commits,
+// instead of silently overselling it. Location is filtered client-side
+// (rather than an extra `where`) so no new composite index is needed.
+async function getCandidateBatchIds(
+  productId: string,
+  location: StockLocation,
+  preferredBatchId?: string | null
+): Promise<string[]> {
   const snap = await getDocs(query(collection(db, "products", productId, "batches"), orderBy("receivedAt", "asc")));
-  let ids = snap.docs.map((d) => d.id);
+  let ids = snap.docs.filter((d) => (d.data().location ?? "stores") === location).map((d) => d.id);
   if (preferredBatchId && ids.includes(preferredBatchId)) {
     ids = [preferredBatchId, ...ids.filter((id) => id !== preferredBatchId)];
   }
@@ -440,12 +496,14 @@ function allocateFromUnits(batchIds: string[], batchSnaps: any[], units: { unitI
 }
 
 export async function createSale(data: SaleData) {
-  // Discover candidate batch ids up front (see getCandidateBatchIds above).
+  // POS only ever sells from Showroom Stock — Stores Stock has to be
+  // Transferred to Showroom first. Discover candidate batch ids up front
+  // (see getCandidateBatchIds above), scoped to showroom.
   const candidateBatchIds = await Promise.all(
     data.items.map((item) =>
       item.units && item.units.length > 0
         ? Promise.resolve(Array.from(new Set(item.units.map((u) => u.batchId))))
-        : getCandidateBatchIds(item.productId, item.batchId)
+        : getCandidateBatchIds(item.productId, "showroom", item.batchId)
     )
   );
 
@@ -475,22 +533,42 @@ export async function createSale(data: SaleData) {
     const productSnaps = await Promise.all(productIds.map((id) => tx.get(doc(db, "products", id))));
     const productDataById = new Map(productIds.map((id, i) => [id, productSnaps[i].exists() ? productSnaps[i].data()! : null]));
 
-    // A unit picked at add-to-cart time may have been sold by someone else by
-    // the time this transaction runs — fail loudly instead of double-selling it.
+    // A unit picked at add-to-cart time may have been sold (or transferred
+    // back to Stores) by someone else by the time this transaction runs —
+    // fail loudly instead of double-selling it.
     data.items.forEach((item, i) => {
       if (!item.units || item.units.length === 0) return;
       unitSnaps[i].forEach((snap, j) => {
-        if (!snap.exists() || snap.data()!.status !== "in_stock") {
+        const u = snap.exists() ? (snap.data() as { status: string; location?: StockLocation }) : null;
+        if (!u || u.status !== "in_stock" || (u.location ?? "stores") !== "showroom") {
           throw new Error(`"${item.units![j].serialNumber}" is no longer available for sale`);
         }
       });
     });
 
-    const allocations = data.items.map((item, i) =>
-      item.units && item.units.length > 0
-        ? allocateFromUnits(candidateBatchIds[i], batchSnaps[i], item.units)
-        : allocateFifo(candidateBatchIds[i], batchSnaps[i], item.qty, item.productName)
-    );
+    // For non-serialized items, check Showroom capacity up front so a
+    // shortfall gets a clear, actionable message instead of allocateFifo's
+    // generic "not enough stock" — staff need to know whether to transfer
+    // from Stores or the product is genuinely out.
+    const allocations = data.items.map((item, i) => {
+      if (item.units && item.units.length > 0) {
+        return allocateFromUnits(candidateBatchIds[i], batchSnaps[i], item.units);
+      }
+      const availableQty = batchSnaps[i].reduce((sum, snap) => {
+        if (!snap.exists()) return sum;
+        const b = snap.data() as { status: string; remainingQty: number };
+        return b.status === "active" ? sum + b.remainingQty : sum;
+      }, 0);
+      if (availableQty < item.qty) {
+        const productData = productDataById.get(item.productId);
+        const storesStock = productData?.storesStock ?? 0;
+        const hint = storesStock > 0 ? ` (${storesStock} more in Stores — transfer to Showroom first.)` : ".";
+        throw new Error(
+          `Not enough Showroom stock for "${item.productName}": requested ${item.qty}, only ${availableQty} in Showroom${hint}`
+        );
+      }
+      return allocateFifo(candidateBatchIds[i], batchSnaps[i], item.qty, item.productName);
+    });
 
     // ---- Writes ----
     const current = counterDoc.exists() ? (counterDoc.data().value as number) : 0;
@@ -519,6 +597,7 @@ export async function createSale(data: SaleData) {
     data.items.forEach((item, i) => {
       tx.update(doc(db, "products", item.productId), {
         totalStock: increment(-item.qty),
+        showroomStock: increment(-item.qty),
       });
 
       for (const c of allocations[i].consumed) {
@@ -548,6 +627,8 @@ export async function createSale(data: SaleData) {
         referenceType: "sale",
         note: `Sale ${invoiceNo}`,
         performedBy: data.cashierId,
+        performedByName: data.cashierName,
+        location: "showroom",
         createdAt: serverTimestamp(),
       });
 
@@ -713,8 +794,11 @@ export async function cancelSale(saleId: string, cancelledBy: { uid: string; nam
     });
 
     for (const item of items) {
+      // Sales only ever draw from Showroom Stock, so a cancellation always
+      // restores into Showroom too.
       tx.update(doc(db, "products", item.productId), {
         totalStock: increment(item.qty),
+        showroomStock: increment(item.qty),
         lowStockAlerted: false,
       });
 
@@ -727,6 +811,8 @@ export async function cancelSale(saleId: string, cancelledBy: { uid: string; nam
         referenceType: "sale_cancel",
         note: `Cancelled ${sale.invoiceNo}`,
         performedBy: cancelledBy.uid,
+        performedByName: cancelledBy.name,
+        location: "showroom",
         createdAt: serverTimestamp(),
       });
     }
@@ -965,12 +1051,494 @@ export async function updateJobStatus(
 
 // ─── STOCK MOVEMENTS ──────────────────────────────────────────────────────────
 
-export async function getStockMovements(productId?: string) {
-  const q = productId
-    ? query(collection(db, "stock_movements"), where("productId", "==", productId), orderBy("createdAt", "desc"))
-    : query(collection(db, "stock_movements"), orderBy("createdAt", "desc"));
-  const snap = await getDocs(q);
+export async function getStockMovements(opts?: {
+  productId?: string;
+  fromDate?: Date;
+  toDate?: Date;
+  referenceTypes?: string[];
+}) {
+  const constraints = [];
+  if (opts?.productId) constraints.push(where("productId", "==", opts.productId));
+  if (opts?.fromDate) constraints.push(where("createdAt", ">=", Timestamp.fromDate(opts.fromDate)));
+  if (opts?.toDate) constraints.push(where("createdAt", "<=", Timestamp.fromDate(opts.toDate)));
+  const snap = await getDocs(
+    query(collection(db, "stock_movements"), ...constraints, orderBy("createdAt", "desc"))
+  );
+  let movements = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as any[];
+  if (opts?.referenceTypes && opts.referenceTypes.length > 0) {
+    movements = movements.filter((m) => opts.referenceTypes!.includes(m.referenceType));
+  }
+  return movements;
+}
+
+// ─── GRN (GOODS RECEIVED NOTE) ────────────────────────────────────────────────
+// Formal intake of newly purchased stock. Every line item always lands in
+// Stores Stock — items are only sellable via POS once Transferred to Showroom.
+
+export interface GrnItemData {
+  productId: string;
+  productName: string;
+  sku: string;
+  qty: number;
+  costPrice: number;
+  sellingPrice?: number | null;
+  serials?: string[];
+  note?: string;
+}
+
+export interface GrnData {
+  supplierId?: string | null;
+  supplierName?: string;
+  receivedById: string;
+  receivedByName: string;
+  note?: string;
+  items: GrnItemData[];
+}
+
+export async function createGrn(data: GrnData): Promise<{ grnId: string; grnNo: string }> {
+  return runTransaction(db, async (tx) => {
+    const counterRef = doc(db, "counters", "grn");
+    const counterDoc = await tx.get(counterRef);
+    const current = counterDoc.exists() ? (counterDoc.data().value as number) : 0;
+    const next = current + 1;
+    tx.set(counterRef, { value: next });
+    const grnNo = `GRN-${String(next).padStart(5, "0")}`;
+
+    const grnRef = doc(collection(db, "grns"));
+    tx.set(grnRef, {
+      supplierId: data.supplierId ?? null,
+      supplierName: data.supplierName ?? "",
+      receivedById: data.receivedById,
+      receivedByName: data.receivedByName,
+      note: data.note ?? "",
+      grnNo,
+      createdAt: serverTimestamp(),
+    });
+
+    for (const item of data.items) {
+      const qty = item.serials?.length ?? item.qty;
+      const batchRef = doc(collection(db, "products", item.productId, "batches"));
+      tx.set(batchRef, {
+        costPrice: item.costPrice,
+        sellingPrice: item.sellingPrice ?? null,
+        totalQty: qty,
+        remainingQty: qty,
+        supplierId: data.supplierId ?? null,
+        note: item.note ?? `Received via ${grnNo}`,
+        status: "active",
+        location: "stores",
+        receivedAt: serverTimestamp(),
+      });
+
+      for (const serialNumber of item.serials ?? []) {
+        const unitRef = doc(collection(db, "products", item.productId, "units"));
+        tx.set(unitRef, {
+          serialNumber,
+          batchId: batchRef.id,
+          costPrice: item.costPrice,
+          sellingPrice: item.sellingPrice ?? null,
+          status: "in_stock",
+          location: "stores",
+          createdAt: serverTimestamp(),
+        });
+      }
+
+      tx.update(doc(db, "products", item.productId), {
+        totalStock: increment(qty),
+        storesStock: increment(qty),
+        lowStockAlerted: false,
+      });
+
+      const itemRef = doc(collection(db, "grns", grnRef.id, "grnItems"));
+      tx.set(itemRef, {
+        productId: item.productId,
+        productName: item.productName,
+        sku: item.sku,
+        qty,
+        costPrice: item.costPrice,
+        sellingPrice: item.sellingPrice ?? null,
+        serials: item.serials ?? [],
+        batchId: batchRef.id,
+      });
+
+      const mvRef = doc(collection(db, "stock_movements"));
+      tx.set(mvRef, {
+        productId: item.productId,
+        type: "in",
+        qty,
+        referenceId: grnRef.id,
+        referenceType: "grn",
+        note: `Received via ${grnNo}`,
+        performedBy: data.receivedById,
+        performedByName: data.receivedByName,
+        location: "stores",
+        supplierName: data.supplierName ?? "",
+        createdAt: serverTimestamp(),
+      });
+    }
+
+    return { grnId: grnRef.id, grnNo };
+  });
+}
+
+export async function getGrns() {
+  const snap = await getDocs(query(collection(db, "grns"), orderBy("createdAt", "desc")));
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+export async function getGrn(id: string) {
+  const grnDoc = await getDoc(doc(db, "grns", id));
+  if (!grnDoc.exists()) return null;
+  const items = await getDocs(collection(db, "grns", id, "grnItems"));
+  return { id: grnDoc.id, ...grnDoc.data(), items: items.docs.map((d) => ({ id: d.id, ...d.data() })) };
+}
+
+// ─── STOCK TRANSFER (Stores → Showroom) ───────────────────────────────────────
+
+export interface StockTransferItemData {
+  productId: string;
+  productName: string;
+  sku: string;
+  qty: number;
+  serialNumbers?: string[];
+}
+
+export interface StockTransferData {
+  transferredById: string;
+  transferredByName: string;
+  note?: string;
+  items: StockTransferItemData[];
+}
+
+export async function createStockTransfer(
+  data: StockTransferData
+): Promise<{ transferId: string; transferNo: string }> {
+  // Non-transactional discovery first (transactions can only get() known doc
+  // refs, not run queries) — same pattern as createSale.
+  const candidateBatchIds = await Promise.all(
+    data.items.map((item) =>
+      item.serialNumbers && item.serialNumbers.length > 0
+        ? Promise.resolve<string[]>([])
+        : getCandidateBatchIds(item.productId, "stores")
+    )
+  );
+  const resolvedUnits = await Promise.all(
+    data.items.map((item) =>
+      item.serialNumbers && item.serialNumbers.length > 0
+        ? getUnitsBySerialNumbers(item.productId, item.serialNumbers)
+        : Promise.resolve<any[]>([])
+    )
+  );
+
+  return runTransaction(db, async (tx) => {
+    // ---- Reads ----
+    const counterRef = doc(db, "counters", "transfer");
+    const counterDoc = await tx.get(counterRef);
+
+    const batchSnaps: any[][] = await Promise.all(
+      data.items.map((item, i) =>
+        Promise.all(candidateBatchIds[i].map((id) => tx.get(doc(db, "products", item.productId, "batches", id))))
+      )
+    );
+    const unitSnaps: any[][] = await Promise.all(
+      data.items.map((item, i) =>
+        Promise.all(resolvedUnits[i].map((u) => tx.get(doc(db, "products", item.productId, "units", u.id))))
+      )
+    );
+
+    // Validate serialized items are still in Stores before writing anything.
+    data.items.forEach((item, i) => {
+      if (!item.serialNumbers || item.serialNumbers.length === 0) return;
+      if (resolvedUnits[i].length !== item.serialNumbers.length) {
+        throw new Error(`Some serial numbers for "${item.productName}" were not found.`);
+      }
+      unitSnaps[i].forEach((snap, j) => {
+        const u = snap.exists() ? (snap.data() as { status: string; location?: StockLocation }) : null;
+        if (!u || u.status !== "in_stock" || (u.location ?? "stores") !== "stores") {
+          throw new Error(`"${resolvedUnits[i][j].serialNumber}" is not available in Stores.`);
+        }
+      });
+    });
+
+    // Non-serialized items: FIFO-consume Stores batches up front so a
+    // shortfall aborts before any writes are issued.
+    const allocations = data.items.map((item, i) => {
+      if (item.serialNumbers && item.serialNumbers.length > 0) return null;
+      return allocateFifo(candidateBatchIds[i], batchSnaps[i], item.qty, item.productName);
+    });
+
+    // ---- Writes ----
+    const current = counterDoc.exists() ? (counterDoc.data().value as number) : 0;
+    const next = current + 1;
+    tx.set(counterRef, { value: next });
+    const transferNo = `TRF-${String(next).padStart(5, "0")}`;
+
+    const transferRef = doc(collection(db, "stockTransfers"));
+    tx.set(transferRef, {
+      transferredById: data.transferredById,
+      transferredByName: data.transferredByName,
+      note: data.note ?? "",
+      transferNo,
+      createdAt: serverTimestamp(),
+    });
+
+    data.items.forEach((item, i) => {
+      tx.update(doc(db, "products", item.productId), {
+        storesStock: increment(-item.qty),
+        showroomStock: increment(item.qty),
+      });
+
+      let sourceBatchIds: string[] = [];
+      let newBatchIds: string[] = [];
+
+      if (item.serialNumbers && item.serialNumbers.length > 0) {
+        for (const u of resolvedUnits[i]) {
+          tx.update(doc(db, "products", item.productId, "units", u.id), { location: "showroom" });
+        }
+      } else {
+        const allocation = allocations[i]!;
+        sourceBatchIds = allocation.consumed.map((c) => c.batchId);
+        const snapByBatchId = new Map(candidateBatchIds[i].map((id, idx) => [id, batchSnaps[i][idx]]));
+        for (const c of allocation.consumed) {
+          tx.update(doc(db, "products", item.productId, "batches", c.batchId), {
+            remainingQty: increment(-c.qty),
+            status: c.remainingAfter <= 0 ? "depleted" : "active",
+          });
+          // One new Showroom batch per consumed Stores batch — preserves
+          // per-batch cost basis instead of blending FIFO cost across lots.
+          const sourceSnap = snapByBatchId.get(c.batchId);
+          const sourceData = sourceSnap?.data() as { costPrice: number; sellingPrice?: number | null } | undefined;
+          const newBatchRef = doc(collection(db, "products", item.productId, "batches"));
+          newBatchIds.push(newBatchRef.id);
+          tx.set(newBatchRef, {
+            costPrice: sourceData?.costPrice ?? 0,
+            sellingPrice: sourceData?.sellingPrice ?? null,
+            totalQty: c.qty,
+            remainingQty: c.qty,
+            note: `Transferred via ${transferNo}`,
+            status: "active",
+            location: "showroom",
+            sourceBatchId: c.batchId,
+            receivedAt: serverTimestamp(),
+          });
+        }
+      }
+
+      const itemRef = doc(collection(db, "stockTransfers", transferRef.id, "transferItems"));
+      tx.set(itemRef, {
+        productId: item.productId,
+        productName: item.productName,
+        sku: item.sku,
+        qty: item.qty,
+        serialNumbers: item.serialNumbers ?? [],
+        sourceBatchIds,
+        newBatchIds,
+      });
+
+      const mvRef = doc(collection(db, "stock_movements"));
+      tx.set(mvRef, {
+        productId: item.productId,
+        type: "transfer",
+        qty: item.qty,
+        referenceId: transferRef.id,
+        referenceType: "transfer",
+        note: `Transferred via ${transferNo}`,
+        performedBy: data.transferredById,
+        performedByName: data.transferredByName,
+        fromLocation: "stores",
+        toLocation: "showroom",
+        createdAt: serverTimestamp(),
+      });
+    });
+
+    return { transferId: transferRef.id, transferNo };
+  });
+}
+
+export async function getStockTransfers() {
+  const snap = await getDocs(query(collection(db, "stockTransfers"), orderBy("createdAt", "desc")));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+export async function getStockTransfer(id: string) {
+  const transferDoc = await getDoc(doc(db, "stockTransfers", id));
+  if (!transferDoc.exists()) return null;
+  const items = await getDocs(collection(db, "stockTransfers", id, "transferItems"));
+  return {
+    id: transferDoc.id,
+    ...transferDoc.data(),
+    items: items.docs.map((d) => ({ id: d.id, ...d.data() })),
+  };
+}
+
+// ─── STOCK OUT (manual issuance) ───────────────────────────────────────────────
+
+export interface StockOutItemData {
+  productId: string;
+  productName: string;
+  sku: string;
+  qty: number;
+  serialNumbers?: string[];
+}
+
+export interface StockOutData {
+  location: StockLocation;
+  issuedById: string;
+  issuedByName: string;
+  recipient: string;
+  reason: StockMovementReason;
+  reasonDetail?: string;
+  jobId?: string | null;
+  jobNo?: string | null;
+  note?: string;
+  items: StockOutItemData[];
+}
+
+export async function createStockOut(data: StockOutData): Promise<{ stockOutId: string; stockOutNo: string }> {
+  const candidateBatchIds = await Promise.all(
+    data.items.map((item) =>
+      item.serialNumbers && item.serialNumbers.length > 0
+        ? Promise.resolve<string[]>([])
+        : getCandidateBatchIds(item.productId, data.location)
+    )
+  );
+  const resolvedUnits = await Promise.all(
+    data.items.map((item) =>
+      item.serialNumbers && item.serialNumbers.length > 0
+        ? getUnitsBySerialNumbers(item.productId, item.serialNumbers)
+        : Promise.resolve<any[]>([])
+    )
+  );
+
+  return runTransaction(db, async (tx) => {
+    const counterRef = doc(db, "counters", "stockOut");
+    const counterDoc = await tx.get(counterRef);
+
+    const batchSnaps: any[][] = await Promise.all(
+      data.items.map((item, i) =>
+        Promise.all(candidateBatchIds[i].map((id) => tx.get(doc(db, "products", item.productId, "batches", id))))
+      )
+    );
+    const unitSnaps: any[][] = await Promise.all(
+      data.items.map((item, i) =>
+        Promise.all(resolvedUnits[i].map((u) => tx.get(doc(db, "products", item.productId, "units", u.id))))
+      )
+    );
+
+    data.items.forEach((item, i) => {
+      if (!item.serialNumbers || item.serialNumbers.length === 0) return;
+      if (resolvedUnits[i].length !== item.serialNumbers.length) {
+        throw new Error(`Some serial numbers for "${item.productName}" were not found.`);
+      }
+      unitSnaps[i].forEach((snap, j) => {
+        const u = snap.exists() ? (snap.data() as { status: string; location?: StockLocation }) : null;
+        if (!u || u.status !== "in_stock" || (u.location ?? "stores") !== data.location) {
+          throw new Error(`"${resolvedUnits[i][j].serialNumber}" is not available in ${data.location === "stores" ? "Stores" : "Showroom"}.`);
+        }
+      });
+    });
+
+    const allocations = data.items.map((item, i) => {
+      if (item.serialNumbers && item.serialNumbers.length > 0) return null;
+      return allocateFifo(candidateBatchIds[i], batchSnaps[i], item.qty, item.productName);
+    });
+
+    const current = counterDoc.exists() ? (counterDoc.data().value as number) : 0;
+    const next = current + 1;
+    tx.set(counterRef, { value: next });
+    const stockOutNo = `SO-${String(next).padStart(5, "0")}`;
+
+    const stockOutRef = doc(collection(db, "stockOuts"));
+    tx.set(stockOutRef, {
+      location: data.location,
+      issuedById: data.issuedById,
+      issuedByName: data.issuedByName,
+      recipient: data.recipient,
+      reason: data.reason,
+      reasonDetail: data.reasonDetail ?? "",
+      jobId: data.jobId ?? null,
+      jobNo: data.jobNo ?? null,
+      note: data.note ?? "",
+      stockOutNo,
+      createdAt: serverTimestamp(),
+    });
+
+    data.items.forEach((item, i) => {
+      tx.update(doc(db, "products", item.productId), {
+        totalStock: increment(-item.qty),
+        [data.location === "showroom" ? "showroomStock" : "storesStock"]: increment(-item.qty),
+      });
+
+      let costPrice = 0;
+
+      if (item.serialNumbers && item.serialNumbers.length > 0) {
+        for (const u of resolvedUnits[i]) {
+          costPrice = u.costPrice ?? costPrice;
+          tx.update(doc(db, "products", item.productId, "units", u.id), {
+            status: "issued",
+            stockOutId: stockOutRef.id,
+            issuedAt: serverTimestamp(),
+          });
+        }
+      } else {
+        const allocation = allocations[i]!;
+        costPrice = allocation.costPrice;
+        for (const c of allocation.consumed) {
+          tx.update(doc(db, "products", item.productId, "batches", c.batchId), {
+            remainingQty: increment(-c.qty),
+            status: c.remainingAfter <= 0 ? "depleted" : "active",
+          });
+        }
+      }
+
+      const itemRef = doc(collection(db, "stockOuts", stockOutRef.id, "stockOutItems"));
+      tx.set(itemRef, {
+        productId: item.productId,
+        productName: item.productName,
+        sku: item.sku,
+        qty: item.qty,
+        serialNumbers: item.serialNumbers ?? [],
+        costPrice,
+      });
+
+      const mvRef = doc(collection(db, "stock_movements"));
+      tx.set(mvRef, {
+        productId: item.productId,
+        type: "out",
+        qty: -item.qty,
+        referenceId: stockOutRef.id,
+        referenceType: "stock_out",
+        note: `Issued via ${stockOutNo}`,
+        performedBy: data.issuedById,
+        performedByName: data.issuedByName,
+        location: data.location,
+        recipient: data.recipient,
+        reason: data.reason,
+        reasonDetail: data.reasonDetail ?? "",
+        jobId: data.jobId ?? null,
+        jobNo: data.jobNo ?? null,
+        createdAt: serverTimestamp(),
+      });
+    });
+
+    return { stockOutId: stockOutRef.id, stockOutNo };
+  });
+}
+
+export async function getStockOuts() {
+  const snap = await getDocs(query(collection(db, "stockOuts"), orderBy("createdAt", "desc")));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+export async function getStockOut(id: string) {
+  const stockOutDoc = await getDoc(doc(db, "stockOuts", id));
+  if (!stockOutDoc.exists()) return null;
+  const items = await getDocs(collection(db, "stockOuts", id, "stockOutItems"));
+  return {
+    id: stockOutDoc.id,
+    ...stockOutDoc.data(),
+    items: items.docs.map((d) => ({ id: d.id, ...d.data() })),
+  };
 }
 
 // ─── SUPPLIERS ────────────────────────────────────────────────────────────────
@@ -1143,4 +1711,72 @@ export async function cleanCollection(collectionName: string): Promise<number> {
     if (snap.docs.length < 500) break;
   }
   return totalDeleted;
+}
+
+// ─── STOCK LOCATION MIGRATION (one-time) ──────────────────────────────────────
+// Introducing the Stores/Showroom split requires every pre-existing batch and
+// unit to be tagged with a location, and every product to gain storesStock/
+// showroomStock aggregates. Everything becomes Stores Stock — nothing is
+// sellable via POS until it's Transferred to Showroom.
+
+export async function getStockLocationMigrationStatus(): Promise<{
+  done: boolean;
+  migratedAt?: any;
+  migratedByName?: string;
+} | null> {
+  const snap = await getDoc(doc(db, "migrations", "stockLocation"));
+  return snap.exists() ? (snap.data() as any) : null;
+}
+
+export async function migrateStockToLocations(
+  migratedBy: { uid: string; name: string }
+): Promise<{ productsTouched: number; batchesTouched: number; unitsTouched: number }> {
+  const productsSnap = await getDocs(collection(db, "products"));
+  let productsTouched = 0;
+  let batchesTouched = 0;
+  let unitsTouched = 0;
+
+  for (const productDoc of productsSnap.docs) {
+    const product = productDoc.data() as { totalStock?: number; storesStock?: number; showroomStock?: number };
+    const [batchesSnap, unitsSnap] = await Promise.all([
+      getDocs(collection(db, "products", productDoc.id, "batches")),
+      getDocs(collection(db, "products", productDoc.id, "units")),
+    ]);
+
+    // Only touch documents that don't already have a location — safe to
+    // re-run after an interruption without redoing already-migrated work.
+    const pending: { ref: any; data: Record<string, any> }[] = [];
+    for (const b of batchesSnap.docs) {
+      if (!b.data().location) {
+        pending.push({ ref: b.ref, data: { location: "stores" } });
+        batchesTouched++;
+      }
+    }
+    for (const u of unitsSnap.docs) {
+      if (!u.data().location) {
+        pending.push({ ref: u.ref, data: { location: "stores" } });
+        unitsTouched++;
+      }
+    }
+    if (product.storesStock === undefined || product.showroomStock === undefined) {
+      pending.push({ ref: productDoc.ref, data: { storesStock: product.totalStock ?? 0, showroomStock: 0 } });
+    }
+
+    if (pending.length === 0) continue;
+    for (let i = 0; i < pending.length; i += 450) {
+      const wb = writeBatch(db);
+      pending.slice(i, i + 450).forEach((p) => wb.update(p.ref, p.data));
+      await wb.commit();
+    }
+    productsTouched++;
+  }
+
+  await setDoc(doc(db, "migrations", "stockLocation"), {
+    done: true,
+    migratedAt: serverTimestamp(),
+    migratedById: migratedBy.uid,
+    migratedByName: migratedBy.name,
+  });
+
+  return { productsTouched, batchesTouched, unitsTouched };
 }

@@ -6,7 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import {
   LayoutDashboard, Package, Layers, BookMarked,
   ShoppingCart, Receipt, Shield, Settings, LogOut, X,
-  Users, FileText, Wrench,
+  Users, FileText, Wrench, PackagePlus, ArrowLeftRight, PackageMinus, History,
 } from "lucide-react";
 
 const nav = [
@@ -16,6 +16,10 @@ const nav = [
   { label: "Quotations", href: "/quotations", icon: FileText },
   { label: "Jobs", href: "/jobs", icon: Wrench },
   { label: "Products", href: "/products", icon: Package },
+  { label: "GRN", href: "/grn", icon: PackagePlus },
+  { label: "Stock Transfer", href: "/stock-transfer", icon: ArrowLeftRight },
+  { label: "Stock Out", href: "/stock-out", icon: PackageMinus },
+  { label: "Stock Movements", href: "/stock-movements", icon: History },
   { label: "Brands", href: "/brands", icon: BookMarked },
   { label: "Categories", href: "/categories", icon: Layers },
   { label: "Customers", href: "/customers", icon: Users },

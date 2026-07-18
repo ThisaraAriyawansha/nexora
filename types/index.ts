@@ -21,6 +21,8 @@ export interface SubCategory {
   createdAt?: any;
 }
 
+export type StockLocation = "stores" | "showroom";
+
 export interface ProductBatch {
   id: string;
   costPrice: number;
@@ -30,6 +32,8 @@ export interface ProductBatch {
   status: "active" | "depleted";
   receivedAt?: any;
   note?: string;
+  location: StockLocation;
+  sourceBatchId?: string | null;
 }
 
 export interface Product {
@@ -44,6 +48,8 @@ export interface Product {
   sku: string;
   sellingPrice: number;
   totalStock: number;
+  storesStock: number;
+  showroomStock: number;
   lowStockAlert: number;
   description?: string;
   warrantyMonths?: number;
@@ -58,9 +64,12 @@ export interface ProductUnit {
   serialNumber: string;
   batchId: string;
   costPrice: number;
-  status: "in_stock" | "sold";
+  status: "in_stock" | "sold" | "issued";
+  location: StockLocation;
   saleId?: string | null;
   soldAt?: any;
+  stockOutId?: string | null;
+  issuedAt?: any;
   createdAt?: any;
 }
 
@@ -181,16 +190,96 @@ export interface Warranty {
   createdAt?: any;
 }
 
+export type StockMovementReason = "job" | "sale" | "other";
+
 export interface StockMovement {
   id: string;
   productId: string;
-  type: "in" | "out" | "adjustment";
+  type: "in" | "out" | "adjustment" | "transfer";
   qty: number;
   referenceId?: string;
   referenceType?: string;
   note?: string;
   performedBy: string;
+  performedByName?: string;
+  location?: StockLocation;
+  fromLocation?: StockLocation;
+  toLocation?: StockLocation;
+  recipient?: string;
+  reason?: StockMovementReason;
+  reasonDetail?: string;
+  jobId?: string | null;
+  jobNo?: string | null;
+  supplierName?: string;
   createdAt?: any;
+}
+
+export interface Grn {
+  id: string;
+  grnNo: string;
+  supplierId?: string | null;
+  supplierName?: string;
+  receivedById: string;
+  receivedByName: string;
+  note?: string;
+  createdAt?: any;
+}
+
+export interface GrnItem {
+  id: string;
+  productId: string;
+  productName: string;
+  sku: string;
+  qty: number;
+  costPrice: number;
+  sellingPrice?: number | null;
+  serials?: string[];
+  batchId: string;
+}
+
+export interface StockTransfer {
+  id: string;
+  transferNo: string;
+  transferredById: string;
+  transferredByName: string;
+  note?: string;
+  createdAt?: any;
+}
+
+export interface StockTransferItem {
+  id: string;
+  productId: string;
+  productName: string;
+  sku: string;
+  qty: number;
+  serialNumbers?: string[];
+  sourceBatchIds?: string[];
+  newBatchIds?: string[];
+}
+
+export interface StockOut {
+  id: string;
+  stockOutNo: string;
+  location: StockLocation;
+  issuedById: string;
+  issuedByName: string;
+  recipient: string;
+  reason: StockMovementReason;
+  reasonDetail?: string;
+  jobId?: string | null;
+  jobNo?: string | null;
+  note?: string;
+  createdAt?: any;
+}
+
+export interface StockOutItem {
+  id: string;
+  productId: string;
+  productName: string;
+  sku: string;
+  qty: number;
+  serialNumbers?: string[];
+  costPrice: number;
 }
 
 export interface CartItem extends SaleItem {
