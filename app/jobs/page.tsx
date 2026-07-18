@@ -1,11 +1,11 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
 import {
-  getCustomers, getTechnicians, getJobs, getJob, createJob, updateJobStatus, getAllJobsWithHistory,
+  getCustomers, getTechnicians, getJobs, getJob, createJob, updateJobStatus, getAllJobsWithHistory, adminUpdateJob,
 } from "@/lib/firestore";
 import type { Customer, JobStatus, UserProfile } from "@/types";
 import {
-  Search, Printer, Eye, X, Plus, Wrench, Download, FileDown,
+  Search, Printer, Eye, X, Plus, Wrench, Download, FileDown, Pencil,
 } from "lucide-react";
 import JobPrint from "@/components/pos/JobPrint";
 import { useReactToPrint } from "react-to-print";
@@ -95,8 +95,15 @@ function csvEscape(value: any) {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
+function toDateInputValue(ts: any): string {
+  if (!ts) return "";
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  return d.toISOString().slice(0, 10);
+}
+
 export default function JobsPage() {
-  const { user, userDisplayName } = useAuth();
+  const { user, userDisplayName, userRole } = useAuth();
+  const canAdminEdit = userRole === "Super Admin" || userRole === "Admin";
   const [jobs, setJobs] = useState<any[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [technicians, setTechnicians] = useState<UserProfile[]>([]);
@@ -120,6 +127,11 @@ export default function JobsPage() {
   const [statusCost, setStatusCost] = useState("");
   const [statusUpdating, setStatusUpdating] = useState(false);
   const [statusError, setStatusError] = useState("");
+
+  const [editingJob, setEditingJob] = useState(false);
+  const [editJobForm, setEditJobForm] = useState(emptyForm());
+  const [savingJobEdit, setSavingJobEdit] = useState(false);
+  const [jobEditError, setJobEditError] = useState("");
 
   const [emailPrompt, setEmailPrompt] = useState<EmailPrompt | null>(null);
   const [sendingEmail, setSendingEmail] = useState(false);
@@ -288,6 +300,81 @@ export default function JobsPage() {
   };
 
   const closeJob = () => setViewJob(null);
+
+  const openEditJob = () => {
+    if (!viewJob) return;
+    setEditJobForm({
+      customerId: viewJob.customerId ?? null,
+      customerName: viewJob.customerName || "",
+      customerCompany: viewJob.customerCompany || "",
+      customerAddress: viewJob.customerAddress || "",
+      customerCity: viewJob.customerCity || "",
+      customerPhone: viewJob.customerPhone || "",
+      customerEmail: viewJob.customerEmail || "",
+      deviceType: viewJob.deviceType || "Laptop",
+      deviceTypeOther: viewJob.deviceTypeOther || "",
+      brand: viewJob.brand || "",
+      model: viewJob.model || "",
+      serialNo: viewJob.serialNo || "",
+      color: viewJob.color || "",
+      faultDescription: viewJob.faultDescription || "",
+      accessories: viewJob.accessories || [],
+      accessoriesOther: viewJob.accessoriesOther || "",
+      physicalCondition: viewJob.physicalCondition || [],
+      specialNotes: viewJob.specialNotes || "",
+      assignedTechnicianId: viewJob.assignedTechnicianId ?? null,
+      assignedTechnicianName: viewJob.assignedTechnicianName || "",
+      estimatedCost: viewJob.estimatedCost || 0,
+      advancePaid: viewJob.advancePaid || 0,
+      expectedDeliveryDate: toDateInputValue(viewJob.expectedDeliveryDate),
+    });
+    setJobEditError("");
+    setEditingJob(true);
+  };
+
+  const handleSaveJobEdit = async () => {
+    if (!viewJob) return;
+    setSavingJobEdit(true);
+    setJobEditError("");
+    try {
+      await adminUpdateJob(
+        viewJob.id,
+        {
+          customerName: editJobForm.customerName,
+          customerCompany: editJobForm.customerCompany,
+          customerAddress: editJobForm.customerAddress,
+          customerCity: editJobForm.customerCity,
+          customerPhone: editJobForm.customerPhone,
+          customerEmail: editJobForm.customerEmail,
+          deviceType: editJobForm.deviceType,
+          deviceTypeOther: editJobForm.deviceTypeOther,
+          brand: editJobForm.brand,
+          model: editJobForm.model,
+          serialNo: editJobForm.serialNo,
+          color: editJobForm.color,
+          faultDescription: editJobForm.faultDescription,
+          accessories: editJobForm.accessories,
+          accessoriesOther: editJobForm.accessoriesOther,
+          physicalCondition: editJobForm.physicalCondition,
+          specialNotes: editJobForm.specialNotes,
+          assignedTechnicianId: editJobForm.assignedTechnicianId,
+          assignedTechnicianName: editJobForm.assignedTechnicianName,
+          estimatedCost: Number(editJobForm.estimatedCost) || 0,
+          advancePaid: Number(editJobForm.advancePaid) || 0,
+          expectedDeliveryDate: editJobForm.expectedDeliveryDate ? new Date(`${editJobForm.expectedDeliveryDate}T00:00:00`) : null,
+        },
+        { uid: user!.uid, name: userDisplayName || user?.email || "Admin" }
+      );
+      await loadJobs();
+      const refreshed = await getJob(viewJob.id);
+      setViewJob(refreshed);
+      setEditingJob(false);
+    } catch (err: any) {
+      setJobEditError(err?.message || "Failed to save changes");
+    } finally {
+      setSavingJobEdit(false);
+    }
+  };
 
   const handleUpdateStatus = async () => {
     if (!viewJob) return;
@@ -737,6 +824,11 @@ export default function JobsPage() {
                 <button onClick={handleDownloadJob} disabled={downloadingJob} className="nexora-btn nexora-btn-outline text-sm">
                   <Download size={14} /> {downloadingJob ? "Downloading…" : "Download"}
                 </button>
+                {canAdminEdit && (
+                  <button onClick={openEditJob} className="nexora-btn nexora-btn-outline text-sm">
+                    <Pencil size={14} /> Edit Job
+                  </button>
+                )}
               </div>
             </div>
 
@@ -862,6 +954,174 @@ export default function JobsPage() {
                     );
                   })}
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Job modal — Admin Edit: corrects intake details, never status/repairCost */}
+      {editingJob && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+            <div className="px-6 py-4 border-b border-zinc-100 sticky top-0 z-20 bg-white flex items-center justify-between">
+              <h2 className="font-prata text-lg flex items-center gap-2"><Pencil size={16} /> Edit Job — {viewJob?.jobNo}</h2>
+              <button onClick={() => setEditingJob(false)} className="text-zinc-400 hover:text-black">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="px-6 py-4 space-y-5">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="text-xs text-zinc-500 uppercase tracking-wider mb-1 block">Customer Name *</label>
+                  <input className="nexora-input" value={editJobForm.customerName} onChange={(e) => setEditJobForm((f) => ({ ...f, customerName: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="text-xs text-zinc-500 uppercase tracking-wider mb-1 block">Mobile No. *</label>
+                  <input className="nexora-input" value={editJobForm.customerPhone} onChange={(e) => setEditJobForm((f) => ({ ...f, customerPhone: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="text-xs text-zinc-500 uppercase tracking-wider mb-1 block">Company (Optional)</label>
+                  <input className="nexora-input" value={editJobForm.customerCompany} onChange={(e) => setEditJobForm((f) => ({ ...f, customerCompany: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="text-xs text-zinc-500 uppercase tracking-wider mb-1 block">Address</label>
+                  <input className="nexora-input" value={editJobForm.customerAddress} onChange={(e) => setEditJobForm((f) => ({ ...f, customerAddress: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="text-xs text-zinc-500 uppercase tracking-wider mb-1 block">City</label>
+                  <input className="nexora-input" value={editJobForm.customerCity} onChange={(e) => setEditJobForm((f) => ({ ...f, customerCity: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="text-xs text-zinc-500 uppercase tracking-wider mb-1 block">Email (Optional)</label>
+                  <input className="nexora-input" value={editJobForm.customerEmail} onChange={(e) => setEditJobForm((f) => ({ ...f, customerEmail: e.target.value }))} />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-zinc-500 uppercase tracking-wider mb-2 block">Device Type</label>
+                <div className="flex flex-wrap gap-2">
+                  {DEVICE_TYPES.map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setEditJobForm((f) => ({ ...f, deviceType: t }))}
+                      className={`px-3 py-1.5 rounded-full text-xs border transition-colors ${editJobForm.deviceType === t ? "bg-black text-white border-black" : "border-zinc-200 text-zinc-600 hover:border-zinc-400"}`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+                {editJobForm.deviceType === "Other" && (
+                  <input
+                    className="nexora-input mt-2"
+                    placeholder="Specify device type"
+                    value={editJobForm.deviceTypeOther}
+                    onChange={(e) => setEditJobForm((f) => ({ ...f, deviceTypeOther: e.target.value }))}
+                  />
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                <div>
+                  <label className="text-xs text-zinc-500 uppercase tracking-wider mb-1 block">Brand</label>
+                  <input className="nexora-input" value={editJobForm.brand} onChange={(e) => setEditJobForm((f) => ({ ...f, brand: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="text-xs text-zinc-500 uppercase tracking-wider mb-1 block">Model</label>
+                  <input className="nexora-input" value={editJobForm.model} onChange={(e) => setEditJobForm((f) => ({ ...f, model: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="text-xs text-zinc-500 uppercase tracking-wider mb-1 block">Serial No.</label>
+                  <input className="nexora-input" value={editJobForm.serialNo} onChange={(e) => setEditJobForm((f) => ({ ...f, serialNo: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="text-xs text-zinc-500 uppercase tracking-wider mb-1 block">Color</label>
+                  <input className="nexora-input" value={editJobForm.color} onChange={(e) => setEditJobForm((f) => ({ ...f, color: e.target.value }))} />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-zinc-500 uppercase tracking-wider mb-1 block">Fault / Customer Complaint *</label>
+                <textarea className="nexora-input" rows={2} value={editJobForm.faultDescription} onChange={(e) => setEditJobForm((f) => ({ ...f, faultDescription: e.target.value }))} />
+              </div>
+
+              <div>
+                <label className="text-xs text-zinc-500 uppercase tracking-wider mb-2 block">Accessories Received</label>
+                <div className="flex flex-wrap gap-2">
+                  {ACCESSORY_OPTIONS.map((a) => (
+                    <label key={a} className={`px-3 py-1.5 rounded-full text-xs border cursor-pointer transition-colors ${editJobForm.accessories.includes(a) ? "bg-black text-white border-black" : "border-zinc-200 text-zinc-600 hover:border-zinc-400"}`}>
+                      <input type="checkbox" className="sr-only" checked={editJobForm.accessories.includes(a)} onChange={() => setEditJobForm((f) => ({ ...f, accessories: toggleInList(f.accessories, a) }))} />
+                      {a}
+                    </label>
+                  ))}
+                </div>
+                <input
+                  className="nexora-input mt-2"
+                  placeholder="Other accessories"
+                  value={editJobForm.accessoriesOther}
+                  onChange={(e) => setEditJobForm((f) => ({ ...f, accessoriesOther: e.target.value }))}
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-zinc-500 uppercase tracking-wider mb-2 block">Physical Condition</label>
+                <div className="flex flex-wrap gap-2">
+                  {CONDITION_OPTIONS.map((c) => (
+                    <label key={c} className={`px-3 py-1.5 rounded-full text-xs border cursor-pointer transition-colors ${editJobForm.physicalCondition.includes(c) ? "bg-black text-white border-black" : "border-zinc-200 text-zinc-600 hover:border-zinc-400"}`}>
+                      <input type="checkbox" className="sr-only" checked={editJobForm.physicalCondition.includes(c)} onChange={() => setEditJobForm((f) => ({ ...f, physicalCondition: toggleInList(f.physicalCondition, c) }))} />
+                      {c}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-zinc-500 uppercase tracking-wider mb-1 block">Special Notes</label>
+                <textarea className="nexora-input" rows={2} value={editJobForm.specialNotes} onChange={(e) => setEditJobForm((f) => ({ ...f, specialNotes: e.target.value }))} />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-zinc-500 uppercase tracking-wider mb-1 block">Assigned Technician</label>
+                  <select
+                    className="nexora-input"
+                    value={editJobForm.assignedTechnicianId || ""}
+                    onChange={(e) => {
+                      const tech = technicians.find((t) => t.uid === e.target.value);
+                      setEditJobForm((f) => ({ ...f, assignedTechnicianId: tech?.uid || null, assignedTechnicianName: tech?.displayName || "" }));
+                    }}
+                  >
+                    <option value="">Unassigned</option>
+                    {technicians.map((t) => (
+                      <option key={t.uid} value={t.uid}>{t.displayName}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-zinc-500 uppercase tracking-wider mb-1 block">Expected Delivery Date</label>
+                  <input type="date" className="nexora-input" value={editJobForm.expectedDeliveryDate} onChange={(e) => setEditJobForm((f) => ({ ...f, expectedDeliveryDate: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="text-xs text-zinc-500 uppercase tracking-wider mb-1 block">Estimated Cost (Rs.)</label>
+                  <input type="number" min={0} className="nexora-input" value={editJobForm.estimatedCost || ""} placeholder="0" onChange={(e) => setEditJobForm((f) => ({ ...f, estimatedCost: Number(e.target.value) || 0 }))} />
+                </div>
+                <div>
+                  <label className="text-xs text-zinc-500 uppercase tracking-wider mb-1 block">Advance Paid (Rs.)</label>
+                  <input type="number" min={0} className="nexora-input" value={editJobForm.advancePaid || ""} placeholder="0" onChange={(e) => setEditJobForm((f) => ({ ...f, advancePaid: Number(e.target.value) || 0 }))} />
+                </div>
+              </div>
+
+              {jobEditError && <p className="text-sm text-red-600">{jobEditError}</p>}
+
+              <div className="flex gap-2 pb-2">
+                <button onClick={handleSaveJobEdit} disabled={savingJobEdit} className="nexora-btn nexora-btn-primary text-sm disabled:opacity-50">
+                  {savingJobEdit ? "Saving…" : "Save Changes"}
+                </button>
+                <button onClick={() => setEditingJob(false)} className="nexora-btn nexora-btn-ghost text-sm" disabled={savingJobEdit}>
+                  Cancel
+                </button>
               </div>
             </div>
           </div>

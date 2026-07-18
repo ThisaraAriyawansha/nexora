@@ -8,7 +8,8 @@ import { initializeApp, deleteApp } from "firebase/app";
 import { getAuth, createUserWithEmailAndPassword, signOut } from "firebase/auth";
 import { db } from "./firebase";
 import { firebaseConfig } from "./firebase";
-import type { ShopSettings, UserProfile, JobStatus, StockLocation, StockMovementReason } from "@/types";
+import type { ShopSettings, UserProfile, JobStatus, StockLocation, StockMovementReason, SupplierPaymentMethod, SupplierPaymentStatus } from "@/types";
+import { diffFields, writeAuditLog } from "./audit";
 
 // ─── BRANDS ───────────────────────────────────────────────────────────────────
 
@@ -849,6 +850,43 @@ export async function cancelSale(saleId: string, cancelledBy: { uid: string; nam
   });
 }
 
+// Admin Edit: non-financial fields only — customer contact details, note,
+// and the payment method label. No line items, quantities, or prices —
+// those mistakes still go through Reverse Bill + re-sell, not a rewrite of
+// a completed sale's financial record.
+const SALE_EDITABLE_FIELDS = ["customerName", "customerPhone", "customerEmail", "note", "paymentMethod"] as const;
+
+export async function adminUpdateSale(
+  saleId: string,
+  patch: {
+    customerName?: string;
+    customerPhone?: string;
+    customerEmail?: string;
+    note?: string;
+    paymentMethod?: "cash" | "card" | "transfer";
+  },
+  performedBy: { uid: string; name: string }
+) {
+  return runTransaction(db, async (tx) => {
+    const ref = doc(db, "sales", saleId);
+    const snap = await tx.get(ref);
+    if (!snap.exists()) throw new Error("Bill not found");
+    const before = snap.data() as any;
+    if (before.status === "cancelled") throw new Error("Cannot edit a cancelled bill");
+
+    const changes = diffFields(before, patch, SALE_EDITABLE_FIELDS);
+    if (changes.length > 0) tx.update(ref, { ...patch, updatedAt: serverTimestamp() });
+
+    writeAuditLog(tx, {
+      collectionName: "sales",
+      docId: saleId,
+      label: before.invoiceNo,
+      changes,
+      performedBy,
+    });
+  });
+}
+
 // ─── QUOTATIONS ───────────────────────────────────────────────────────────────
 // Quotations are informational only — unlike sales they never touch stock,
 // so creation/update is plain document writes instead of stock-aware transactions.
@@ -1049,6 +1087,45 @@ export async function updateJobStatus(
   });
 }
 
+// Admin Edit: corrects any job detail entered at intake (customer/device/
+// fault/technician/cost fields). Deliberately excludes jobNo, status,
+// repairCost, dateReturned, receivedById/Name, createdAt — status/repairCost
+// changes stay on the updateJobStatus + statusHistory path above, since that
+// already has its own dedicated audit trail. Every field here is safe to
+// correct because Jobs never touch stock.
+const JOB_EDITABLE_FIELDS = [
+  "customerName", "customerCompany", "customerAddress", "customerCity", "customerPhone", "customerEmail",
+  "deviceType", "deviceTypeOther", "brand", "model", "serialNo", "color",
+  "faultDescription", "accessories", "accessoriesOther", "physicalCondition", "specialNotes",
+  "assignedTechnicianId", "assignedTechnicianName",
+  "estimatedCost", "advancePaid", "expectedDeliveryDate",
+] as const;
+
+export async function adminUpdateJob(
+  jobId: string,
+  patch: Partial<Record<(typeof JOB_EDITABLE_FIELDS)[number], any>>,
+  performedBy: { uid: string; name: string }
+) {
+  return runTransaction(db, async (tx) => {
+    const jobRef = doc(db, "jobs", jobId);
+    const jobSnap = await tx.get(jobRef);
+    if (!jobSnap.exists()) throw new Error("Job not found");
+    const before = jobSnap.data() as any;
+
+    const changes = diffFields(before, patch, JOB_EDITABLE_FIELDS);
+    if (changes.length > 0) {
+      tx.update(jobRef, { ...patch, updatedAt: serverTimestamp() });
+    }
+    writeAuditLog(tx, {
+      collectionName: "jobs",
+      docId: jobId,
+      label: before.jobNo,
+      changes,
+      performedBy,
+    });
+  });
+}
+
 // ─── STOCK MOVEMENTS ──────────────────────────────────────────────────────────
 
 export async function getStockMovements(opts?: {
@@ -1069,6 +1146,17 @@ export async function getStockMovements(opts?: {
     movements = movements.filter((m) => opts.referenceTypes!.includes(m.referenceType));
   }
   return movements;
+}
+
+// ─── AUDIT LOG (Admin Edit trail) ──────────────────────────────────────────────
+
+export async function getAuditLog(opts?: { collectionName?: string; fromDate?: Date; toDate?: Date }) {
+  const constraints = [];
+  if (opts?.collectionName) constraints.push(where("collectionName", "==", opts.collectionName));
+  if (opts?.fromDate) constraints.push(where("createdAt", ">=", Timestamp.fromDate(opts.fromDate)));
+  if (opts?.toDate) constraints.push(where("createdAt", "<=", Timestamp.fromDate(opts.toDate)));
+  const snap = await getDocs(query(collection(db, "auditLog"), ...constraints, orderBy("createdAt", "desc")));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 
 // ─── GRN (GOODS RECEIVED NOTE) ────────────────────────────────────────────────
@@ -1095,10 +1183,18 @@ export interface GrnData {
   items: GrnItemData[];
 }
 
-export async function createGrn(data: GrnData): Promise<{ grnId: string; grnNo: string }> {
+export async function createGrn(data: GrnData): Promise<{ grnId: string; grnNo: string; totalCost: number }> {
+  const totalCost = data.items.reduce((sum, item) => sum + item.costPrice * (item.serials?.length ?? item.qty), 0);
+
   return runTransaction(db, async (tx) => {
     const counterRef = doc(db, "counters", "grn");
-    const counterDoc = await tx.get(counterRef);
+    const supplierRef = data.supplierId ? doc(db, "suppliers", data.supplierId) : null;
+    const [counterDoc, supplierSnap] = await Promise.all([
+      tx.get(counterRef),
+      supplierRef ? tx.get(supplierRef) : Promise.resolve(null),
+    ]);
+    if (supplierRef && !supplierSnap!.exists()) throw new Error("Supplier no longer exists");
+
     const current = counterDoc.exists() ? (counterDoc.data().value as number) : 0;
     const next = current + 1;
     tx.set(counterRef, { value: next });
@@ -1108,12 +1204,25 @@ export async function createGrn(data: GrnData): Promise<{ grnId: string; grnNo: 
     tx.set(grnRef, {
       supplierId: data.supplierId ?? null,
       supplierName: data.supplierName ?? "",
+      totalCost,
       receivedById: data.receivedById,
       receivedByName: data.receivedByName,
       note: data.note ?? "",
       grnNo,
       createdAt: serverTimestamp(),
     });
+
+    if (supplierRef) {
+      const supplier = supplierSnap!.data() as { totalPayable?: number; amountPaid?: number };
+      const totalPayableAfter = (supplier.totalPayable ?? 0) + totalCost;
+      const amountPaid = supplier.amountPaid ?? 0;
+      const balanceAfter = totalPayableAfter - amountPaid;
+      tx.update(supplierRef, {
+        totalPayable: totalPayableAfter,
+        balance: balanceAfter,
+        paymentStatus: computeSupplierPaymentStatus(totalPayableAfter, balanceAfter),
+      });
+    }
 
     for (const item of data.items) {
       const qty = item.serials?.length ?? item.qty;
@@ -1177,7 +1286,7 @@ export async function createGrn(data: GrnData): Promise<{ grnId: string; grnNo: 
       });
     }
 
-    return { grnId: grnRef.id, grnNo };
+    return { grnId: grnRef.id, grnNo, totalCost };
   });
 }
 
@@ -1191,6 +1300,69 @@ export async function getGrn(id: string) {
   if (!grnDoc.exists()) return null;
   const items = await getDocs(collection(db, "grns", id, "grnItems"));
   return { id: grnDoc.id, ...grnDoc.data(), items: items.docs.map((d) => ({ id: d.id, ...d.data() })) };
+}
+
+// Admin Edit: supplier/note/per-item cost & selling price only — quantities
+// and serials stay locked (stock already landed in Stores off this GRN, and
+// may have already been Transferred or sold on). Deliberately does NOT
+// recompute totalCost or the supplier's balance even when a cost price
+// changes — retroactively correcting an already-posted, possibly already
+// partially-paid balance is a materially bigger, riskier feature than a
+// bookkeeping correction, so it's intentionally out of scope here.
+const GRN_EDITABLE_FIELDS = ["supplierId", "supplierName", "note"] as const;
+const GRN_ITEM_EDITABLE_FIELDS = ["costPrice", "sellingPrice"] as const;
+
+export async function adminUpdateGrn(
+  grnId: string,
+  patch: {
+    supplierId?: string | null;
+    supplierName?: string;
+    note?: string;
+    items?: { id: string; costPrice?: number; sellingPrice?: number | null }[];
+  },
+  performedBy: { uid: string; name: string }
+) {
+  return runTransaction(db, async (tx) => {
+    const grnRef = doc(db, "grns", grnId);
+    const grnSnap = await tx.get(grnRef);
+    if (!grnSnap.exists()) throw new Error("GRN not found");
+    const before = grnSnap.data() as any;
+
+    const itemRefs = (patch.items ?? []).map((i) => doc(db, "grns", grnId, "grnItems", i.id));
+    const itemSnaps = await Promise.all(itemRefs.map((r) => tx.get(r)));
+
+    const changes = diffFields(before, patch, GRN_EDITABLE_FIELDS);
+    if (changes.length > 0) {
+      tx.update(grnRef, {
+        supplierId: patch.supplierId !== undefined ? patch.supplierId : before.supplierId,
+        supplierName: patch.supplierName !== undefined ? patch.supplierName : before.supplierName,
+        note: patch.note !== undefined ? patch.note : before.note,
+        updatedAt: serverTimestamp(),
+      });
+    }
+
+    (patch.items ?? []).forEach((itemPatch, i) => {
+      const itemSnap = itemSnaps[i];
+      if (!itemSnap.exists()) return;
+      const itemBefore = itemSnap.data() as any;
+      const itemChanges = diffFields(itemBefore, itemPatch, GRN_ITEM_EDITABLE_FIELDS);
+      if (itemChanges.length > 0) {
+        tx.update(itemRefs[i], {
+          costPrice: itemPatch.costPrice ?? itemBefore.costPrice,
+          sellingPrice: itemPatch.sellingPrice !== undefined ? itemPatch.sellingPrice : itemBefore.sellingPrice,
+        });
+        changes.push(...itemChanges.map((c) => ({ ...c, field: `items.${itemBefore.productName}.${c.field}` })));
+      }
+    });
+
+    writeAuditLog(tx, {
+      collectionName: "grns",
+      docId: grnId,
+      label: before.grnNo,
+      changes,
+      performedBy,
+    });
+  });
 }
 
 // ─── STOCK TRANSFER (Stores → Showroom) ───────────────────────────────────────
@@ -1371,6 +1543,36 @@ export async function getStockTransfer(id: string) {
   };
 }
 
+// Admin Edit: note only — quantities/serials stay locked, since correcting
+// them after the fact would mean reconciling stock deltas across records
+// that may have already moved on (sold, re-transferred, etc). A real
+// quantity mistake gets corrected with a new Transfer, not by rewriting this one.
+const STOCK_TRANSFER_EDITABLE_FIELDS = ["note"] as const;
+
+export async function adminUpdateStockTransfer(
+  transferId: string,
+  patch: { note?: string },
+  performedBy: { uid: string; name: string }
+) {
+  return runTransaction(db, async (tx) => {
+    const ref = doc(db, "stockTransfers", transferId);
+    const snap = await tx.get(ref);
+    if (!snap.exists()) throw new Error("Stock Transfer not found");
+    const before = snap.data() as any;
+
+    const changes = diffFields(before, patch, STOCK_TRANSFER_EDITABLE_FIELDS);
+    if (changes.length > 0) tx.update(ref, { note: patch.note ?? before.note, updatedAt: serverTimestamp() });
+
+    writeAuditLog(tx, {
+      collectionName: "stockTransfers",
+      docId: transferId,
+      label: before.transferNo,
+      changes,
+      performedBy,
+    });
+  });
+}
+
 // ─── STOCK OUT (manual issuance) ───────────────────────────────────────────────
 
 export interface StockOutItemData {
@@ -1541,6 +1743,41 @@ export async function getStockOut(id: string) {
   };
 }
 
+// Admin Edit: recipient/reason/job-link/note only — quantities/serials
+// already deducted from live stock stay locked, same rationale as GRN/Transfer.
+const STOCK_OUT_EDITABLE_FIELDS = ["recipient", "reason", "reasonDetail", "note", "jobId", "jobNo"] as const;
+
+export async function adminUpdateStockOut(
+  stockOutId: string,
+  patch: {
+    recipient?: string;
+    reason?: StockMovementReason;
+    reasonDetail?: string;
+    note?: string;
+    jobId?: string | null;
+    jobNo?: string | null;
+  },
+  performedBy: { uid: string; name: string }
+) {
+  return runTransaction(db, async (tx) => {
+    const ref = doc(db, "stockOuts", stockOutId);
+    const snap = await tx.get(ref);
+    if (!snap.exists()) throw new Error("Stock Out not found");
+    const before = snap.data() as any;
+
+    const changes = diffFields(before, patch, STOCK_OUT_EDITABLE_FIELDS);
+    if (changes.length > 0) tx.update(ref, { ...patch, updatedAt: serverTimestamp() });
+
+    writeAuditLog(tx, {
+      collectionName: "stockOuts",
+      docId: stockOutId,
+      label: before.stockOutNo,
+      changes,
+      performedBy,
+    });
+  });
+}
+
 // ─── SUPPLIERS ────────────────────────────────────────────────────────────────
 
 export async function getSuppliers() {
@@ -1549,11 +1786,159 @@ export async function getSuppliers() {
 }
 
 export async function addSupplier(data: { name: string; phone: string; email?: string; address?: string }) {
-  return addDoc(collection(db, "suppliers"), { ...data, createdAt: serverTimestamp() });
+  return addDoc(collection(db, "suppliers"), {
+    ...data,
+    totalPayable: 0,
+    amountPaid: 0,
+    balance: 0,
+    paymentStatus: "paid",
+    createdAt: serverTimestamp(),
+  });
 }
 
+// Only ever touches contact fields — the balance fields (totalPayable/
+// amountPaid/balance/paymentStatus) are exclusively written by createGrn and
+// createSupplierPayment, never by this function.
 export async function updateSupplier(id: string, data: { name: string; phone: string; email?: string; address?: string }) {
   return updateDoc(doc(db, "suppliers", id), { ...data, updatedAt: serverTimestamp() });
+}
+
+// "Paid" if nothing owed (or nothing ever posted), "Outstanding" if nothing
+// paid at all yet, "Partial" in between.
+function computeSupplierPaymentStatus(totalPayable: number, balance: number): SupplierPaymentStatus {
+  if (balance <= 0) return "paid";
+  if (balance >= totalPayable) return "outstanding";
+  return "partial";
+}
+
+export interface SupplierPaymentData {
+  supplierId: string;
+  amount: number;
+  method: SupplierPaymentMethod;
+  reference?: string;
+  note?: string;
+  paidById: string;
+  paidByName: string;
+}
+
+export async function createSupplierPayment(
+  data: SupplierPaymentData
+): Promise<{ paymentId: string; paymentNo: string }> {
+  if (data.amount <= 0) throw new Error("Payment amount must be greater than zero");
+  return runTransaction(db, async (tx) => {
+    const supplierRef = doc(db, "suppliers", data.supplierId);
+    const counterRef = doc(db, "counters", "supplierPayment");
+    const [supplierSnap, counterDoc] = await Promise.all([tx.get(supplierRef), tx.get(counterRef)]);
+    if (!supplierSnap.exists()) throw new Error("Supplier not found");
+    const supplier = supplierSnap.data() as { name: string; totalPayable?: number; amountPaid?: number };
+    const totalPayable = supplier.totalPayable ?? 0;
+    const balanceBefore = totalPayable - (supplier.amountPaid ?? 0);
+    if (data.amount > balanceBefore) {
+      throw new Error(
+        `Payment of Rs. ${data.amount.toLocaleString()} exceeds the outstanding balance of Rs. ${balanceBefore.toLocaleString()}`
+      );
+    }
+    const amountPaidAfter = (supplier.amountPaid ?? 0) + data.amount;
+    const balanceAfter = totalPayable - amountPaidAfter;
+
+    const current = counterDoc.exists() ? (counterDoc.data().value as number) : 0;
+    const next = current + 1;
+    tx.set(counterRef, { value: next });
+    const paymentNo = `PAY-${String(next).padStart(5, "0")}`;
+
+    const paymentRef = doc(collection(db, "supplierPayments"));
+    tx.set(paymentRef, {
+      paymentNo,
+      supplierId: data.supplierId,
+      supplierName: supplier.name,
+      amount: data.amount,
+      method: data.method,
+      reference: data.reference ?? "",
+      note: data.note ?? "",
+      balanceBefore,
+      balanceAfter,
+      paidById: data.paidById,
+      paidByName: data.paidByName,
+      createdAt: serverTimestamp(),
+    });
+    tx.update(supplierRef, {
+      amountPaid: amountPaidAfter,
+      balance: balanceAfter,
+      paymentStatus: computeSupplierPaymentStatus(totalPayable, balanceAfter),
+      lastPaymentAt: serverTimestamp(),
+    });
+
+    return { paymentId: paymentRef.id, paymentNo };
+  });
+}
+
+export async function getSupplierPayments(opts?: { supplierId?: string; fromDate?: Date; toDate?: Date }) {
+  const constraints = [];
+  if (opts?.supplierId) constraints.push(where("supplierId", "==", opts.supplierId));
+  if (opts?.fromDate) constraints.push(where("createdAt", ">=", Timestamp.fromDate(opts.fromDate)));
+  if (opts?.toDate) constraints.push(where("createdAt", "<=", Timestamp.fromDate(opts.toDate)));
+  const snap = await getDocs(query(collection(db, "supplierPayments"), ...constraints, orderBy("createdAt", "desc")));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+export async function markSupplierStatementSent(supplierId: string) {
+  return updateDoc(doc(db, "suppliers", supplierId), { lastStatementSentAt: serverTimestamp() });
+}
+
+// Admin Edit: corrects a mistyped payment. Unlike every other adminUpdate*
+// function, this one DOES recompute a running total — a wrong payment amount
+// directly misstates what the supplier is owed, so the correction has to
+// flow through to Supplier.amountPaid/balance/paymentStatus, not just the
+// payment doc itself.
+const SUPPLIER_PAYMENT_EDITABLE_FIELDS = ["amount", "method", "reference", "note"] as const;
+
+export async function adminUpdateSupplierPayment(
+  paymentId: string,
+  patch: { amount?: number; method?: SupplierPaymentMethod; reference?: string; note?: string },
+  performedBy: { uid: string; name: string }
+) {
+  return runTransaction(db, async (tx) => {
+    const paymentRef = doc(db, "supplierPayments", paymentId);
+    const paymentSnap = await tx.get(paymentRef);
+    if (!paymentSnap.exists()) throw new Error("Payment not found");
+    const before = paymentSnap.data() as any;
+    const supplierRef = doc(db, "suppliers", before.supplierId);
+    const supplierSnap = await tx.get(supplierRef);
+    if (!supplierSnap.exists()) throw new Error("Supplier not found");
+    const supplier = supplierSnap.data() as any;
+
+    const changes = diffFields(before, patch, SUPPLIER_PAYMENT_EDITABLE_FIELDS);
+    const amountDelta = (patch.amount ?? before.amount) - before.amount;
+
+    if (amountDelta !== 0) {
+      const totalPayable = supplier.totalPayable ?? 0;
+      const amountPaidAfter = (supplier.amountPaid ?? 0) + amountDelta;
+      const balanceAfter = totalPayable - amountPaidAfter;
+      tx.update(supplierRef, {
+        amountPaid: amountPaidAfter,
+        balance: balanceAfter,
+        paymentStatus: computeSupplierPaymentStatus(totalPayable, balanceAfter),
+      });
+      tx.update(paymentRef, {
+        amount: patch.amount ?? before.amount,
+        method: patch.method ?? before.method,
+        reference: patch.reference ?? before.reference,
+        note: patch.note ?? before.note,
+        balanceAfter,
+        updatedAt: serverTimestamp(),
+      });
+    } else if (changes.length > 0) {
+      tx.update(paymentRef, { ...patch, updatedAt: serverTimestamp() });
+    }
+
+    writeAuditLog(tx, {
+      collectionName: "supplierPayments",
+      docId: paymentId,
+      label: before.paymentNo,
+      changes,
+      performedBy,
+    });
+  });
 }
 
 // ─── SHOP SETTINGS ────────────────────────────────────────────────────────────

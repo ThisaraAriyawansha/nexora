@@ -68,8 +68,11 @@ service cloud.firestore {
       allow delete: if isAdminOrAbove();
 
       match /batches/{batchId} {
-        allow read, create, update: if isAuth();
-        allow delete: if isAdminOrAbove();
+        // Editing a batch's cost/price/qty is an Admin Edit action — tightened
+        // from isAuth() so the Products-page "Edit Batch" quick-fix is no
+        // longer usable by every logged-in staff member.
+        allow read, create: if isAuth();
+        allow update, delete: if isAdminOrAbove();
       }
       match /units/{unitId} {
         allow read, create, update: if isAuth();
@@ -168,6 +171,22 @@ service cloud.firestore {
     match /migrations/{id} {
       allow read: if isAuth();
       allow write: if isSuperAdmin();
+    }
+
+    // Recording a supplier payment adjusts a running balance, so — unlike
+    // Manager-level GRN/Transfer/Stock-Out creation — this is Admin+ only,
+    // the same tier as sale cancellation.
+    match /supplierPayments/{id} {
+      allow read: if isAuth();
+      allow create, update, delete: if isAdminOrAbove();
+    }
+
+    // Generic Admin Edit audit trail — every writer of this collection is
+    // itself an Admin-gated adminUpdate* function, so there's no reason to
+    // leave the door open wider than that at the rules layer.
+    match /auditLog/{id} {
+      allow read: if isAuth();
+      allow create, update, delete: if isAdminOrAbove();
     }
 
     // Shop info shown on printed bills/quotations — readable by all staff,

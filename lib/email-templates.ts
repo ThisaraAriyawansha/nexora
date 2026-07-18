@@ -234,6 +234,52 @@ export function lowStockAlertTemplate(params: {
   );
 }
 
+// Sent BY the store TO a supplier — the store owes the supplier (Total
+// Payable comes from GRNs), never the other way round, so this is worded as
+// a neutral account statement/confirmation, not a debt-collection "reminder"
+// aimed at the supplier.
+export function supplierAccountStatementTemplate(params: {
+  supplierName: string;
+  totalPayable: number;
+  amountPaid: number;
+  balance: number;
+  shop: { name: string; phone?: string; email?: string };
+}) {
+  const { supplierName, totalPayable, amountPaid, balance, shop } = params;
+  const year = new Date().getFullYear();
+  return shopEmailShell(
+    `
+      <h1 style="font-size:16px;margin:0 0 12px">Account Statement</h1>
+      <p style="margin:0 0 16px;font-size:14px;line-height:1.5">
+        Hi ${supplierName}, here's a summary of our current account with you at ${shop.name}.
+      </p>
+      <table style="width:100%;border-collapse:collapse;margin:0 0 16px">
+        <tr>
+          <td style="padding:6px 0;color:#999;font-size:12px;width:140px">Total Purchased</td>
+          <td style="padding:6px 0;font-size:13px">Rs. ${totalPayable.toLocaleString()}</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 0;color:#999;font-size:12px">Amount Paid</td>
+          <td style="padding:6px 0;font-size:13px">Rs. ${amountPaid.toLocaleString()}</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 0;color:#999;font-size:12px">Balance We Owe You</td>
+          <td style="padding:6px 0;font-size:14px;font-weight:bold;color:#111">Rs. ${balance.toLocaleString()}</td>
+        </tr>
+      </table>
+      ${shop.phone ? `
+      <a href="tel:${shop.phone}" style="background:#000;color:#fff;font-size:13px;padding:10px 22px;text-decoration:none;border-radius:6px;display:inline-block;margin-top:8px">
+        Call ${shop.name} · ${shop.phone}
+      </a>` : ""}
+      <p style="color:#999;font-size:12px;margin:16px 0 0">
+        Please let us know if these figures don't match your own records.
+      </p>
+    `,
+    shop,
+    year
+  );
+}
+
 export function passwordResetOtpTemplate(otp: string) {
   const year = new Date().getFullYear();
   return emailShell(

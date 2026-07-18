@@ -7,6 +7,7 @@ import {
   LayoutDashboard, Package, Layers, BookMarked,
   ShoppingCart, Receipt, Shield, Settings, LogOut, X,
   Users, FileText, Wrench, PackagePlus, ArrowLeftRight, PackageMinus, History,
+  Truck, ShieldCheck,
 } from "lucide-react";
 
 const nav = [
@@ -20,10 +21,12 @@ const nav = [
   { label: "Stock Transfer", href: "/stock-transfer", icon: ArrowLeftRight },
   { label: "Stock Out", href: "/stock-out", icon: PackageMinus },
   { label: "Stock Movements", href: "/stock-movements", icon: History },
+  { label: "Suppliers", href: "/suppliers", icon: Truck },
   { label: "Brands", href: "/brands", icon: BookMarked },
   { label: "Categories", href: "/categories", icon: Layers },
   { label: "Customers", href: "/customers", icon: Users },
   { label: "Warranty", href: "/warranty", icon: Shield },
+  { label: "Audit Log", href: "/audit-log", icon: ShieldCheck },
   { label: "Settings", href: "/settings", icon: Settings },
 ];
 

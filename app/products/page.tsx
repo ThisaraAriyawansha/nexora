@@ -14,7 +14,8 @@ import Pagination from "@/components/ui/Pagination";
 const PAGE_SIZE = 10;
 
 export default function ProductsPage() {
-  const { user, userDisplayName } = useAuth();
+  const { user, userDisplayName, userRole } = useAuth();
+  const canAdminEdit = userRole === "Super Admin" || userRole === "Admin";
   const [products, setProducts] = useState<Product[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [mainCats, setMainCats] = useState<MainCategory[]>([]);
@@ -641,7 +642,9 @@ export default function ProductsPage() {
                           {batchModalProduct?.trackSerial && (
                             <button onClick={() => openManageSerials(b)} className="nexora-btn nexora-btn-ghost p-1.5" title="Manage serial numbers"><Hash size={12} /></button>
                           )}
-                          <button onClick={() => openEditBatch(b)} className="nexora-btn nexora-btn-ghost p-1.5" title="Edit price"><Edit2 size={12} /></button>
+                          {canAdminEdit && (
+                            <button onClick={() => openEditBatch(b)} className="nexora-btn nexora-btn-ghost p-1.5" title="Edit price"><Edit2 size={12} /></button>
+                          )}
                         </div>
                       </div>
                     )

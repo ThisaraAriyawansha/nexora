@@ -2,11 +2,11 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import {
-  addSupplier, updateSupplier, getSuppliers, getShopSettings, updateShopSettings,
+  getShopSettings, updateShopSettings,
   createTeamUser, getTeamUsers, updateTeamUser, getUsageStats, CollectionStat, cleanCollection,
   getCollectionData, migrateStockToLocations, getStockLocationMigrationStatus,
 } from "@/lib/firestore";
-import { Plus, X, Store, Truck, Users, CheckCircle, AlertCircle, Pencil, ToggleLeft, ToggleRight, Database, HardDrive, BookOpen, PenLine, Trash2, AlertTriangle, Download, Loader2, BellRing, Boxes } from "lucide-react";
+import { Plus, X, Store, Users, CheckCircle, AlertCircle, Pencil, ToggleLeft, ToggleRight, Database, HardDrive, BookOpen, PenLine, Trash2, AlertTriangle, Download, Loader2, BellRing, Boxes } from "lucide-react";
 import { UserProfile } from "@/types";
 import { rowsToCSV, downloadCSV } from "@/lib/csv";
 
@@ -72,9 +72,6 @@ export default function SettingsPage() {
   const { user, userRole } = useAuth();
   const isSuperAdmin = userRole === "Super Admin";
   const canClean = userRole === "Super Admin" || userRole === "Admin";
-  const [suppliers, setSuppliers] = useState<any[]>([]);
-  const [showSupplierModal, setShowSupplierModal] = useState(false);
-  const [supplierForm, setSupplierForm] = useState({ name: "", phone: "", email: "", address: "" });
   const [shopForm, setShopForm] = useState({ name: "", phone: "", email: "", address: "" });
   const [savingShop, setSavingShop] = useState(false);
   const [shopSaved, setShopSaved] = useState(false);
@@ -90,10 +87,6 @@ export default function SettingsPage() {
   const [userForm, setUserForm] = useState({ displayName: "", email: "", password: "", confirmPassword: "", role: "Admin" });
   const [addingUser, setAddingUser] = useState(false);
   const [userMsg, setUserMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
-
-  const [editingSupplier, setEditingSupplier] = useState<any | null>(null);
-  const [supplierEditForm, setSupplierEditForm] = useState({ name: "", phone: "", email: "", address: "" });
-  const [savingSupplier, setSavingSupplier] = useState(false);
 
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [editForm, setEditForm] = useState({ displayName: "", role: "" });
@@ -128,7 +121,6 @@ export default function SettingsPage() {
   };
 
   useEffect(() => {
-    getSuppliers().then(setSuppliers);
     getShopSettings().then((s) => {
       if (s) {
         setShopForm({ name: s.name || "", phone: s.phone || "", email: s.email || "", address: s.address || "" });
@@ -165,29 +157,6 @@ export default function SettingsPage() {
     } finally {
       setMigrating(false);
     }
-  };
-
-  const handleAddSupplier = async (e: React.FormEvent) => {
-    e.preventDefault();
-    await addSupplier(supplierForm);
-    setShowSupplierModal(false);
-    setSupplierForm({ name: "", phone: "", email: "", address: "" });
-    getSuppliers().then(setSuppliers);
-  };
-
-  const openEditSupplier = (s: any) => {
-    setEditingSupplier(s);
-    setSupplierEditForm({ name: s.name || "", phone: s.phone || "", email: s.email || "", address: s.address || "" });
-  };
-
-  const handleEditSupplier = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingSupplier) return;
-    setSavingSupplier(true);
-    await updateSupplier(editingSupplier.id, supplierEditForm);
-    setSuppliers((prev) => prev.map((s) => s.id === editingSupplier.id ? { ...s, ...supplierEditForm } : s));
-    setSavingSupplier(false);
-    setEditingSupplier(null);
   };
 
   const handleSaveShop = async (e: React.FormEvent) => {
@@ -311,7 +280,7 @@ export default function SettingsPage() {
     <div className="p-4 sm:p-8">
       <div className="mb-6">
         <h1 className="font-prata text-2xl text-black">Settings</h1>
-        <p className="text-zinc-500 text-sm mt-1">Manage shop info, team, and suppliers</p>
+        <p className="text-zinc-500 text-sm mt-1">Manage shop info and team — supplier management has moved to its own page</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 mb-6">
@@ -350,42 +319,8 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* Right: Suppliers */}
+        {/* Right: Low Stock Alerts (Supplier management moved to its own /suppliers page) */}
         <div className="lg:col-span-2">
-          <div className="nexora-card overflow-hidden">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 sm:px-6 py-4 border-b border-zinc-100">
-              <div className="flex items-center gap-3">
-                <Truck size={16} className="text-zinc-400" />
-                <h2 className="font-prata text-base text-black">Suppliers</h2>
-              </div>
-              <button onClick={() => setShowSupplierModal(true)} className="nexora-btn nexora-btn-primary text-xs py-1.5 px-3 self-start sm:self-auto">
-                <Plus size={12} /> Add Supplier
-              </button>
-            </div>
-            <div className="divide-y divide-zinc-50">
-              {suppliers.length === 0 ? (
-                <p className="text-center py-8 text-sm text-zinc-400">No suppliers added</p>
-              ) : (
-                suppliers.map((s) => (
-                  <div key={s.id} className="px-4 sm:px-6 py-3.5 flex items-center gap-3 hover:bg-zinc-50 transition-colors">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-black">{s.name}</p>
-                      <p className="text-xs text-zinc-400">{s.phone} {s.email ? `· ${s.email}` : ""}</p>
-                    </div>
-                    {s.address && <p className="text-xs text-zinc-400 shrink-0">{s.address}</p>}
-                    <button
-                      onClick={() => openEditSupplier(s)}
-                      className="p-1.5 rounded hover:bg-zinc-200 text-zinc-400 hover:text-zinc-700 transition-colors shrink-0"
-                      title="Edit supplier"
-                    >
-                      <Pencil size={13} />
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
           {/* Low Stock Alerts — Admin+ only, mirrors Shop Info's edit gating */}
           {canClean && (
             <div className="nexora-card p-4 sm:p-6 mt-6">
@@ -715,46 +650,6 @@ export default function SettingsPage() {
           ))}
         </div>
       </div>
-
-      {/* Supplier modal */}
-      {showSupplierModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl w-full max-w-sm mx-4">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-100">
-              <h2 className="font-prata text-lg">Add Supplier</h2>
-              <button onClick={() => setShowSupplierModal(false)}><X size={16} className="text-zinc-400" /></button>
-            </div>
-            <form onSubmit={handleAddSupplier} className="px-6 py-4 space-y-3">
-              <input className="nexora-input" required placeholder="Supplier name" value={supplierForm.name} onChange={e => setSupplierForm({...supplierForm, name: e.target.value})} />
-              <input className="nexora-input" required placeholder="Phone" value={supplierForm.phone} onChange={e => setSupplierForm({...supplierForm, phone: e.target.value})} />
-              <input className="nexora-input" placeholder="Email" value={supplierForm.email} onChange={e => setSupplierForm({...supplierForm, email: e.target.value})} />
-              <input className="nexora-input" placeholder="Address" value={supplierForm.address} onChange={e => setSupplierForm({...supplierForm, address: e.target.value})} />
-              <button type="submit" className="nexora-btn nexora-btn-primary w-full justify-center">Add Supplier</button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Edit Supplier modal */}
-      {editingSupplier && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl w-full max-w-sm mx-4">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-100">
-              <h2 className="font-prata text-lg">Edit Supplier</h2>
-              <button onClick={() => setEditingSupplier(null)}><X size={16} className="text-zinc-400" /></button>
-            </div>
-            <form onSubmit={handleEditSupplier} className="px-6 py-4 space-y-3">
-              <input className="nexora-input" required placeholder="Supplier name" value={supplierEditForm.name} onChange={e => setSupplierEditForm({ ...supplierEditForm, name: e.target.value })} />
-              <input className="nexora-input" required placeholder="Phone" value={supplierEditForm.phone} onChange={e => setSupplierEditForm({ ...supplierEditForm, phone: e.target.value })} />
-              <input className="nexora-input" placeholder="Email" value={supplierEditForm.email} onChange={e => setSupplierEditForm({ ...supplierEditForm, email: e.target.value })} />
-              <input className="nexora-input" placeholder="Address" value={supplierEditForm.address} onChange={e => setSupplierEditForm({ ...supplierEditForm, address: e.target.value })} />
-              <button type="submit" disabled={savingSupplier} className="nexora-btn nexora-btn-primary w-full justify-center">
-                {savingSupplier ? "Saving..." : "Save Changes"}
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* Edit User modal */}
       {editingUser && (

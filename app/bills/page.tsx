@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
-import { getSale, getSales, cancelSale } from "@/lib/firestore";
-import { Search, Printer, Eye, X, Ban, Download, Mail } from "lucide-react";
+import { getSale, getSales, cancelSale, adminUpdateSale } from "@/lib/firestore";
+import { Search, Printer, Eye, X, Ban, Download, Mail, Pencil } from "lucide-react";
 import BillPrint from "@/components/pos/BillPrint";
 import { useReactToPrint } from "react-to-print";
 import Pagination from "@/components/ui/Pagination";
@@ -31,6 +31,10 @@ export default function BillsPage() {
   const [confirmingEmailBill, setConfirmingEmailBill] = useState(false);
   const [sendingBillEmail, setSendingBillEmail] = useState(false);
   const [billEmailNotice, setBillEmailNotice] = useState("");
+
+  const [editingBill, setEditingBill] = useState(false);
+  const [billEditForm, setBillEditForm] = useState({ customerName: "", customerPhone: "", customerEmail: "", note: "", paymentMethod: "cash" as "cash" | "card" | "transfer" });
+  const [savingBillEdit, setSavingBillEdit] = useState(false);
 
   const handleDownloadBill = async () => {
     if (!printRef.current || downloadingBill) return;
@@ -97,6 +101,7 @@ export default function BillsPage() {
     setCancelReason("");
     setCancelError("");
     setBillEmailNotice("");
+    setEditingBill(false);
   };
 
   const closeSale = () => {
@@ -104,6 +109,36 @@ export default function BillsPage() {
     setConfirmingCancel(false);
     setCancelReason("");
     setCancelError("");
+  };
+
+  const openEditBill = () => {
+    if (!viewSale) return;
+    setBillEditForm({
+      customerName: viewSale.customerName || "",
+      customerPhone: viewSale.customerPhone || "",
+      customerEmail: viewSale.customerEmail || "",
+      note: viewSale.note || "",
+      paymentMethod: viewSale.paymentMethod || "cash",
+    });
+    setEditingBill(true);
+  };
+
+  const handleSaveBillEdit = async () => {
+    if (!viewSale) return;
+    setSavingBillEdit(true);
+    try {
+      await adminUpdateSale(
+        viewSale.id,
+        billEditForm,
+        { uid: user!.uid, name: userDisplayName || user?.email || "Admin" }
+      );
+      await loadSales();
+      const refreshed = await getSale(viewSale.id);
+      setViewSale(refreshed);
+      setEditingBill(false);
+    } finally {
+      setSavingBillEdit(false);
+    }
   };
 
   const handleCancelSale = async () => {
@@ -278,6 +313,11 @@ export default function BillsPage() {
                     <Mail size={14} /> Send Mail
                   </button>
                 )}
+                {canCancelBills && viewSale.status !== "cancelled" && !editingBill && (
+                  <button onClick={openEditBill} className="nexora-btn nexora-btn-outline text-sm">
+                    <Pencil size={14} /> Edit Bill
+                  </button>
+                )}
                 {canCancelBills && viewSale.status !== "cancelled" && (
                   <button
                     onClick={() => setConfirmingCancel(true)}
@@ -288,6 +328,28 @@ export default function BillsPage() {
                 )}
               </div>
             </div>
+
+            {editingBill && (
+              <div className="mx-6 mt-4 px-4 py-3 rounded-lg bg-zinc-50 border border-zinc-200 space-y-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <input className="nexora-input text-sm" placeholder="Customer name" value={billEditForm.customerName} onChange={(e) => setBillEditForm({ ...billEditForm, customerName: e.target.value })} />
+                  <input className="nexora-input text-sm" placeholder="Customer phone" value={billEditForm.customerPhone} onChange={(e) => setBillEditForm({ ...billEditForm, customerPhone: e.target.value })} />
+                  <input className="nexora-input text-sm" placeholder="Customer email" value={billEditForm.customerEmail} onChange={(e) => setBillEditForm({ ...billEditForm, customerEmail: e.target.value })} />
+                  <select className="nexora-input text-sm" value={billEditForm.paymentMethod} onChange={(e) => setBillEditForm({ ...billEditForm, paymentMethod: e.target.value as any })}>
+                    <option value="cash">Cash</option>
+                    <option value="card">Card</option>
+                    <option value="transfer">Transfer</option>
+                  </select>
+                </div>
+                <textarea className="nexora-input text-sm w-full" rows={2} placeholder="Note" value={billEditForm.note} onChange={(e) => setBillEditForm({ ...billEditForm, note: e.target.value })} />
+                <div className="flex gap-2">
+                  <button onClick={handleSaveBillEdit} disabled={savingBillEdit} className="nexora-btn nexora-btn-primary text-xs py-1.5 disabled:opacity-60">
+                    {savingBillEdit ? "Saving…" : "Save"}
+                  </button>
+                  <button onClick={() => setEditingBill(false)} className="nexora-btn nexora-btn-outline text-xs py-1.5">Cancel</button>
+                </div>
+              </div>
+            )}
 
             {billEmailNotice && (
               <div className="mx-6 mt-4 px-4 py-2.5 rounded-lg bg-zinc-50 border border-zinc-200 text-sm text-zinc-600 flex items-center justify-between">

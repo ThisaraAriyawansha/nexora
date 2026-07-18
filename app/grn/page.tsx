@@ -1,19 +1,22 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { getGrns, getGrn } from "@/lib/firestore";
+import { getGrns, getGrn, adminUpdateGrn, getSuppliers } from "@/lib/firestore";
 import { useAuth } from "@/hooks/useAuth";
-import { Search, Plus, Eye, X, PackagePlus, Download } from "lucide-react";
+import { Search, Plus, Eye, X, PackagePlus, Download, Pencil } from "lucide-react";
 import Pagination from "@/components/ui/Pagination";
 import { rowsToCSV, downloadCSV } from "@/lib/csv";
+import SearchableSelect from "@/components/ui/SearchableSelect";
 
 const PAGE_SIZE = 10;
 
 export default function GrnPage() {
-  const { userRole } = useAuth();
+  const { user, userDisplayName, userRole } = useAuth();
   const canManageStock = userRole === "Super Admin" || userRole === "Admin" || userRole === "Manager";
+  const canAdminEdit = userRole === "Super Admin" || userRole === "Admin";
 
   const [grns, setGrns] = useState<any[]>([]);
+  const [suppliers, setSuppliers] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
@@ -21,9 +24,16 @@ export default function GrnPage() {
   const [loading, setLoading] = useState(true);
   const [viewGrn, setViewGrn] = useState<any>(null);
 
+  const [editingGrn, setEditingGrn] = useState(false);
+  const [editSupplierId, setEditSupplierId] = useState("");
+  const [editNote, setEditNote] = useState("");
+  const [editItems, setEditItems] = useState<{ id: string; costPrice: string; sellingPrice: string }[]>([]);
+  const [savingEdit, setSavingEdit] = useState(false);
+
   useEffect(() => {
     getGrns().then((g) => { setGrns(g); setLoading(false); });
-  }, []);
+    if (canAdminEdit) getSuppliers().then(setSuppliers);
+  }, [canAdminEdit]);
 
   useEffect(() => {
     setPage(1);
@@ -31,6 +41,42 @@ export default function GrnPage() {
 
   const openGrn = async (id: string) => {
     setViewGrn(await getGrn(id));
+    setEditingGrn(false);
+  };
+
+  const openEditGrn = () => {
+    if (!viewGrn) return;
+    setEditSupplierId(viewGrn.supplierId || "");
+    setEditNote(viewGrn.note || "");
+    setEditItems((viewGrn.items || []).map((i: any) => ({ id: i.id, costPrice: String(i.costPrice), sellingPrice: i.sellingPrice != null ? String(i.sellingPrice) : "" })));
+    setEditingGrn(true);
+  };
+
+  const handleSaveGrnEdit = async () => {
+    if (!viewGrn) return;
+    setSavingEdit(true);
+    try {
+      const supplier = suppliers.find((s) => s.id === editSupplierId);
+      await adminUpdateGrn(
+        viewGrn.id,
+        {
+          supplierId: editSupplierId || null,
+          supplierName: supplier?.name || "",
+          note: editNote,
+          items: editItems.map((i) => ({
+            id: i.id,
+            costPrice: Number(i.costPrice),
+            sellingPrice: i.sellingPrice ? Number(i.sellingPrice) : null,
+          })),
+        },
+        { uid: user!.uid, name: userDisplayName || user?.email || "Admin" }
+      );
+      setViewGrn(await getGrn(viewGrn.id));
+      await getGrns().then(setGrns);
+      setEditingGrn(false);
+    } finally {
+      setSavingEdit(false);
+    }
   };
 
   const filtered = grns.filter((g) => {
@@ -61,6 +107,7 @@ export default function GrnPage() {
       "GRN No.": g.grnNo,
       Supplier: g.supplierName || "",
       "Received By": g.receivedByName,
+      "Total Cost": g.totalCost ?? "",
       Note: g.note || "",
       Date: g.createdAt,
     }));
@@ -117,21 +164,23 @@ export default function GrnPage() {
               <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase tracking-wider">GRN No.</th>
               <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase tracking-wider">Supplier</th>
               <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase tracking-wider">Received By</th>
+              <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase tracking-wider">Total Cost</th>
               <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase tracking-wider">Date</th>
               <th className="px-4 py-3"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-50">
             {loading ? (
-              <tr><td colSpan={5} className="text-center py-10 text-zinc-400">Loading…</td></tr>
+              <tr><td colSpan={6} className="text-center py-10 text-zinc-400">Loading…</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={5} className="text-center py-10 text-zinc-400">No GRNs found</td></tr>
+              <tr><td colSpan={6} className="text-center py-10 text-zinc-400">No GRNs found</td></tr>
             ) : (
               paginated.map((g) => (
                 <tr key={g.id} className="hover:bg-zinc-50 transition-colors">
                   <td className="px-4 py-3 font-medium text-black">{g.grnNo}</td>
                   <td className="px-4 py-3 text-zinc-600">{g.supplierName || "—"}</td>
                   <td className="px-4 py-3 text-zinc-600">{g.receivedByName}</td>
+                  <td className="px-4 py-3 font-medium text-black">Rs. {g.totalCost?.toLocaleString() ?? "—"}</td>
                   <td className="px-4 py-3 text-zinc-500 text-xs">{formatDate(g.createdAt)}</td>
                   <td className="px-4 py-3">
                     <button onClick={() => openGrn(g.id)} className="nexora-btn nexora-btn-ghost py-1 px-2 text-xs">
@@ -155,28 +204,90 @@ export default function GrnPage() {
                 <PackagePlus size={16} className="text-zinc-400" />
                 <h2 className="font-prata text-lg">{viewGrn.grnNo}</h2>
               </div>
-              <button onClick={() => setViewGrn(null)} className="text-zinc-400 hover:text-black">
-                <X size={18} />
-              </button>
+              <div className="flex items-center gap-2">
+                {canAdminEdit && !editingGrn && (
+                  <button onClick={openEditGrn} className="nexora-btn nexora-btn-ghost py-1 px-2 text-xs">
+                    <Pencil size={12} /> Edit
+                  </button>
+                )}
+                <button onClick={() => setViewGrn(null)} className="text-zinc-400 hover:text-black">
+                  <X size={18} />
+                </button>
+              </div>
             </div>
             <div className="px-6 py-4">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-                <div>
-                  <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Supplier</p>
-                  <p className="text-sm font-medium">{viewGrn.supplierName || "—"}</p>
+              {editingGrn ? (
+                <div className="nexora-card p-3 mb-4 space-y-3">
+                  <div>
+                    <label className="text-xs text-zinc-500 mb-1 block">Supplier</label>
+                    <SearchableSelect
+                      value={editSupplierId}
+                      onChange={setEditSupplierId}
+                      placeholder="No supplier"
+                      options={suppliers.map((s) => ({ id: s.id, label: s.name }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-zinc-500 mb-1 block">Note</label>
+                    <textarea className="nexora-input" rows={2} value={editNote} onChange={(e) => setEditNote(e.target.value)} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-zinc-500 uppercase tracking-wider mb-2">Items (quantity locked)</p>
+                    <div className="space-y-2">
+                      {(viewGrn.items || []).map((item: any, i: number) => (
+                        <div key={item.id} className="grid grid-cols-3 gap-2 items-center">
+                          <span className="text-sm text-black truncate">{item.productName} <span className="text-xs text-zinc-400">· Qty {item.qty}</span></span>
+                          <input
+                            type="number"
+                            className="nexora-input text-sm"
+                            value={editItems[i]?.costPrice ?? ""}
+                            placeholder="Cost"
+                            onChange={(e) => setEditItems((prev) => prev.map((p, idx) => idx === i ? { ...p, costPrice: e.target.value } : p))}
+                          />
+                          <input
+                            type="number"
+                            className="nexora-input text-sm"
+                            value={editItems[i]?.sellingPrice ?? ""}
+                            placeholder="Sells"
+                            onChange={(e) => setEditItems((prev) => prev.map((p, idx) => idx === i ? { ...p, sellingPrice: e.target.value } : p))}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={handleSaveGrnEdit} disabled={savingEdit} className="nexora-btn nexora-btn-primary text-xs py-1.5 disabled:opacity-60">
+                      {savingEdit ? "Saving…" : "Save"}
+                    </button>
+                    <button onClick={() => setEditingGrn(false)} className="nexora-btn nexora-btn-outline text-xs py-1.5">Cancel</button>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Received By</p>
-                  <p className="text-sm font-medium">{viewGrn.receivedByName}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Date</p>
-                  <p className="text-sm font-medium">{formatDate(viewGrn.createdAt)}</p>
-                </div>
-              </div>
-              {viewGrn.note && (
-                <p className="text-xs text-zinc-500 mb-4 bg-zinc-50 rounded-lg px-3 py-2">{viewGrn.note}</p>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                    <div>
+                      <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Supplier</p>
+                      <p className="text-sm font-medium">{viewGrn.supplierName || "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Received By</p>
+                      <p className="text-sm font-medium">{viewGrn.receivedByName}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Date</p>
+                      <p className="text-sm font-medium">{formatDate(viewGrn.createdAt)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Total Cost</p>
+                      <p className="text-sm font-medium">Rs. {viewGrn.totalCost?.toLocaleString() ?? "—"}</p>
+                    </div>
+                  </div>
+                  {viewGrn.note && (
+                    <p className="text-xs text-zinc-500 mb-4 bg-zinc-50 rounded-lg px-3 py-2">{viewGrn.note}</p>
+                  )}
+                </>
               )}
+              {!editingGrn && (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm min-w-[480px]">
                   <thead>
@@ -205,6 +316,7 @@ export default function GrnPage() {
                   </tbody>
                 </table>
               </div>
+              )}
             </div>
           </div>
         </div>

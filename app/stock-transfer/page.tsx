@@ -1,17 +1,18 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { getStockTransfers, getStockTransfer } from "@/lib/firestore";
+import { getStockTransfers, getStockTransfer, adminUpdateStockTransfer } from "@/lib/firestore";
 import { useAuth } from "@/hooks/useAuth";
-import { Search, Plus, Eye, X, ArrowLeftRight, Download } from "lucide-react";
+import { Search, Plus, Eye, X, ArrowLeftRight, Download, Pencil } from "lucide-react";
 import Pagination from "@/components/ui/Pagination";
 import { rowsToCSV, downloadCSV } from "@/lib/csv";
 
 const PAGE_SIZE = 10;
 
 export default function StockTransferPage() {
-  const { userRole } = useAuth();
+  const { user, userDisplayName, userRole } = useAuth();
   const canManageStock = userRole === "Super Admin" || userRole === "Admin" || userRole === "Manager";
+  const canAdminEdit = userRole === "Super Admin" || userRole === "Admin";
 
   const [transfers, setTransfers] = useState<any[]>([]);
   const [search, setSearch] = useState("");
@@ -20,6 +21,9 @@ export default function StockTransferPage() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [viewTransfer, setViewTransfer] = useState<any>(null);
+  const [editingTransfer, setEditingTransfer] = useState(false);
+  const [editNote, setEditNote] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
 
   useEffect(() => {
     getStockTransfers().then((t) => { setTransfers(t); setLoading(false); });
@@ -31,6 +35,29 @@ export default function StockTransferPage() {
 
   const openTransfer = async (id: string) => {
     setViewTransfer(await getStockTransfer(id));
+    setEditingTransfer(false);
+  };
+
+  const openEditTransfer = () => {
+    setEditNote(viewTransfer?.note || "");
+    setEditingTransfer(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!viewTransfer) return;
+    setSavingEdit(true);
+    try {
+      await adminUpdateStockTransfer(
+        viewTransfer.id,
+        { note: editNote },
+        { uid: user!.uid, name: userDisplayName || user?.email || "Admin" }
+      );
+      setViewTransfer(await getStockTransfer(viewTransfer.id));
+      await getStockTransfers().then(setTransfers);
+      setEditingTransfer(false);
+    } finally {
+      setSavingEdit(false);
+    }
   };
 
   const filtered = transfers.filter((t) => {
@@ -152,9 +179,16 @@ export default function StockTransferPage() {
                 <ArrowLeftRight size={16} className="text-zinc-400" />
                 <h2 className="font-prata text-lg">{viewTransfer.transferNo}</h2>
               </div>
-              <button onClick={() => setViewTransfer(null)} className="text-zinc-400 hover:text-black">
-                <X size={18} />
-              </button>
+              <div className="flex items-center gap-2">
+                {canAdminEdit && !editingTransfer && (
+                  <button onClick={openEditTransfer} className="nexora-btn nexora-btn-ghost py-1 px-2 text-xs">
+                    <Pencil size={12} /> Edit
+                  </button>
+                )}
+                <button onClick={() => setViewTransfer(null)} className="text-zinc-400 hover:text-black">
+                  <X size={18} />
+                </button>
+              </div>
             </div>
             <div className="px-6 py-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
@@ -167,9 +201,20 @@ export default function StockTransferPage() {
                   <p className="text-sm font-medium">{formatDate(viewTransfer.createdAt)}</p>
                 </div>
               </div>
-              {viewTransfer.note && (
+              {editingTransfer ? (
+                <div className="nexora-card p-3 mb-4 space-y-2">
+                  <label className="text-xs text-zinc-500 block">Note</label>
+                  <textarea className="nexora-input" rows={2} value={editNote} onChange={(e) => setEditNote(e.target.value)} />
+                  <div className="flex gap-2">
+                    <button onClick={handleSaveEdit} disabled={savingEdit} className="nexora-btn nexora-btn-primary text-xs py-1.5 disabled:opacity-60">
+                      {savingEdit ? "Saving…" : "Save"}
+                    </button>
+                    <button onClick={() => setEditingTransfer(false)} className="nexora-btn nexora-btn-outline text-xs py-1.5">Cancel</button>
+                  </div>
+                </div>
+              ) : viewTransfer.note ? (
                 <p className="text-xs text-zinc-500 mb-4 bg-zinc-50 rounded-lg px-3 py-2">{viewTransfer.note}</p>
-              )}
+              ) : null}
               <div className="overflow-x-auto">
                 <table className="w-full text-sm min-w-[480px]">
                   <thead>

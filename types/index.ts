@@ -92,12 +92,38 @@ export interface ShopSettings {
   updatedAt?: any;
 }
 
+export type SupplierPaymentStatus = "paid" | "partial" | "outstanding";
+
 export interface Supplier {
   id: string;
   name: string;
   phone: string;
   email?: string;
   address?: string;
+  totalPayable: number;
+  amountPaid: number;
+  balance: number;
+  paymentStatus: SupplierPaymentStatus;
+  lastPaymentAt?: any;
+  lastStatementSentAt?: any;
+  createdAt?: any;
+}
+
+export type SupplierPaymentMethod = "cash" | "bank_transfer" | "cheque" | "other";
+
+export interface SupplierPayment {
+  id: string;
+  paymentNo: string;
+  supplierId: string;
+  supplierName: string;
+  amount: number;
+  method: SupplierPaymentMethod;
+  reference?: string;
+  note?: string;
+  balanceBefore: number;
+  balanceAfter: number;
+  paidById: string;
+  paidByName: string;
   createdAt?: any;
 }
 
@@ -219,6 +245,7 @@ export interface Grn {
   grnNo: string;
   supplierId?: string | null;
   supplierName?: string;
+  totalCost: number;
   receivedById: string;
   receivedByName: string;
   note?: string;
@@ -341,4 +368,21 @@ export interface UserProfile {
   status?: "active" | "inactive";
   createdAt?: any;
   updatedAt?: any;
+}
+
+export interface AuditLogChange {
+  field: string;
+  before: any;
+  after: any;
+}
+
+export interface AuditLog {
+  id: string;
+  collectionName: string;
+  docId: string;
+  label: string;
+  changes: AuditLogChange[];
+  performedById: string;
+  performedByName: string;
+  createdAt?: any;
 }

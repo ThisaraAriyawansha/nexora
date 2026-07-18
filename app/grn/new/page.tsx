@@ -177,7 +177,12 @@ export default function NewGrnPage() {
 
       {items.length > 0 && (
         <div className="nexora-card p-4 sm:p-6 mb-6">
-          <p className="text-xs text-zinc-500 uppercase tracking-wider mb-3">Items ({items.length})</p>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs text-zinc-500 uppercase tracking-wider">Items ({items.length})</p>
+            <p className="text-sm font-medium text-black">
+              Total Cost: Rs. {items.reduce((sum, i) => sum + i.costPrice * i.qty, 0).toLocaleString()}
+            </p>
+          </div>
           <div className="space-y-2">
             {items.map((i) => (
               <div key={i.tempId} className="flex items-center justify-between gap-2 p-3 bg-zinc-50 rounded-lg">

@@ -1,21 +1,24 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { getStockOuts, getStockOut } from "@/lib/firestore";
+import { getStockOuts, getStockOut, adminUpdateStockOut, getJobs } from "@/lib/firestore";
 import { useAuth } from "@/hooks/useAuth";
-import { Search, Plus, Eye, X, PackageMinus, Download } from "lucide-react";
+import { Search, Plus, Eye, X, PackageMinus, Download, Pencil } from "lucide-react";
 import Pagination from "@/components/ui/Pagination";
 import { rowsToCSV, downloadCSV } from "@/lib/csv";
+import SearchableSelect from "@/components/ui/SearchableSelect";
 
 const PAGE_SIZE = 10;
 
 const REASON_LABELS: Record<string, string> = { job: "Job / Repair", sale: "Sale", other: "Other" };
 
 export default function StockOutPage() {
-  const { userRole } = useAuth();
+  const { user, userDisplayName, userRole } = useAuth();
   const canManageStock = userRole === "Super Admin" || userRole === "Admin" || userRole === "Manager";
+  const canAdminEdit = userRole === "Super Admin" || userRole === "Admin";
 
   const [stockOuts, setStockOuts] = useState<any[]>([]);
+  const [jobs, setJobs] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
@@ -23,9 +26,14 @@ export default function StockOutPage() {
   const [loading, setLoading] = useState(true);
   const [viewStockOut, setViewStockOut] = useState<any>(null);
 
+  const [editingStockOut, setEditingStockOut] = useState(false);
+  const [editForm, setEditForm] = useState({ recipient: "", reason: "job" as "job" | "sale" | "other", reasonDetail: "", jobId: "", note: "" });
+  const [savingEdit, setSavingEdit] = useState(false);
+
   useEffect(() => {
     getStockOuts().then((s) => { setStockOuts(s); setLoading(false); });
-  }, []);
+    if (canAdminEdit) getJobs().then(setJobs);
+  }, [canAdminEdit]);
 
   useEffect(() => {
     setPage(1);
@@ -33,6 +41,44 @@ export default function StockOutPage() {
 
   const openStockOut = async (id: string) => {
     setViewStockOut(await getStockOut(id));
+    setEditingStockOut(false);
+  };
+
+  const openEditStockOut = () => {
+    if (!viewStockOut) return;
+    setEditForm({
+      recipient: viewStockOut.recipient || "",
+      reason: viewStockOut.reason || "job",
+      reasonDetail: viewStockOut.reasonDetail || "",
+      jobId: viewStockOut.jobId || "",
+      note: viewStockOut.note || "",
+    });
+    setEditingStockOut(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!viewStockOut) return;
+    setSavingEdit(true);
+    try {
+      const job = jobs.find((j) => j.id === editForm.jobId);
+      await adminUpdateStockOut(
+        viewStockOut.id,
+        {
+          recipient: editForm.recipient,
+          reason: editForm.reason,
+          reasonDetail: editForm.reason === "other" ? editForm.reasonDetail : "",
+          jobId: editForm.reason === "job" ? editForm.jobId || null : null,
+          jobNo: editForm.reason === "job" ? job?.jobNo || null : null,
+          note: editForm.note,
+        },
+        { uid: user!.uid, name: userDisplayName || user?.email || "Admin" }
+      );
+      setViewStockOut(await getStockOut(viewStockOut.id));
+      await getStockOuts().then(setStockOuts);
+      setEditingStockOut(false);
+    } finally {
+      setSavingEdit(false);
+    }
   };
 
   const filtered = stockOuts.filter((s) => {
@@ -170,9 +216,16 @@ export default function StockOutPage() {
                 <PackageMinus size={16} className="text-zinc-400" />
                 <h2 className="font-prata text-lg">{viewStockOut.stockOutNo}</h2>
               </div>
-              <button onClick={() => setViewStockOut(null)} className="text-zinc-400 hover:text-black">
-                <X size={18} />
-              </button>
+              <div className="flex items-center gap-2">
+                {canAdminEdit && !editingStockOut && (
+                  <button onClick={openEditStockOut} className="nexora-btn nexora-btn-ghost py-1 px-2 text-xs">
+                    <Pencil size={12} /> Edit
+                  </button>
+                )}
+                <button onClick={() => setViewStockOut(null)} className="text-zinc-400 hover:text-black">
+                  <X size={18} />
+                </button>
+              </div>
             </div>
             <div className="px-6 py-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
@@ -197,9 +250,54 @@ export default function StockOutPage() {
                   <p className="text-sm font-medium">{formatDate(viewStockOut.createdAt)}</p>
                 </div>
               </div>
-              {viewStockOut.note && (
+
+              {editingStockOut ? (
+                <div className="nexora-card p-3 mb-4 space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-zinc-500 mb-1 block">Issued To</label>
+                      <input className="nexora-input" value={editForm.recipient} onChange={(e) => setEditForm({ ...editForm, recipient: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="text-xs text-zinc-500 mb-1 block">Reason</label>
+                      <select className="nexora-input" value={editForm.reason} onChange={(e) => setEditForm({ ...editForm, reason: e.target.value as any })}>
+                        <option value="job">Job / Repair</option>
+                        <option value="sale">Sale</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </div>
+                  </div>
+                  {editForm.reason === "job" && (
+                    <div>
+                      <label className="text-xs text-zinc-500 mb-1 block">Job</label>
+                      <SearchableSelect
+                        value={editForm.jobId}
+                        onChange={(id) => setEditForm({ ...editForm, jobId: id })}
+                        placeholder="Select a job"
+                        options={jobs.map((j) => ({ id: j.id, label: `${j.jobNo} — ${j.customerName}`, sublabel: j.customerName }))}
+                      />
+                    </div>
+                  )}
+                  {editForm.reason === "other" && (
+                    <div>
+                      <label className="text-xs text-zinc-500 mb-1 block">Reason Detail</label>
+                      <input className="nexora-input" value={editForm.reasonDetail} onChange={(e) => setEditForm({ ...editForm, reasonDetail: e.target.value })} />
+                    </div>
+                  )}
+                  <div>
+                    <label className="text-xs text-zinc-500 mb-1 block">Note</label>
+                    <textarea className="nexora-input" rows={2} value={editForm.note} onChange={(e) => setEditForm({ ...editForm, note: e.target.value })} />
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={handleSaveEdit} disabled={savingEdit} className="nexora-btn nexora-btn-primary text-xs py-1.5 disabled:opacity-60">
+                      {savingEdit ? "Saving…" : "Save"}
+                    </button>
+                    <button onClick={() => setEditingStockOut(false)} className="nexora-btn nexora-btn-outline text-xs py-1.5">Cancel</button>
+                  </div>
+                </div>
+              ) : viewStockOut.note ? (
                 <p className="text-xs text-zinc-500 mb-4 bg-zinc-50 rounded-lg px-3 py-2">{viewStockOut.note}</p>
-              )}
+              ) : null}
               <div className="overflow-x-auto">
                 <table className="w-full text-sm min-w-[480px]">
                   <thead>
