@@ -3,8 +3,12 @@ import { useEffect, useState } from "react";
 import { getCustomers, addCustomer, updateCustomer } from "@/lib/firestore";
 import { Customer } from "@/types";
 import { Plus, Edit2, X, Search } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import AccessRestricted from "@/components/ui/AccessRestricted";
 
 export default function CustomersPage() {
+  const { can } = useAuth();
+  const canView = can("customers.view");
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [search, setSearch] = useState("");
   const [showModal, setShowModal] = useState(false);
@@ -32,6 +36,8 @@ export default function CustomersPage() {
   const filtered = customers.filter(c =>
     c.name.toLowerCase().includes(search.toLowerCase()) || c.phone.includes(search)
   );
+
+  if (!canView) return <AccessRestricted message="You don't have permission to view Customers." />;
 
   return (
     <div className="p-4 sm:p-8">

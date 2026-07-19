@@ -55,10 +55,16 @@ service cloud.firestore {
          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('permissions', {}).get(key, myRole() == 'Admin') == true);
     }
 
-    // Same as hasPerm(), but falls back to true regardless of role — for the
-    // two keys (products.edit, suppliers.editContact) whose baseline
-    // preserves the previously wide-open isAuth() behavior for every role,
-    // so an account the backfill hasn't reached yet isn't newly locked out.
+    // Same as hasPerm(), but falls back to true regardless of role. Used for
+    // every key whose baseline in lib/permissions.ts's DEFAULT_TRUE_KEYS is
+    // true for every role (products.edit, suppliers.editContact, and every
+    // `.view` key) — hasPerm()'s fallback is `myRole() == 'Admin'`, which
+    // would wrongly deny Manager/Cashier/Technician for a key their
+    // `permissions` map doesn't have yet (e.g. any account saved before that
+    // key existed), even though the client always assumes it defaults true
+    // and renders/fetches accordingly. Getting this mismatched for a
+    // rule-enforced key throws "Missing or insufficient permissions" the
+    // moment that role's account hits a `.view`-gated read.
     function hasPermDefaultTrue(key) {
       return isSuperAdmin() ||
         (isAuth() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('permissions', {}).get(key, true) == true);
@@ -177,7 +183,10 @@ service cloud.firestore {
       allow read: if isAuth();
     }
 
-    match /quotations/{id} { allow read, create, update: if isAuth(); allow delete: if hasPerm('quotations.delete'); }
+    // quotations is a single-owner collection (only the Quotations page reads
+    // it), so unlike products/customers/suppliers/etc. its view permission is
+    // safe to rule-enforce without breaking some other unrelated page.
+    match /quotations/{id} { allow read: if hasPermDefaultTrue('quotations.view'); allow create, update: if isAuth(); allow delete: if hasPerm('quotations.delete'); }
 
     match /jobs/{id} {
       allow read, create, update: if isAuth();
@@ -194,8 +203,12 @@ service cloud.firestore {
     }
     match /warranties/{id} { allow read, create, update: if isAuth(); allow delete: if isAdminOrAbove(); }
 
+    // Single-owner collection (only the Stock Movements page reads it — it's
+    // written to, not read, by sales/GRN/transfer/stock-out/batch-edit), so
+    // its view permission is safe to rule-enforce.
     match /stock_movements/{id} {
-      allow read, create: if isAuth();
+      allow read: if hasPermDefaultTrue('stockMovements.view');
+      allow create: if isAuth();
       allow update, delete: if isAdminOrAbove();
     }
 
@@ -204,14 +217,17 @@ service cloud.firestore {
       allow delete: if isAdminOrAbove();
     }
 
+    // grns/grnItems is single-owner (only the GRN page reads it — createGrn's
+    // write transaction reads counters/suppliers, never grns itself), so its
+    // view permission is safe to rule-enforce.
     match /grns/{id} {
-      allow read: if isAuth();
+      allow read: if hasPermDefaultTrue('grn.view');
       allow create: if hasPerm('grn.create');
       allow update: if hasPerm('grn.edit');
       allow delete: if isAdminOrAbove();
 
       match /grnItems/{itemId} {
-        allow read: if isAuth();
+        allow read: if hasPermDefaultTrue('grn.view');
         allow create: if hasPerm('grn.create');
         allow update: if hasPerm('grn.edit');
         allow delete: if isAdminOrAbove();
@@ -219,27 +235,30 @@ service cloud.firestore {
     }
 
     match /stockTransfers/{id} {
-      allow read: if isAuth();
+      allow read: if hasPermDefaultTrue('stockTransfer.view');
       allow create: if hasPerm('stockTransfer.create');
       allow update: if hasPerm('stockTransfer.edit');
       allow delete: if isAdminOrAbove();
 
       match /transferItems/{itemId} {
-        allow read: if isAuth();
+        allow read: if hasPermDefaultTrue('stockTransfer.view');
         allow create: if hasPerm('stockTransfer.create');
         allow update: if hasPerm('stockTransfer.edit');
         allow delete: if isAdminOrAbove();
       }
     }
 
+    // Note: stock-out's own creation flow reads /jobs for its job picker —
+    // that stays isAuth() (jobs.view is UI-only, see PERMISSION_CATALOG),
+    // so it's unaffected by stockOut.view.
     match /stockOuts/{id} {
-      allow read: if isAuth();
+      allow read: if hasPermDefaultTrue('stockOut.view');
       allow create: if hasPerm('stockOut.create');
       allow update: if hasPerm('stockOut.edit');
       allow delete: if isAdminOrAbove();
 
       match /stockOutItems/{itemId} {
-        allow read: if isAuth();
+        allow read: if hasPermDefaultTrue('stockOut.view');
         allow create: if hasPerm('stockOut.create');
         allow update: if hasPerm('stockOut.edit');
         allow delete: if isAdminOrAbove();

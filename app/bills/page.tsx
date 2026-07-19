@@ -8,11 +8,13 @@ import Pagination from "@/components/ui/Pagination";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { useAuth } from "@/hooks/useAuth";
 import { downloadElementAsPdf, getElementPdfBase64 } from "@/lib/pdf";
+import AccessRestricted from "@/components/ui/AccessRestricted";
 
 const PAGE_SIZE = 10;
 
 export default function BillsPage() {
   const { user, userDisplayName, can } = useAuth();
+  const canView = can("bills.view");
   const [sales, setSales] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [fromDate, setFromDate] = useState("");
@@ -189,6 +191,8 @@ export default function BillsPage() {
     const d = ts.toDate ? ts.toDate() : new Date(ts);
     return d.toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
   };
+
+  if (!canView) return <AccessRestricted message="You don't have permission to view Bills." />;
 
   return (
     <div className="p-4 sm:p-8">

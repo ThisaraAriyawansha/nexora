@@ -13,6 +13,7 @@ import Pagination from "@/components/ui/Pagination";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { useAuth } from "@/hooks/useAuth";
 import { downloadElementAsPdf } from "@/lib/pdf";
+import AccessRestricted from "@/components/ui/AccessRestricted";
 
 interface EmailPrompt {
   email: string;
@@ -103,6 +104,7 @@ function toDateInputValue(ts: any): string {
 
 export default function JobsPage() {
   const { user, userDisplayName, can } = useAuth();
+  const canView = can("jobs.view");
   const canAdminEdit = can("jobs.edit");
   const [jobs, setJobs] = useState<any[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -484,6 +486,8 @@ export default function JobsPage() {
       setExportingReport(false);
     }
   };
+
+  if (!canView) return <AccessRestricted message="You don't have permission to view Jobs." />;
 
   return (
     <div className="p-4 sm:p-8">

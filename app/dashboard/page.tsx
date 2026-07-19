@@ -4,6 +4,7 @@ import { getSales, getProducts, getCustomers, getAllSaleItems, getMainCategories
 import { TrendingUp, Package, Users, ShoppingBag, AlertTriangle, Wallet, Receipt, ArrowUp, ArrowDown, Award, Tag } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
+import AccessRestricted from "@/components/ui/AccessRestricted";
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const PAYMENT_COLORS = ["#0a0a0a", "#a1a1aa", "#e4e4e7", "#71717a"];
@@ -16,6 +17,7 @@ function delta(current: number, previous: number): { pct: number; up: boolean } 
 
 export default function DashboardPage() {
   const { can } = useAuth();
+  const canView = can("dashboard.view");
   // Same permission that gates the Finance page/nav link — Dashboard's revenue,
   // profit, and payment-breakdown figures are the same class of financial data,
   // so they're hidden from anyone without finance.view rather than getting their
@@ -186,6 +188,8 @@ export default function DashboardPage() {
   const maxDay = Math.max(1, ...weekTrend.map((d) => d.amount));
   const maxProductRevenue = Math.max(1, ...topProducts.map((p) => p.revenue));
   const maxCashierRevenue = Math.max(1, ...topCashiers.map((c) => c.revenue));
+
+  if (!canView) return <AccessRestricted message="You don't have permission to view the Dashboard." />;
 
   return (
     <div className="p-4 sm:p-8">

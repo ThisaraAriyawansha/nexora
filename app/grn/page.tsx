@@ -7,11 +7,13 @@ import { Search, Plus, Eye, X, PackagePlus, Download, Pencil } from "lucide-reac
 import Pagination from "@/components/ui/Pagination";
 import { rowsToCSV, downloadCSV } from "@/lib/csv";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import AccessRestricted from "@/components/ui/AccessRestricted";
 
 const PAGE_SIZE = 10;
 
 export default function GrnPage() {
   const { user, userDisplayName, can } = useAuth();
+  const canView = can("grn.view");
   const canManageStock = can("grn.create");
   const canAdminEdit = can("grn.edit");
 
@@ -31,9 +33,10 @@ export default function GrnPage() {
   const [savingEdit, setSavingEdit] = useState(false);
 
   useEffect(() => {
+    if (!canView) { setLoading(false); return; }
     getGrns().then((g) => { setGrns(g); setLoading(false); });
     if (canAdminEdit) getSuppliers().then(setSuppliers);
-  }, [canAdminEdit]);
+  }, [canView, canAdminEdit]);
 
   useEffect(() => {
     setPage(1);
@@ -113,6 +116,8 @@ export default function GrnPage() {
     }));
     downloadCSV(`grn-${new Date().toISOString().slice(0, 10)}.csv`, rowsToCSV(rows));
   };
+
+  if (!canView) return <AccessRestricted message="You don't have permission to view GRN." />;
 
   return (
     <div className="p-4 sm:p-8">

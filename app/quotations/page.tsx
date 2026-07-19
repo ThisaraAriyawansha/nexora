@@ -13,6 +13,7 @@ import { useReactToPrint } from "react-to-print";
 import Pagination from "@/components/ui/Pagination";
 import { useAuth } from "@/hooks/useAuth";
 import { downloadElementAsPdf } from "@/lib/pdf";
+import AccessRestricted from "@/components/ui/AccessRestricted";
 
 const PAGE_SIZE = 10;
 
@@ -73,14 +74,16 @@ export default function QuotationsPage() {
     }
   };
 
+  const canView = can("quotations.view");
   const canDelete = can("quotations.delete");
 
   const loadQuotations = () => getQuotations().then((q) => { setQuotations(q); setLoading(false); });
 
   useEffect(() => {
+    if (!canView) { setLoading(false); return; }
     loadQuotations();
     getProducts().then((p) => setProducts(p as Product[]));
-  }, []);
+  }, [canView]);
 
   useEffect(() => {
     setPage(1);
@@ -259,6 +262,8 @@ export default function QuotationsPage() {
       "badge-default";
     return <span className={`badge ${cls} capitalize`}>{status}</span>;
   };
+
+  if (!canView) return <AccessRestricted message="You don't have permission to view Quotations." />;
 
   return (
     <div className="p-4 sm:p-8">

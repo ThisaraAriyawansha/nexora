@@ -8,9 +8,11 @@ import { useAuth } from "@/hooks/useAuth";
 import { MainCategory, SubCategory } from "@/types";
 import { Plus, Edit2, Trash2, X, ChevronRight } from "lucide-react";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import AccessRestricted from "@/components/ui/AccessRestricted";
 
 export default function CategoriesPage() {
   const { can } = useAuth();
+  const canView = can("categories.view");
   const canDelete = can("categories.delete");
   const [mainCats, setMainCats] = useState<MainCategory[]>([]);
   const [subCats, setSubCats] = useState<SubCategory[]>([]);
@@ -77,6 +79,8 @@ export default function CategoriesPage() {
       setDeletingSub(false);
     }
   };
+
+  if (!canView) return <AccessRestricted message="You don't have permission to view Categories." />;
 
   return (
     <div className="p-4 sm:p-8">

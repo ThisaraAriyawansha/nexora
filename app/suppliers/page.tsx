@@ -10,6 +10,7 @@ import type { Supplier, SupplierPaymentMethod } from "@/types";
 import { Search, Plus, Eye, X, Truck, Pencil, Mail, Wallet, FileDown } from "lucide-react";
 import Pagination from "@/components/ui/Pagination";
 import { rowsToCSV, downloadCSV } from "@/lib/csv";
+import AccessRestricted from "@/components/ui/AccessRestricted";
 
 const PAGE_SIZE = 10;
 
@@ -38,6 +39,7 @@ function emptyContactForm() {
 
 export default function SuppliersPage() {
   const { user, userDisplayName, can } = useAuth();
+  const canView = can("suppliers.view");
   const canEditContact = can("suppliers.editContact");
   const canRecordPayment = can("suppliers.recordPayment");
   const canSendStatement = can("suppliers.sendStatement");
@@ -245,6 +247,8 @@ export default function SuppliersPage() {
     }));
     downloadCSV(`suppliers-${new Date().toISOString().slice(0, 10)}.csv`, rowsToCSV(rows));
   };
+
+  if (!canView) return <AccessRestricted message="You don't have permission to view Suppliers." />;
 
   return (
     <div className="p-4 sm:p-8">

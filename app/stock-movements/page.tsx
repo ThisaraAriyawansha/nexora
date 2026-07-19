@@ -4,6 +4,8 @@ import { getStockMovements, getProducts } from "@/lib/firestore";
 import { Search, Download } from "lucide-react";
 import Pagination from "@/components/ui/Pagination";
 import { rowsToCSV, downloadCSV } from "@/lib/csv";
+import { useAuth } from "@/hooks/useAuth";
+import AccessRestricted from "@/components/ui/AccessRestricted";
 
 const PAGE_SIZE = 20;
 
@@ -29,6 +31,8 @@ function locationLabel(loc?: string) {
 }
 
 export default function StockMovementsPage() {
+  const { can } = useAuth();
+  const canView = can("stockMovements.view");
   const [movements, setMovements] = useState<any[]>([]);
   const [products, setProducts] = useState<Map<string, { name: string; sku: string }>>(new Map());
   const [loading, setLoading] = useState(true);
@@ -39,12 +43,13 @@ export default function StockMovementsPage() {
   const [page, setPage] = useState(1);
 
   useEffect(() => {
+    if (!canView) { setLoading(false); return; }
     Promise.all([getStockMovements(), getProducts()]).then(([m, p]) => {
       setMovements(m);
       setProducts(new Map((p as any[]).map((prod) => [prod.id, { name: prod.name, sku: prod.sku }])));
       setLoading(false);
     });
-  }, []);
+  }, [canView]);
 
   useEffect(() => {
     setPage(1);
@@ -100,6 +105,8 @@ export default function StockMovementsPage() {
     });
     downloadCSV(`stock-movements-${new Date().toISOString().slice(0, 10)}.csv`, rowsToCSV(rows));
   };
+
+  if (!canView) return <AccessRestricted message="You don't have permission to view Stock Movements." />;
 
   return (
     <div className="p-4 sm:p-8">

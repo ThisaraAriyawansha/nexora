@@ -7,6 +7,7 @@ import { Search, Plus, Eye, X, PackageMinus, Download, Pencil } from "lucide-rea
 import Pagination from "@/components/ui/Pagination";
 import { rowsToCSV, downloadCSV } from "@/lib/csv";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import AccessRestricted from "@/components/ui/AccessRestricted";
 
 const PAGE_SIZE = 10;
 
@@ -14,6 +15,7 @@ const REASON_LABELS: Record<string, string> = { job: "Job / Repair", sale: "Sale
 
 export default function StockOutPage() {
   const { user, userDisplayName, can } = useAuth();
+  const canView = can("stockOut.view");
   const canManageStock = can("stockOut.create");
   const canAdminEdit = can("stockOut.edit");
 
@@ -31,9 +33,10 @@ export default function StockOutPage() {
   const [savingEdit, setSavingEdit] = useState(false);
 
   useEffect(() => {
+    if (!canView) { setLoading(false); return; }
     getStockOuts().then((s) => { setStockOuts(s); setLoading(false); });
     if (canAdminEdit) getJobs().then(setJobs);
-  }, [canAdminEdit]);
+  }, [canView, canAdminEdit]);
 
   useEffect(() => {
     setPage(1);
@@ -119,6 +122,8 @@ export default function StockOutPage() {
     }));
     downloadCSV(`stock-out-${new Date().toISOString().slice(0, 10)}.csv`, rowsToCSV(rows));
   };
+
+  if (!canView) return <AccessRestricted message="You don't have permission to view Stock Out." />;
 
   return (
     <div className="p-4 sm:p-8">

@@ -6,11 +6,13 @@ import { useAuth } from "@/hooks/useAuth";
 import { Search, Plus, Eye, X, ArrowLeftRight, Download, Pencil } from "lucide-react";
 import Pagination from "@/components/ui/Pagination";
 import { rowsToCSV, downloadCSV } from "@/lib/csv";
+import AccessRestricted from "@/components/ui/AccessRestricted";
 
 const PAGE_SIZE = 10;
 
 export default function StockTransferPage() {
   const { user, userDisplayName, can } = useAuth();
+  const canView = can("stockTransfer.view");
   const canManageStock = can("stockTransfer.create");
   const canAdminEdit = can("stockTransfer.edit");
 
@@ -26,8 +28,9 @@ export default function StockTransferPage() {
   const [savingEdit, setSavingEdit] = useState(false);
 
   useEffect(() => {
+    if (!canView) { setLoading(false); return; }
     getStockTransfers().then((t) => { setTransfers(t); setLoading(false); });
-  }, []);
+  }, [canView]);
 
   useEffect(() => {
     setPage(1);
@@ -92,6 +95,8 @@ export default function StockTransferPage() {
     }));
     downloadCSV(`stock-transfer-${new Date().toISOString().slice(0, 10)}.csv`, rowsToCSV(rows));
   };
+
+  if (!canView) return <AccessRestricted message="You don't have permission to view Stock Transfer." />;
 
   return (
     <div className="p-4 sm:p-8">

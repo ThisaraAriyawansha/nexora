@@ -4,12 +4,16 @@ import { getWarranties, claimWarranty } from "@/lib/firestore";
 import { Warranty } from "@/types";
 import { Search, Shield, AlertTriangle, Check, ShieldCheck } from "lucide-react";
 import Pagination from "@/components/ui/Pagination";
+import { useAuth } from "@/hooks/useAuth";
+import AccessRestricted from "@/components/ui/AccessRestricted";
 
 const PAGE_SIZE = 10;
 
 type StatusKey = "active" | "expiring" | "expired" | "claimed";
 
 export default function WarrantyPage() {
+  const { can } = useAuth();
+  const canView = can("warranty.view");
   const [warranties, setWarranties] = useState<Warranty[]>([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusKey | "">("");
@@ -84,6 +88,8 @@ export default function WarrantyPage() {
       setClaiming(false);
     }
   };
+
+  if (!canView) return <AccessRestricted message="You don't have permission to view Warranty." />;
 
   return (
     <div className="p-4 sm:p-8">

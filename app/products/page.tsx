@@ -10,11 +10,13 @@ import { Product, Brand, MainCategory, SubCategory } from "@/types";
 import { Plus, Search, Edit2, Trash2, Package, ChevronDown, X, Layers, Hash, Check } from "lucide-react";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Pagination from "@/components/ui/Pagination";
+import AccessRestricted from "@/components/ui/AccessRestricted";
 
 const PAGE_SIZE = 10;
 
 export default function ProductsPage() {
   const { user, userDisplayName, can } = useAuth();
+  const canView = can("products.view");
   const canEditProduct = can("products.edit");
   const canDeleteProduct = can("products.delete");
   const canEditBatch = can("products.batch.edit");
@@ -329,6 +331,8 @@ export default function ProductsPage() {
   const getBrand = (id: string) => brands.find(b => b.id === id)?.name || "—";
   const getMainCat = (id: string) => mainCats.find(c => c.id === id)?.name || "—";
   const getSubCat = (id: string) => subCats.find(c => c.id === id)?.name || "—";
+
+  if (!canView) return <AccessRestricted message="You don't have permission to view Products." />;
 
   return (
     <div className="p-4 sm:p-8">

@@ -5,9 +5,11 @@ import { useAuth } from "@/hooks/useAuth";
 import { Brand } from "@/types";
 import { Plus, Edit2, Trash2, X } from "lucide-react";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import AccessRestricted from "@/components/ui/AccessRestricted";
 
 export default function BrandsPage() {
   const { can } = useAuth();
+  const canView = can("brands.view");
   const canDelete = can("brands.delete");
   const [brands, setBrands] = useState<Brand[]>([]);
   const [showModal, setShowModal] = useState(false);
@@ -45,6 +47,8 @@ export default function BrandsPage() {
       setDeleting(false);
     }
   };
+
+  if (!canView) return <AccessRestricted message="You don't have permission to view Brands." />;
 
   return (
     <div className="p-4 sm:p-8">

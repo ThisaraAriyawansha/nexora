@@ -8,9 +8,11 @@ import BillPrint from "@/components/pos/BillPrint";
 import { useReactToPrint } from "react-to-print";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { downloadElementAsPdf, getElementPdfBase64 } from "@/lib/pdf";
+import AccessRestricted from "@/components/ui/AccessRestricted";
 
 export default function SalesPage() {
-  const { user, userDisplayName } = useAuth();
+  const { user, userDisplayName, can } = useAuth();
+  const canView = can("sales.view");
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [mainCats, setMainCats] = useState<MainCategory[]>([]);
@@ -424,6 +426,8 @@ export default function SalesPage() {
     setShowCustomerPicker(false);
     setNewCustomerForm({ name: "", phone: "", email: "" });
   };
+
+  if (!canView) return <AccessRestricted message="You don't have permission to view the POS / New Sale page." />;
 
   return (
     <div className="flex flex-col lg:flex-row lg:h-full lg:overflow-hidden">
