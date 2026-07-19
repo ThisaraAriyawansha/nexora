@@ -181,6 +181,89 @@ service cloud.firestore {
       allow create, update, delete: if isAdminOrAbove();
     }
 
+    // Cash shift open/close/reconciliation. This is the first collection
+    // where a non-Admin both creates AND later updates their own doc, so the
+    // update rule field-pins financial values with
+    // request.resource.data.X == resource.data.X the same way users/{userId}
+    // (above) pins role/status to stop self-escalation — here it stops a
+    // cashier from rewriting their own totals while closing out. No
+    // writeAuditLog trail is written for shift actions: auditLog/{id} below
+    // is create-gated to Admin+, so a Cashier-driven closeShift transaction
+    // would fail outright trying to write there (every existing
+    // writeAuditLog call site lives inside an Admin-gated adminUpdate*
+    // function). jobs/{id}/statusHistory sets the precedent for routine
+    // self-service staff actions instead using a plain isAuth() collection —
+    // here that's just the shift doc's own timestamped fields.
+    match /shifts/{id} {
+      allow read: if isAuth();
+
+      // Opening a shift: only for yourself, starting in the canonical
+      // open/zeroed shape — cash/card/transfer totals can't be seeded as
+      // anything but zero.
+      allow create: if isAuth() &&
+        request.resource.data.cashierId == request.auth.uid &&
+        request.resource.data.status == 'open' &&
+        request.resource.data.cashSalesTotal == 0 &&
+        request.resource.data.cardSalesTotal == 0 &&
+        request.resource.data.transferSalesTotal == 0 &&
+        request.resource.data.openingFloat >= 0;
+
+      // Three disjoint update paths:
+      //  1) The owning cashier closes their own open shift — financial
+      //     fields (float, running totals) must stay frozen; only status/
+      //     closedAt/expectedCash/countedCash/variance/closeNote/reviewStatus
+      //     may change.
+      //  2) Manager+ reviews an already-closed shift — every financial field
+      //     stays frozen, only the review fields move.
+      //  3) createSale (lib/firestore.ts) bumping running totals on the
+      //     caller's own still-open shift as each sale completes.
+      allow update: if isAuth() && (
+        (
+          resource.data.cashierId == request.auth.uid &&
+          resource.data.status == 'open' &&
+          request.resource.data.status == 'closed' &&
+          request.resource.data.cashierId == resource.data.cashierId &&
+          request.resource.data.openingFloat == resource.data.openingFloat &&
+          request.resource.data.cashSalesTotal == resource.data.cashSalesTotal &&
+          request.resource.data.cardSalesTotal == resource.data.cardSalesTotal &&
+          request.resource.data.transferSalesTotal == resource.data.transferSalesTotal
+        )
+        || (
+          isManagerOrAbove() &&
+          resource.data.status == 'closed' &&
+          request.resource.data.status == 'closed' &&
+          request.resource.data.cashierId == resource.data.cashierId &&
+          request.resource.data.openingFloat == resource.data.openingFloat &&
+          request.resource.data.expectedCash == resource.data.expectedCash &&
+          request.resource.data.countedCash == resource.data.countedCash &&
+          request.resource.data.variance == resource.data.variance &&
+          request.resource.data.cashSalesTotal == resource.data.cashSalesTotal &&
+          request.resource.data.cardSalesTotal == resource.data.cardSalesTotal &&
+          request.resource.data.transferSalesTotal == resource.data.transferSalesTotal
+        )
+        || (
+          resource.data.cashierId == request.auth.uid &&
+          resource.data.status == 'open' &&
+          request.resource.data.status == 'open' &&
+          request.resource.data.cashierId == resource.data.cashierId &&
+          request.resource.data.openingFloat == resource.data.openingFloat
+        )
+      );
+
+      allow delete: if isAdminOrAbove();
+    }
+
+    // General business expenses (rent, utilities, salaries, etc.) — distinct
+    // from supplierPayments, which settle inventory purchases already priced
+    // into each batch's costPrice. Manager+ can log one (same tier as GRN/
+    // Transfer/Stock-Out creation); only Admin+ can delete, matching the
+    // delete tier used everywhere else in this file.
+    match /expenses/{id} {
+      allow read: if isAuth();
+      allow create: if isManagerOrAbove();
+      allow update, delete: if isAdminOrAbove();
+    }
+
     // Generic Admin Edit audit trail — every writer of this collection is
     // itself an Admin-gated adminUpdate* function, so there's no reason to
     // leave the door open wider than that at the rules layer.

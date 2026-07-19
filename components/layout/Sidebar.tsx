@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Package, Layers, BookMarked,
   ShoppingCart, Receipt, Shield, Settings, LogOut, X,
   Users, FileText, Wrench, PackagePlus, ArrowLeftRight, PackageMinus, History,
-  Truck, ShieldCheck,
+  Truck, ShieldCheck, Wallet,
 } from "lucide-react";
 
 const nav = [
@@ -22,6 +22,7 @@ const nav = [
   { label: "Stock Out", href: "/stock-out", icon: PackageMinus },
   { label: "Stock Movements", href: "/stock-movements", icon: History },
   { label: "Suppliers", href: "/suppliers", icon: Truck },
+  { label: "Finance", href: "/finance", icon: Wallet, role: ["Super Admin", "Admin", "Manager"] },
   { label: "Brands", href: "/brands", icon: BookMarked },
   { label: "Categories", href: "/categories", icon: Layers },
   { label: "Customers", href: "/customers", icon: Users },
@@ -97,7 +98,7 @@ export default function Sidebar({
 
         {/* Nav */}
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-          {nav.map((item) => {
+          {nav.filter((item) => !item.role || item.role.includes(userRole ?? "")).map((item) => {
             const Icon = item.icon;
             const active = pathname === item.href || pathname.startsWith(item.href + "/");
             return (

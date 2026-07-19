@@ -8,7 +8,7 @@ import { initializeApp, deleteApp } from "firebase/app";
 import { getAuth, createUserWithEmailAndPassword, signOut } from "firebase/auth";
 import { db } from "./firebase";
 import { firebaseConfig } from "./firebase";
-import type { ShopSettings, UserProfile, JobStatus, StockLocation, StockMovementReason, SupplierPaymentMethod, SupplierPaymentStatus } from "@/types";
+import type { ShopSettings, UserProfile, JobStatus, StockLocation, StockMovementReason, SupplierPaymentMethod, SupplierPaymentStatus, ShiftStatus, ShiftReviewStatus, ExpenseCategory } from "@/types";
 import { diffFields, writeAuditLog } from "./audit";
 
 // ─── BRANDS ───────────────────────────────────────────────────────────────────
@@ -416,6 +416,8 @@ export interface SaleData {
   amountTendered?: number;
   changeAmount?: number;
   note?: string;
+  shiftId?: string | null;
+  shiftNo?: string;
 }
 
 // Discovers which batches a product could draw from, oldest first, scoped to
@@ -513,6 +515,15 @@ export async function createSale(data: SaleData) {
     const counterRef = doc(db, "counters", "invoice");
     const counterDoc = await tx.get(counterRef);
 
+    const shiftRef = data.shiftId ? doc(db, "shifts", data.shiftId) : null;
+    const shiftSnap = shiftRef ? await tx.get(shiftRef) : null;
+    if (shiftRef) {
+      const shift = shiftSnap!.exists() ? (shiftSnap!.data() as { status: string; cashierId: string }) : null;
+      if (!shift || shift.status !== "open" || shift.cashierId !== data.cashierId) {
+        throw new Error("Your shift is not open — reopen a shift before selling.");
+      }
+    }
+
     const batchSnaps: any[][] = await Promise.all(
       data.items.map((item, i) =>
         Promise.all(candidateBatchIds[i].map((id) => tx.get(doc(db, "products", item.productId, "batches", id))))
@@ -584,6 +595,12 @@ export async function createSale(data: SaleData) {
       invoiceNo,
       createdAt: serverTimestamp(),
     });
+
+    if (shiftRef) {
+      const totalsField =
+        data.paymentMethod === "cash" ? "cashSalesTotal" : data.paymentMethod === "card" ? "cardSalesTotal" : "transferSalesTotal";
+      tx.update(shiftRef, { [totalsField]: increment(data.totalAmount), salesCount: increment(1) });
+    }
 
     // Non-serialized items don't otherwise record which batch(es) FIFO drew
     // from, so persist that breakdown here — cancelSale needs it to restore
@@ -703,8 +720,11 @@ export async function createSale(data: SaleData) {
   });
 }
 
-export async function getSales() {
-  const snap = await getDocs(query(collection(db, "sales"), orderBy("createdAt", "desc")));
+export async function getSales(opts?: { fromDate?: Date; toDate?: Date }) {
+  const constraints = [];
+  if (opts?.fromDate) constraints.push(where("createdAt", ">=", Timestamp.fromDate(opts.fromDate)));
+  if (opts?.toDate) constraints.push(where("createdAt", "<=", Timestamp.fromDate(opts.toDate)));
+  const snap = await getDocs(query(collection(db, "sales"), ...constraints, orderBy("createdAt", "desc")));
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 
@@ -1939,6 +1959,173 @@ export async function adminUpdateSupplierPayment(
       performedBy,
     });
   });
+}
+
+// ─── SHIFTS (cash drawer open/close, daily reconciliation) ────────────────────
+
+export interface ShiftOpenData {
+  cashierId: string;
+  cashierName: string;
+  openingFloat: number;
+  openNote?: string;
+}
+
+// A cashier can only ever have one open shift at a time. Firestore
+// transactions can only tx.get() known doc refs, not run a `where` query, so
+// this check has to happen as a plain query before the transaction starts —
+// the same constraint createSale's getCandidateBatchIds already works around.
+// It's a soft guard, not a hard lock: a genuine double-click race could still
+// create two open shifts, but the worst case is a duplicate shift visible to
+// a Manager on the Finance page, not a financial-integrity break the way
+// overselling stock would be.
+export async function openShift(data: ShiftOpenData): Promise<{ shiftId: string; shiftNo: string }> {
+  if (data.openingFloat < 0) throw new Error("Opening float cannot be negative");
+  const existing = await getCurrentOpenShift(data.cashierId);
+  if (existing) throw new Error("You already have an open shift — close it before opening a new one.");
+
+  return runTransaction(db, async (tx) => {
+    const counterRef = doc(db, "counters", "shift");
+    const counterDoc = await tx.get(counterRef);
+    const current = counterDoc.exists() ? (counterDoc.data().value as number) : 0;
+    const next = current + 1;
+    tx.set(counterRef, { value: next });
+    const shiftNo = `SHIFT-${String(next).padStart(5, "0")}`;
+
+    const shiftRef = doc(collection(db, "shifts"));
+    tx.set(shiftRef, {
+      shiftNo,
+      cashierId: data.cashierId,
+      cashierName: data.cashierName,
+      status: "open",
+      openingFloat: data.openingFloat,
+      openedAt: serverTimestamp(),
+      openNote: data.openNote ?? "",
+      cashSalesTotal: 0,
+      cardSalesTotal: 0,
+      transferSalesTotal: 0,
+      salesCount: 0,
+    });
+
+    return { shiftId: shiftRef.id, shiftNo };
+  });
+}
+
+export async function getCurrentOpenShift(cashierId: string) {
+  const snap = await getDocs(
+    query(collection(db, "shifts"), where("cashierId", "==", cashierId), where("status", "==", "open"), limit(1))
+  );
+  return snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() };
+}
+
+export async function closeShift(
+  shiftId: string,
+  data: { countedCash: number; closeNote?: string; performedBy: { uid: string; name: string } }
+) {
+  if (data.countedCash < 0) throw new Error("Counted cash cannot be negative");
+  return runTransaction(db, async (tx) => {
+    const shiftRef = doc(db, "shifts", shiftId);
+    const shiftSnap = await tx.get(shiftRef);
+    if (!shiftSnap.exists()) throw new Error("Shift not found");
+    const shift = shiftSnap.data() as { status: string; cashierId: string; openingFloat: number; cashSalesTotal: number };
+    if (shift.status !== "open") throw new Error("Shift is already closed");
+    if (shift.cashierId !== data.performedBy.uid) throw new Error("Only the cashier who opened this shift can close it");
+
+    const expectedCash = shift.openingFloat + shift.cashSalesTotal;
+    const variance = data.countedCash - expectedCash;
+
+    tx.update(shiftRef, {
+      status: "closed",
+      closedAt: serverTimestamp(),
+      expectedCash,
+      countedCash: data.countedCash,
+      variance,
+      closeNote: data.closeNote ?? "",
+      reviewStatus: "pending",
+    });
+
+    return { expectedCash, countedCash: data.countedCash, variance };
+  });
+}
+
+export async function getShifts(opts?: { cashierId?: string; status?: ShiftStatus; fromDate?: Date; toDate?: Date }) {
+  const constraints = [];
+  if (opts?.cashierId) constraints.push(where("cashierId", "==", opts.cashierId));
+  if (opts?.status) constraints.push(where("status", "==", opts.status));
+  if (opts?.fromDate) constraints.push(where("openedAt", ">=", Timestamp.fromDate(opts.fromDate)));
+  if (opts?.toDate) constraints.push(where("openedAt", "<=", Timestamp.fromDate(opts.toDate)));
+  const snap = await getDocs(query(collection(db, "shifts"), ...constraints, orderBy("openedAt", "desc")));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+export async function getShiftById(shiftId: string) {
+  const snap = await getDoc(doc(db, "shifts", shiftId));
+  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+}
+
+export async function getSalesByShift(shiftId: string) {
+  const snap = await getDocs(query(collection(db, "sales"), where("shiftId", "==", shiftId), orderBy("createdAt", "desc")));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+export async function reviewShift(
+  shiftId: string,
+  data: { reviewStatus: Exclude<ShiftReviewStatus, "pending">; reviewNote?: string; performedBy: { uid: string; name: string } }
+) {
+  return updateDoc(doc(db, "shifts", shiftId), {
+    reviewStatus: data.reviewStatus,
+    reviewNote: data.reviewNote ?? "",
+    reviewedAt: serverTimestamp(),
+    reviewedById: data.performedBy.uid,
+    reviewedByName: data.performedBy.name,
+  });
+}
+
+// ─── EXPENSES (general business costs — rent, utilities, salaries, etc.) ──────
+
+export interface ExpenseData {
+  category: ExpenseCategory;
+  amount: number;
+  note?: string;
+  paidById: string;
+  paidByName: string;
+}
+
+export async function addExpense(data: ExpenseData): Promise<{ expenseId: string; expenseNo: string }> {
+  if (data.amount <= 0) throw new Error("Expense amount must be greater than zero");
+  return runTransaction(db, async (tx) => {
+    const counterRef = doc(db, "counters", "expense");
+    const counterDoc = await tx.get(counterRef);
+    const current = counterDoc.exists() ? (counterDoc.data().value as number) : 0;
+    const next = current + 1;
+    tx.set(counterRef, { value: next });
+    const expenseNo = `EXP-${String(next).padStart(5, "0")}`;
+
+    const expenseRef = doc(collection(db, "expenses"));
+    tx.set(expenseRef, {
+      expenseNo,
+      category: data.category,
+      amount: data.amount,
+      note: data.note ?? "",
+      paidById: data.paidById,
+      paidByName: data.paidByName,
+      createdAt: serverTimestamp(),
+    });
+
+    return { expenseId: expenseRef.id, expenseNo };
+  });
+}
+
+export async function getExpenses(opts?: { category?: ExpenseCategory; fromDate?: Date; toDate?: Date }) {
+  const constraints = [];
+  if (opts?.category) constraints.push(where("category", "==", opts.category));
+  if (opts?.fromDate) constraints.push(where("createdAt", ">=", Timestamp.fromDate(opts.fromDate)));
+  if (opts?.toDate) constraints.push(where("createdAt", "<=", Timestamp.fromDate(opts.toDate)));
+  const snap = await getDocs(query(collection(db, "expenses"), ...constraints, orderBy("createdAt", "desc")));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+export async function deleteExpense(expenseId: string) {
+  return deleteDoc(doc(db, "expenses", expenseId));
 }
 
 // ─── SHOP SETTINGS ────────────────────────────────────────────────────────────

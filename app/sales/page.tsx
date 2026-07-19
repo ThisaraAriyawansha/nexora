@@ -1,8 +1,8 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
-import { getProducts, getCustomers, addCustomer, createSale, getBatches, getAvailableUnits, getMainCategories, getSubCategories } from "@/lib/firestore";
-import { Product, Customer, CartItem, MainCategory, SubCategory } from "@/types";
-import { Search, Plus, Minus, Trash2, Printer, User, X, Check, Download, Mail } from "lucide-react";
+import { getProducts, getCustomers, addCustomer, createSale, getBatches, getAvailableUnits, getMainCategories, getSubCategories, getCurrentOpenShift, openShift, closeShift } from "@/lib/firestore";
+import { Product, Customer, CartItem, MainCategory, SubCategory, Shift } from "@/types";
+import { Search, Plus, Minus, Trash2, Printer, User, X, Check, Download, Mail, Wallet, Lock } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import BillPrint from "@/components/pos/BillPrint";
 import { useReactToPrint } from "react-to-print";
@@ -46,6 +46,20 @@ export default function SalesPage() {
   const [confirmingEmailBill, setConfirmingEmailBill] = useState(false);
   const [sendingBillEmail, setSendingBillEmail] = useState(false);
   const [billEmailNotice, setBillEmailNotice] = useState("");
+
+  const [currentShift, setCurrentShift] = useState<Shift | null>(null);
+  const [shiftLoading, setShiftLoading] = useState(true);
+  const [showOpenShift, setShowOpenShift] = useState(false);
+  const [openingFloatInput, setOpeningFloatInput] = useState("");
+  const [openNoteInput, setOpenNoteInput] = useState("");
+  const [openingShift, setOpeningShift] = useState(false);
+  const [openShiftError, setOpenShiftError] = useState("");
+  const [showCloseShift, setShowCloseShift] = useState(false);
+  const [countedCashInput, setCountedCashInput] = useState("");
+  const [closeNoteInput, setCloseNoteInput] = useState("");
+  const [closingShift, setClosingShift] = useState(false);
+  const [closeShiftError, setCloseShiftError] = useState("");
+  const [closeSummary, setCloseSummary] = useState<{ expectedCash: number; countedCash: number; variance: number } | null>(null);
 
   async function handleDownloadBill() {
     if (!printRef.current || downloadingBill) return;
@@ -105,6 +119,81 @@ export default function SalesPage() {
     }
     load();
   }, []);
+
+  useEffect(() => {
+    async function loadShift() {
+      if (!user) return;
+      setShiftLoading(true);
+      const shift = await getCurrentOpenShift(user.uid);
+      setCurrentShift(shift as Shift | null);
+      setShiftLoading(false);
+    }
+    loadShift();
+  }, [user]);
+
+  const handleOpenShift = async () => {
+    if (!user) return;
+    const openingFloat = Number(openingFloatInput);
+    if (!openingFloatInput || openingFloat < 0) {
+      setOpenShiftError("Enter a valid opening float");
+      return;
+    }
+    setOpeningShift(true);
+    setOpenShiftError("");
+    try {
+      const { shiftId, shiftNo } = await openShift({
+        cashierId: user.uid,
+        cashierName: userDisplayName || "Cashier",
+        openingFloat,
+        openNote: openNoteInput || undefined,
+      });
+      setCurrentShift({
+        id: shiftId,
+        shiftNo,
+        cashierId: user.uid,
+        cashierName: userDisplayName || "Cashier",
+        status: "open",
+        openingFloat,
+        openedAt: null,
+        cashSalesTotal: 0,
+        cardSalesTotal: 0,
+        transferSalesTotal: 0,
+        salesCount: 0,
+      });
+      setShowOpenShift(false);
+      setOpeningFloatInput("");
+      setOpenNoteInput("");
+    } catch (err: any) {
+      setOpenShiftError(err?.message || "Failed to open shift");
+    }
+    setOpeningShift(false);
+  };
+
+  const handleCloseShift = async () => {
+    if (!user || !currentShift) return;
+    const countedCash = Number(countedCashInput);
+    if (!countedCashInput || countedCash < 0) {
+      setCloseShiftError("Enter a valid counted cash amount");
+      return;
+    }
+    setClosingShift(true);
+    setCloseShiftError("");
+    try {
+      const result = await closeShift(currentShift.id, {
+        countedCash,
+        closeNote: closeNoteInput || undefined,
+        performedBy: { uid: user.uid, name: userDisplayName || "Cashier" },
+      });
+      setCloseSummary(result);
+      setCurrentShift(null);
+      setShowCloseShift(false);
+      setCountedCashInput("");
+      setCloseNoteInput("");
+    } catch (err: any) {
+      setCloseShiftError(err?.message || "Failed to close shift");
+    }
+    setClosingShift(false);
+  };
 
   const filterSubCatOptions = subCats.filter(s => s.mainCategoryId === filterMainCat);
 
@@ -254,6 +343,10 @@ export default function SalesPage() {
 
   const handleCheckout = async () => {
     if (cart.length === 0) return;
+    if (!currentShift) {
+      alert("No open shift — open a shift before selling.");
+      return;
+    }
     setProcessing(true);
     try {
       const result = await createSale({
@@ -274,7 +367,16 @@ export default function SalesPage() {
         amountTendered: Number(amountTendered) || totalAmount,
         changeAmount: Math.max(0, change),
         note,
+        shiftId: currentShift.id,
+        shiftNo: currentShift.shiftNo,
       });
+      setCurrentShift(prev => prev ? {
+        ...prev,
+        cashSalesTotal: prev.cashSalesTotal + (paymentMethod === "cash" ? totalAmount : 0),
+        cardSalesTotal: prev.cardSalesTotal + (paymentMethod === "card" ? totalAmount : 0),
+        transferSalesTotal: prev.transferSalesTotal + (paymentMethod === "transfer" ? totalAmount : 0),
+        salesCount: prev.salesCount + 1,
+      } : prev);
       // Warranties and loyalty-point adjustments are written server-side inside
       // createSale's own transaction, so they can't drift from the sale itself.
       setCompletedSale({ ...result, items: cart, subtotal, discountAmount: discount, pointsRedeemed: pointsToRedeem, totalAmount, customerName: selectedCustomer?.name || "Walk-in Customer", customerPhone: selectedCustomer?.phone, customerEmail: selectedCustomer?.email, cashierName: userDisplayName || "Cashier", paymentMethod, amountTendered: Number(amountTendered), changeAmount: Math.max(0, change) });
@@ -328,7 +430,32 @@ export default function SalesPage() {
       {/* Left: Product search */}
       <div className="flex flex-col border-b lg:border-b-0 lg:border-r border-zinc-200 lg:flex-1 lg:min-h-0 lg:overflow-hidden">
         <div className="px-4 sm:px-6 py-4 border-b border-zinc-100">
-          <h1 className="font-prata text-xl text-black mb-3">New Sale</h1>
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <h1 className="font-prata text-xl text-black">New Sale</h1>
+            {!shiftLoading && (
+              currentShift ? (
+                <button
+                  onClick={() => setShowCloseShift(true)}
+                  className="flex items-center gap-2 text-xs bg-zinc-50 border border-zinc-200 rounded px-3 py-1.5 hover:border-black transition-colors"
+                >
+                  <Wallet size={13} />
+                  <span className="font-medium">{currentShift.shiftNo}</span>
+                  <span className="text-zinc-400">
+                    Cash Rs. {currentShift.cashSalesTotal.toLocaleString()} · Card Rs. {currentShift.cardSalesTotal.toLocaleString()}
+                  </span>
+                  <span className="underline">Close Shift</span>
+                </button>
+              ) : (
+                <button
+                  onClick={() => setShowOpenShift(true)}
+                  className="flex items-center gap-2 text-xs bg-amber-50 text-amber-700 border border-amber-200 rounded px-3 py-1.5 hover:border-amber-400 transition-colors"
+                >
+                  <Lock size={13} />
+                  No open shift — tap to open
+                </button>
+              )
+            )}
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative flex-1 min-w-[200px]">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
@@ -559,9 +686,14 @@ export default function SalesPage() {
             </div>
           )}
 
+          {!shiftLoading && !currentShift && (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2 text-center">
+              Open a shift above before checking out.
+            </p>
+          )}
           <button
             onClick={handleCheckout}
-            disabled={cart.length === 0 || processing}
+            disabled={cart.length === 0 || processing || !currentShift}
             className="nexora-btn nexora-btn-primary w-full justify-center py-3 text-base"
           >
             {processing ? "Processing…" : `Checkout — Rs. ${totalAmount.toLocaleString()}`}
@@ -713,6 +845,140 @@ export default function SalesPage() {
               <input className="nexora-input" placeholder="Email (optional)" value={newCustomerForm.email} onChange={e => setNewCustomerForm({...newCustomerForm, email: e.target.value})} />
               <button type="submit" className="nexora-btn nexora-btn-primary w-full justify-center">Add Customer</button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Open shift modal */}
+      {showOpenShift && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-sm mx-4">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100">
+              <h2 className="font-prata text-base">Open Shift</h2>
+              <button onClick={() => setShowOpenShift(false)}><X size={16} className="text-zinc-400" /></button>
+            </div>
+            <div className="p-4 space-y-3">
+              <div>
+                <label className="text-xs text-zinc-500 mb-1 block">Opening cash float</label>
+                <input
+                  type="number"
+                  min={0}
+                  autoFocus
+                  className="nexora-input"
+                  placeholder="0"
+                  value={openingFloatInput}
+                  onChange={e => setOpeningFloatInput(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-zinc-500 mb-1 block">Note (optional)</label>
+                <input
+                  className="nexora-input"
+                  placeholder="e.g. Morning shift"
+                  value={openNoteInput}
+                  onChange={e => setOpenNoteInput(e.target.value)}
+                />
+              </div>
+              {openShiftError && <p className="text-xs text-red-600">{openShiftError}</p>}
+              <button
+                onClick={handleOpenShift}
+                disabled={openingShift}
+                className="nexora-btn nexora-btn-primary w-full justify-center"
+              >
+                {openingShift ? "Opening…" : "Open Shift"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Close shift modal */}
+      {showCloseShift && currentShift && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-sm mx-4">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100">
+              <h2 className="font-prata text-base">Close Shift — {currentShift.shiftNo}</h2>
+              <button onClick={() => setShowCloseShift(false)}><X size={16} className="text-zinc-400" /></button>
+            </div>
+            <div className="p-4 space-y-3">
+              <div className="bg-zinc-50 rounded p-3 space-y-1 text-sm">
+                <div className="flex justify-between"><span className="text-zinc-500">Opening float</span><span>Rs. {currentShift.openingFloat.toLocaleString()}</span></div>
+                <div className="flex justify-between"><span className="text-zinc-500">Cash sales</span><span>Rs. {currentShift.cashSalesTotal.toLocaleString()}</span></div>
+                <div className="flex justify-between"><span className="text-zinc-500">Card sales</span><span>Rs. {currentShift.cardSalesTotal.toLocaleString()}</span></div>
+                <div className="flex justify-between"><span className="text-zinc-500">Transfer sales</span><span>Rs. {currentShift.transferSalesTotal.toLocaleString()}</span></div>
+                <div className="flex justify-between font-medium border-t border-zinc-200 pt-1 mt-1">
+                  <span>Expected cash</span>
+                  <span>Rs. {(currentShift.openingFloat + currentShift.cashSalesTotal).toLocaleString()}</span>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-zinc-500 mb-1 block">Counted cash</label>
+                <input
+                  type="number"
+                  min={0}
+                  autoFocus
+                  className="nexora-input"
+                  placeholder="0"
+                  value={countedCashInput}
+                  onChange={e => setCountedCashInput(e.target.value)}
+                />
+                {countedCashInput !== "" && (
+                  (() => {
+                    const variance = Number(countedCashInput) - (currentShift.openingFloat + currentShift.cashSalesTotal);
+                    return (
+                      <p className={`text-xs mt-1 font-medium ${variance === 0 ? "text-green-600" : "text-red-600"}`}>
+                        {variance === 0 ? "Balanced" : variance > 0 ? `Over by Rs. ${variance.toLocaleString()}` : `Short by Rs. ${Math.abs(variance).toLocaleString()}`}
+                      </p>
+                    );
+                  })()
+                )}
+              </div>
+              <div>
+                <label className="text-xs text-zinc-500 mb-1 block">Note (optional)</label>
+                <input
+                  className="nexora-input"
+                  placeholder="e.g. Rs. 200 short — coin drawer miscount"
+                  value={closeNoteInput}
+                  onChange={e => setCloseNoteInput(e.target.value)}
+                />
+              </div>
+              {closeShiftError && <p className="text-xs text-red-600">{closeShiftError}</p>}
+              <button
+                onClick={handleCloseShift}
+                disabled={closingShift}
+                className="nexora-btn nexora-btn-primary w-full justify-center"
+              >
+                {closingShift ? "Closing…" : "Close Shift"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Close shift summary */}
+      {closeSummary && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-sm mx-4 text-center relative">
+            <button onClick={() => setCloseSummary(null)} className="absolute top-3 right-3 text-zinc-400 hover:text-zinc-600">
+              <X size={18} />
+            </button>
+            <div className="px-6 py-8">
+              <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4 ${closeSummary.variance === 0 ? "bg-green-100" : "bg-red-100"}`}>
+                <Wallet size={22} className={closeSummary.variance === 0 ? "text-green-600" : "text-red-600"} />
+              </div>
+              <h2 className="font-prata text-xl text-black mb-1">Shift Closed</h2>
+              <div className="text-sm text-zinc-500 space-y-1 mt-3">
+                <div className="flex justify-between"><span>Expected</span><span>Rs. {closeSummary.expectedCash.toLocaleString()}</span></div>
+                <div className="flex justify-between"><span>Counted</span><span>Rs. {closeSummary.countedCash.toLocaleString()}</span></div>
+                <div className={`flex justify-between font-medium ${closeSummary.variance === 0 ? "text-green-600" : "text-red-600"}`}>
+                  <span>Variance</span>
+                  <span>{closeSummary.variance === 0 ? "Balanced" : `Rs. ${closeSummary.variance.toLocaleString()}`}</span>
+                </div>
+              </div>
+              <button onClick={() => setCloseSummary(null)} className="nexora-btn nexora-btn-primary w-full justify-center mt-6">
+                Done
+              </button>
+            </div>
           </div>
         </div>
       )}

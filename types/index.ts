@@ -167,6 +167,49 @@ export interface Sale {
   amountTendered?: number;
   changeAmount?: number;
   note?: string;
+  shiftId?: string | null;
+  shiftNo?: string;
+  createdAt?: any;
+}
+
+export type ShiftStatus = "open" | "closed";
+export type ShiftReviewStatus = "pending" | "approved" | "flagged";
+
+export interface Shift {
+  id: string;
+  shiftNo: string;
+  cashierId: string;
+  cashierName: string;
+  status: ShiftStatus;
+  openingFloat: number;
+  openedAt: any;
+  openNote?: string;
+  cashSalesTotal: number;
+  cardSalesTotal: number;
+  transferSalesTotal: number;
+  salesCount: number;
+  closedAt?: any;
+  expectedCash?: number;
+  countedCash?: number;
+  variance?: number;
+  closeNote?: string;
+  reviewStatus?: ShiftReviewStatus;
+  reviewedAt?: any;
+  reviewedById?: string;
+  reviewedByName?: string;
+  reviewNote?: string;
+}
+
+export type ExpenseCategory = "rent" | "utilities" | "salaries" | "maintenance" | "marketing" | "other";
+
+export interface Expense {
+  id: string;
+  expenseNo: string;
+  category: ExpenseCategory;
+  amount: number;
+  note?: string;
+  paidById: string;
+  paidByName: string;
   createdAt?: any;
 }
 
