@@ -11,9 +11,9 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 const PAGE_SIZE = 10;
 
 export default function GrnPage() {
-  const { user, userDisplayName, userRole } = useAuth();
-  const canManageStock = userRole === "Super Admin" || userRole === "Admin" || userRole === "Manager";
-  const canAdminEdit = userRole === "Super Admin" || userRole === "Admin";
+  const { user, userDisplayName, can } = useAuth();
+  const canManageStock = can("grn.create");
+  const canAdminEdit = can("grn.edit");
 
   const [grns, setGrns] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);

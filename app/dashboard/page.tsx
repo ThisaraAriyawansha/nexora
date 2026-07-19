@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { getSales, getProducts, getCustomers, getAllSaleItems, getMainCategories } from "@/lib/firestore";
 import { TrendingUp, Package, Users, ShoppingBag, AlertTriangle, Wallet, Receipt, ArrowUp, ArrowDown, Award, Tag } from "lucide-react";
 import Link from "next/link";
+import { useAuth } from "@/hooks/useAuth";
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const PAYMENT_COLORS = ["#0a0a0a", "#a1a1aa", "#e4e4e7", "#71717a"];
@@ -14,6 +15,12 @@ function delta(current: number, previous: number): { pct: number; up: boolean } 
 }
 
 export default function DashboardPage() {
+  const { can } = useAuth();
+  // Same permission that gates the Finance page/nav link — Dashboard's revenue,
+  // profit, and payment-breakdown figures are the same class of financial data,
+  // so they're hidden from anyone without finance.view rather than getting their
+  // own separate permission key.
+  const canViewFinance = can("finance.view");
   const [stats, setStats] = useState({ sales: 0, revenue: 0, products: 0, customers: 0, lowStock: 0 });
   const [recentSales, setRecentSales] = useState<any[]>([]);
   const [weekTrend, setWeekTrend] = useState<{ label: string; date: string; amount: number }[]>([]);
@@ -164,9 +171,13 @@ export default function DashboardPage() {
   }, []);
 
   const statCards = [
-    { label: "Today's Revenue", value: `Rs. ${stats.revenue.toLocaleString()}`, icon: TrendingUp, sub: "Total sales today", delta: revenueDelta },
-    { label: "Today's Profit", value: `Rs. ${todayProfit.toLocaleString()}`, icon: Wallet, sub: "Revenue minus cost", delta: profitDelta },
-    { label: "Avg Order Value", value: `Rs. ${Math.round(avgOrderValue).toLocaleString()}`, icon: Receipt, sub: "Per sale, all time" },
+    ...(canViewFinance
+      ? [
+          { label: "Today's Revenue", value: `Rs. ${stats.revenue.toLocaleString()}`, icon: TrendingUp, sub: "Total sales today", delta: revenueDelta },
+          { label: "Today's Profit", value: `Rs. ${todayProfit.toLocaleString()}`, icon: Wallet, sub: "Revenue minus cost", delta: profitDelta },
+          { label: "Avg Order Value", value: `Rs. ${Math.round(avgOrderValue).toLocaleString()}`, icon: Receipt, sub: "Per sale, all time" },
+        ]
+      : []),
     { label: "Total Sales", value: stats.sales, icon: ShoppingBag, sub: "All time" },
     { label: "Products", value: stats.products, icon: Package, sub: "In inventory" },
     { label: "Customers", value: stats.customers, icon: Users, sub: "Registered" },
@@ -221,7 +232,8 @@ export default function DashboardPage() {
         })}
       </div>
 
-      {/* Analytics: weekly trend + payment breakdown */}
+      {/* Analytics: weekly trend + payment breakdown — revenue figures, so gated the same as the stat cards above */}
+      {canViewFinance && (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
         {/* 7-day revenue trend */}
         <div className="lg:col-span-2 nexora-card p-4 sm:p-5 min-w-0 overflow-hidden">
@@ -309,6 +321,7 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+      )}
 
       {/* Analytics: category breakdown + staff performance + low stock */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
@@ -388,7 +401,8 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Top products */}
+      {/* Top products — ranked by revenue, so gated the same as the cards above */}
+      {canViewFinance && (
       <div className="nexora-card mb-4">
         <div className="px-4 sm:px-6 py-4 border-b border-zinc-100">
           <h2 className="font-prata text-base text-black">Top Products</h2>
@@ -417,6 +431,7 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+      )}
 
       {/* Recent sales */}
       <div className="nexora-card">

@@ -3,6 +3,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
+import { PermissionKey } from "@/lib/permissions";
 import {
   LayoutDashboard, Package, Layers, BookMarked,
   ShoppingCart, Receipt, Shield, Settings, LogOut, X,
@@ -10,7 +11,7 @@ import {
   Truck, ShieldCheck, Wallet,
 } from "lucide-react";
 
-const nav = [
+const nav: { label: string; href: string; icon: React.ElementType; permKey?: PermissionKey }[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { label: "POS / New Sale", href: "/sales", icon: ShoppingCart },
   { label: "Bills", href: "/bills", icon: Receipt },
@@ -22,12 +23,12 @@ const nav = [
   { label: "Stock Out", href: "/stock-out", icon: PackageMinus },
   { label: "Stock Movements", href: "/stock-movements", icon: History },
   { label: "Suppliers", href: "/suppliers", icon: Truck },
-  { label: "Finance", href: "/finance", icon: Wallet, role: ["Super Admin", "Admin", "Manager"] },
+  { label: "Finance", href: "/finance", icon: Wallet, permKey: "finance.view" },
   { label: "Brands", href: "/brands", icon: BookMarked },
   { label: "Categories", href: "/categories", icon: Layers },
   { label: "Customers", href: "/customers", icon: Users },
   { label: "Warranty", href: "/warranty", icon: Shield },
-  { label: "Audit Log", href: "/audit-log", icon: ShieldCheck },
+  { label: "Audit Log", href: "/audit-log", icon: ShieldCheck, permKey: "auditLog.view" },
   { label: "Settings", href: "/settings", icon: Settings },
 ];
 
@@ -50,7 +51,7 @@ export default function Sidebar({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, userRole, logout } = useAuth();
+  const { user, userRole, logout, can } = useAuth();
 
   const handleLogout = async () => {
     await logout();
@@ -98,7 +99,7 @@ export default function Sidebar({
 
         {/* Nav */}
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-          {nav.filter((item) => !item.role || item.role.includes(userRole ?? "")).map((item) => {
+          {nav.filter((item) => !item.permKey || can(item.permKey)).map((item) => {
             const Icon = item.icon;
             const active = pathname === item.href || pathname.startsWith(item.href + "/");
             return (

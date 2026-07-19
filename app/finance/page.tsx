@@ -52,11 +52,11 @@ const formatDate = (ts: any) => {
 };
 
 export default function FinancePage() {
-  const { user, userDisplayName, userRole } = useAuth();
-  const canView = userRole === "Super Admin" || userRole === "Admin" || userRole === "Manager";
-  const canReview = canView;
-  const canAddExpense = canView;
-  const canDeleteExpense = userRole === "Super Admin" || userRole === "Admin";
+  const { user, userDisplayName, can } = useAuth();
+  const canView = can("finance.view");
+  const canReview = can("finance.reviewShift");
+  const canAddExpense = can("finance.addExpense");
+  const canDeleteExpense = can("finance.deleteExpense");
 
   const [tab, setTab] = useState<"overview" | "shifts" | "expenses">("overview");
 

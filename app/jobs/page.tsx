@@ -102,8 +102,8 @@ function toDateInputValue(ts: any): string {
 }
 
 export default function JobsPage() {
-  const { user, userDisplayName, userRole } = useAuth();
-  const canAdminEdit = userRole === "Super Admin" || userRole === "Admin";
+  const { user, userDisplayName, can } = useAuth();
+  const canAdminEdit = can("jobs.edit");
   const [jobs, setJobs] = useState<any[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [technicians, setTechnicians] = useState<UserProfile[]>([]);

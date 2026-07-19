@@ -12,7 +12,7 @@ import { downloadElementAsPdf, getElementPdfBase64 } from "@/lib/pdf";
 const PAGE_SIZE = 10;
 
 export default function BillsPage() {
-  const { user, userRole, userDisplayName } = useAuth();
+  const { user, userDisplayName, can } = useAuth();
   const [sales, setSales] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [fromDate, setFromDate] = useState("");
@@ -82,7 +82,8 @@ export default function BillsPage() {
     }
   };
 
-  const canCancelBills = userRole === "Super Admin" || userRole === "Admin";
+  const canEditBills = can("bills.edit");
+  const canCancelBills = can("bills.cancel");
 
   const loadSales = () => getSales().then((s) => { setSales(s); setLoading(false); });
 
@@ -313,7 +314,7 @@ export default function BillsPage() {
                     <Mail size={14} /> Send Mail
                   </button>
                 )}
-                {canCancelBills && viewSale.status !== "cancelled" && !editingBill && (
+                {canEditBills && viewSale.status !== "cancelled" && !editingBill && (
                   <button onClick={openEditBill} className="nexora-btn nexora-btn-outline text-sm">
                     <Pencil size={14} /> Edit Bill
                   </button>

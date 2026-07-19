@@ -10,9 +10,9 @@ import { rowsToCSV, downloadCSV } from "@/lib/csv";
 const PAGE_SIZE = 10;
 
 export default function StockTransferPage() {
-  const { user, userDisplayName, userRole } = useAuth();
-  const canManageStock = userRole === "Super Admin" || userRole === "Admin" || userRole === "Manager";
-  const canAdminEdit = userRole === "Super Admin" || userRole === "Admin";
+  const { user, userDisplayName, can } = useAuth();
+  const canManageStock = can("stockTransfer.create");
+  const canAdminEdit = can("stockTransfer.edit");
 
   const [transfers, setTransfers] = useState<any[]>([]);
   const [search, setSearch] = useState("");

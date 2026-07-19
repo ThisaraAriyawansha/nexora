@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { getProducts, getSuppliers, createGrn } from "@/lib/firestore";
 import { useAuth } from "@/hooks/useAuth";
 import { Product, Supplier } from "@/types";
-import { Plus, Trash2, ArrowLeft } from "lucide-react";
+import { Plus, Trash2, ArrowLeft, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 
@@ -22,7 +22,8 @@ interface DraftItem {
 
 export default function NewGrnPage() {
   const router = useRouter();
-  const { user, userDisplayName } = useAuth();
+  const { user, userDisplayName, can, loading: authLoading } = useAuth();
+  const canCreate = can("grn.create");
   const [products, setProducts] = useState<Product[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [supplierId, setSupplierId] = useState("");
@@ -110,6 +111,18 @@ export default function NewGrnPage() {
       setSaving(false);
     }
   };
+
+  if (!authLoading && !canCreate) {
+    return (
+      <div className="p-4 sm:p-8">
+        <div className="nexora-card p-8 text-center max-w-md mx-auto">
+          <ShieldCheck size={24} className="text-zinc-300 mx-auto mb-3" />
+          <h1 className="font-prata text-lg text-black mb-1">Access Restricted</h1>
+          <p className="text-sm text-zinc-500">You don't have permission to create a GRN.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 sm:p-8 max-w-3xl">

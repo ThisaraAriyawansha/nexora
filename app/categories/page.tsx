@@ -4,11 +4,14 @@ import {
   getMainCategories, addMainCategory, updateMainCategory, deleteMainCategory,
   getSubCategories, addSubCategory, updateSubCategory, deleteSubCategory,
 } from "@/lib/firestore";
+import { useAuth } from "@/hooks/useAuth";
 import { MainCategory, SubCategory } from "@/types";
 import { Plus, Edit2, Trash2, X, ChevronRight } from "lucide-react";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 export default function CategoriesPage() {
+  const { can } = useAuth();
+  const canDelete = can("categories.delete");
   const [mainCats, setMainCats] = useState<MainCategory[]>([]);
   const [subCats, setSubCats] = useState<SubCategory[]>([]);
   const [selectedMain, setSelectedMain] = useState<MainCategory | null>(null);
@@ -111,10 +114,12 @@ export default function CategoriesPage() {
                     className={`p-1.5 rounded hover:bg-zinc-200 transition-colors ${selectedMain?.id === cat.id ? "text-white hover:bg-zinc-700" : "text-zinc-400"}`}>
                     <Edit2 size={11} />
                   </button>
-                  <button onClick={() => setDeleteMainId(cat.id)}
-                    className={`p-1.5 rounded hover:bg-red-100 transition-colors ${selectedMain?.id === cat.id ? "text-red-300 hover:text-red-600" : "text-zinc-400 hover:text-red-500"}`}>
-                    <Trash2 size={11} />
-                  </button>
+                  {canDelete && (
+                    <button onClick={() => setDeleteMainId(cat.id)}
+                      className={`p-1.5 rounded hover:bg-red-100 transition-colors ${selectedMain?.id === cat.id ? "text-red-300 hover:text-red-600" : "text-zinc-400 hover:text-red-500"}`}>
+                      <Trash2 size={11} />
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -149,10 +154,12 @@ export default function CategoriesPage() {
                     className="p-1.5 rounded text-zinc-400 hover:text-black hover:bg-zinc-100 transition-colors">
                     <Edit2 size={11} />
                   </button>
-                  <button onClick={() => setDeleteSubId(sub.id)}
-                    className="p-1.5 rounded text-zinc-400 hover:text-red-500 hover:bg-red-50 transition-colors">
-                    <Trash2 size={11} />
-                  </button>
+                  {canDelete && (
+                    <button onClick={() => setDeleteSubId(sub.id)}
+                      className="p-1.5 rounded text-zinc-400 hover:text-red-500 hover:bg-red-50 transition-colors">
+                      <Trash2 size={11} />
+                    </button>
+                  )}
                 </div>
               </div>
             ))}

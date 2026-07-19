@@ -33,7 +33,7 @@ function defaultValidUntil() {
 }
 
 export default function QuotationsPage() {
-  const { user, userRole, userDisplayName } = useAuth();
+  const { user, userDisplayName, can } = useAuth();
   const [quotations, setQuotations] = useState<any[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [search, setSearch] = useState("");
@@ -73,7 +73,7 @@ export default function QuotationsPage() {
     }
   };
 
-  const canDelete = userRole === "Super Admin" || userRole === "Admin";
+  const canDelete = can("quotations.delete");
 
   const loadQuotations = () => getQuotations().then((q) => { setQuotations(q); setLoading(false); });
 

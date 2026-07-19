@@ -37,8 +37,11 @@ function emptyContactForm() {
 }
 
 export default function SuppliersPage() {
-  const { user, userDisplayName, userRole } = useAuth();
-  const canAdminEdit = userRole === "Super Admin" || userRole === "Admin";
+  const { user, userDisplayName, can } = useAuth();
+  const canEditContact = can("suppliers.editContact");
+  const canRecordPayment = can("suppliers.recordPayment");
+  const canSendStatement = can("suppliers.sendStatement");
+  const canEditPayment = can("suppliers.editPayment");
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
@@ -371,9 +374,11 @@ export default function SuppliersPage() {
                   <p className="text-sm text-zinc-600">{viewSupplier.phone} {viewSupplier.email ? `· ${viewSupplier.email}` : ""}</p>
                   {viewSupplier.address && <p className="text-xs text-zinc-400 mt-0.5">{viewSupplier.address}</p>}
                 </div>
-                <button onClick={() => openEditContact(viewSupplier)} className="nexora-btn nexora-btn-ghost text-xs py-1.5 px-2.5">
-                  <Pencil size={12} /> Edit Contact
-                </button>
+                {canEditContact && (
+                  <button onClick={() => openEditContact(viewSupplier)} className="nexora-btn nexora-btn-ghost text-xs py-1.5 px-2.5">
+                    <Pencil size={12} /> Edit Contact
+                  </button>
+                )}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-6">
@@ -395,19 +400,23 @@ export default function SuppliersPage() {
                 </div>
               </div>
 
-              {canAdminEdit && (
+              {(canRecordPayment || canSendStatement) && (
                 <div className="flex flex-wrap gap-2 mb-4">
-                  <button onClick={() => setRecordingPayment((v) => !v)} className="nexora-btn nexora-btn-outline text-sm">
-                    <Wallet size={14} /> Record Payment
-                  </button>
-                  <button
-                    onClick={handleSendStatement}
-                    disabled={sendingStatement || (viewSupplier.balance ?? 0) <= 0 || !viewSupplier.email}
-                    title={!viewSupplier.email ? "No email on file" : (viewSupplier.balance ?? 0) <= 0 ? "Nothing outstanding" : ""}
-                    className="nexora-btn nexora-btn-outline text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <Mail size={14} /> {sendingStatement ? "Sending…" : "Send Statement"}
-                  </button>
+                  {canRecordPayment && (
+                    <button onClick={() => setRecordingPayment((v) => !v)} className="nexora-btn nexora-btn-outline text-sm">
+                      <Wallet size={14} /> Record Payment
+                    </button>
+                  )}
+                  {canSendStatement && (
+                    <button
+                      onClick={handleSendStatement}
+                      disabled={sendingStatement || (viewSupplier.balance ?? 0) <= 0 || !viewSupplier.email}
+                      title={!viewSupplier.email ? "No email on file" : (viewSupplier.balance ?? 0) <= 0 ? "Nothing outstanding" : ""}
+                      className="nexora-btn nexora-btn-outline text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Mail size={14} /> {sendingStatement ? "Sending…" : "Send Statement"}
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -502,7 +511,7 @@ export default function SuppliersPage() {
                             <td className="py-2.5">{METHOD_LABEL[p.method] || p.method}</td>
                             <td className="py-2.5 text-right">Rs. {p.balanceAfter?.toLocaleString()}</td>
                             <td className="py-2.5 text-right">
-                              {canAdminEdit && (
+                              {canEditPayment && (
                                 <button onClick={() => openEditPayment(p)} className="text-zinc-400 hover:text-black"><Pencil size={13} /></button>
                               )}
                             </td>

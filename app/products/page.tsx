@@ -14,8 +14,11 @@ import Pagination from "@/components/ui/Pagination";
 const PAGE_SIZE = 10;
 
 export default function ProductsPage() {
-  const { user, userDisplayName, userRole } = useAuth();
-  const canAdminEdit = userRole === "Super Admin" || userRole === "Admin";
+  const { user, userDisplayName, can } = useAuth();
+  const canEditProduct = can("products.edit");
+  const canDeleteProduct = can("products.delete");
+  const canEditBatch = can("products.batch.edit");
+  const canDeleteUnit = can("products.unit.delete");
   const [products, setProducts] = useState<Product[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [mainCats, setMainCats] = useState<MainCategory[]>([]);
@@ -429,9 +432,13 @@ export default function ProductsPage() {
                   <td className="px-4 py-3">
                     <button
                       onClick={() => toggleActive(p)}
-                      disabled={togglingId === p.id}
+                      disabled={togglingId === p.id || !canEditProduct}
                       className="flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-                      title={p.active !== false ? "Active — visible on POS. Click to deactivate." : "Inactive — hidden from POS. Click to reactivate."}
+                      title={
+                        !canEditProduct
+                          ? "You don't have permission to edit products."
+                          : p.active !== false ? "Active — visible on POS. Click to deactivate." : "Inactive — hidden from POS. Click to reactivate."
+                      }
                     >
                       <span className={`text-xs font-medium ${p.active !== false ? "text-black" : "text-zinc-300"}`}>Active</span>
                       <span className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${p.active !== false ? "bg-green-500" : "bg-zinc-200"}`}>
@@ -444,12 +451,16 @@ export default function ProductsPage() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <button onClick={() => openEdit(p)} className="nexora-btn nexora-btn-ghost py-1 px-2">
-                        <Edit2 size={13} />
-                      </button>
-                      <button onClick={() => setDeleteId(p.id)} className="nexora-btn nexora-btn-ghost py-1 px-2 text-red-500">
-                        <Trash2 size={13} />
-                      </button>
+                      {canEditProduct && (
+                        <button onClick={() => openEdit(p)} className="nexora-btn nexora-btn-ghost py-1 px-2">
+                          <Edit2 size={13} />
+                        </button>
+                      )}
+                      {canDeleteProduct && (
+                        <button onClick={() => setDeleteId(p.id)} className="nexora-btn nexora-btn-ghost py-1 px-2 text-red-500">
+                          <Trash2 size={13} />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -642,7 +653,7 @@ export default function ProductsPage() {
                           {batchModalProduct?.trackSerial && (
                             <button onClick={() => openManageSerials(b)} className="nexora-btn nexora-btn-ghost p-1.5" title="Manage serial numbers"><Hash size={12} /></button>
                           )}
-                          {canAdminEdit && (
+                          {canEditBatch && (
                             <button onClick={() => openEditBatch(b)} className="nexora-btn nexora-btn-ghost p-1.5" title="Edit price"><Edit2 size={12} /></button>
                           )}
                         </div>
@@ -732,9 +743,11 @@ export default function ProductsPage() {
                             defaultValue={u.serialNumber}
                             onBlur={e => e.target.value.trim() !== u.serialNumber && handleSaveUnitSerial(u.id, e.target.value)}
                           />
-                          <button type="button" onClick={() => handleDeleteUnit(u.id, manageSerialsBatch.id, u.serialNumber)} className="text-zinc-300 hover:text-red-500 shrink-0">
-                            <Trash2 size={13} />
-                          </button>
+                          {canDeleteUnit && (
+                            <button type="button" onClick={() => handleDeleteUnit(u.id, manageSerialsBatch.id, u.serialNumber)} className="text-zinc-300 hover:text-red-500 shrink-0">
+                              <Trash2 size={13} />
+                            </button>
+                          )}
                         </>
                       )}
                     </div>

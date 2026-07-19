@@ -1,11 +1,14 @@
 "use client";
 import { useEffect, useState } from "react";
 import { getBrands, addBrand, updateBrand, deleteBrand } from "@/lib/firestore";
+import { useAuth } from "@/hooks/useAuth";
 import { Brand } from "@/types";
 import { Plus, Edit2, Trash2, X } from "lucide-react";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 export default function BrandsPage() {
+  const { can } = useAuth();
+  const canDelete = can("brands.delete");
   const [brands, setBrands] = useState<Brand[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Brand | null>(null);
@@ -64,7 +67,9 @@ export default function BrandsPage() {
             </div>
             <div className="flex gap-1 ml-2">
               <button onClick={() => openEdit(brand)} className="nexora-btn nexora-btn-ghost p-1.5"><Edit2 size={12} /></button>
-              <button onClick={() => setDeleteId(brand.id)} className="nexora-btn nexora-btn-ghost p-1.5 text-red-500"><Trash2 size={12} /></button>
+              {canDelete && (
+                <button onClick={() => setDeleteId(brand.id)} className="nexora-btn nexora-btn-ghost p-1.5 text-red-500"><Trash2 size={12} /></button>
+              )}
             </div>
           </div>
         ))}

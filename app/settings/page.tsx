@@ -4,11 +4,12 @@ import { useAuth } from "@/hooks/useAuth";
 import {
   getShopSettings, updateShopSettings,
   createTeamUser, getTeamUsers, updateTeamUser, getUsageStats, CollectionStat, cleanCollection,
-  getCollectionData, migrateStockToLocations, getStockLocationMigrationStatus,
+  getCollectionData, migrateStockToLocations, getStockLocationMigrationStatus, backfillUserPermissions,
 } from "@/lib/firestore";
-import { Plus, X, Store, Users, CheckCircle, AlertCircle, Pencil, ToggleLeft, ToggleRight, Database, HardDrive, BookOpen, PenLine, Trash2, AlertTriangle, Download, Loader2, BellRing, Boxes } from "lucide-react";
+import { Plus, X, Store, Users, CheckCircle, AlertCircle, Pencil, ToggleLeft, ToggleRight, Database, HardDrive, BookOpen, PenLine, Trash2, AlertTriangle, Download, Loader2, BellRing, Boxes, ShieldCheck } from "lucide-react";
 import { UserProfile } from "@/types";
 import { rowsToCSV, downloadCSV } from "@/lib/csv";
+import { PermissionKey, PERMISSION_CATALOG, getDefaultPermissions, isEditableRole, canManagePermissionsFor } from "@/lib/permissions";
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -58,6 +59,16 @@ function UsageBar({ label, used, total, usedLabel, totalLabel, icon: Icon }: {
   );
 }
 
+const PERMISSION_MODULES: { module: string; keys: PermissionKey[] }[] = (() => {
+  const order: string[] = [];
+  const byModule = new Map<string, PermissionKey[]>();
+  for (const def of PERMISSION_CATALOG) {
+    if (!byModule.has(def.module)) { byModule.set(def.module, []); order.push(def.module); }
+    byModule.get(def.module)!.push(def.key);
+  }
+  return order.map((module) => ({ module, keys: byModule.get(module)! }));
+})();
+
 function getInitials(name: string | null | undefined, email: string | null | undefined): string {
   if (name && name.trim()) {
     const parts = name.trim().split(" ");
@@ -89,7 +100,9 @@ export default function SettingsPage() {
   const [userMsg, setUserMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
-  const [editForm, setEditForm] = useState({ displayName: "", role: "" });
+  const [editForm, setEditForm] = useState<{ displayName: string; role: string; permissions: Record<PermissionKey, boolean> }>({
+    displayName: "", role: "", permissions: getDefaultPermissions("Admin"),
+  });
   const [savingEdit, setSavingEdit] = useState(false);
   const [editMsg, setEditMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [togglingUid, setTogglingUid] = useState<string | null>(null);
@@ -101,6 +114,9 @@ export default function SettingsPage() {
   const [cleaning, setCleaning] = useState(false);
   const [cleanResult, setCleanResult] = useState<{ count: number } | null>(null);
   const [exportingKey, setExportingKey] = useState<string | null>(null);
+
+  const [backfilling, setBackfilling] = useState(false);
+  const [backfillResult, setBackfillResult] = useState<{ usersTouched: number } | null>(null);
 
   const [migrationStatus, setMigrationStatus] = useState<{ done: boolean; migratedAt?: any; migratedByName?: string } | null>(null);
   const [loadingMigrationStatus, setLoadingMigrationStatus] = useState(true);
@@ -239,8 +255,16 @@ export default function SettingsPage() {
 
   const openEditModal = (u: UserProfile) => {
     setEditingUser(u);
-    setEditForm({ displayName: u.displayName, role: u.role });
+    setEditForm({
+      displayName: u.displayName,
+      role: u.role,
+      permissions: isEditableRole(u.role) ? { ...getDefaultPermissions(u.role), ...(u.permissions ?? {}) } : getDefaultPermissions("Admin"),
+    });
     setEditMsg(null);
+  };
+
+  const handleRoleChange = (role: string) => {
+    setEditForm((prev) => ({ ...prev, role, permissions: getDefaultPermissions(role) }));
   };
 
   const handleEditUser = async (e: React.FormEvent) => {
@@ -249,9 +273,11 @@ export default function SettingsPage() {
     setSavingEdit(true);
     setEditMsg(null);
     try {
-      await updateTeamUser(editingUser.uid, { displayName: editForm.displayName, role: editForm.role });
+      const payload: Parameters<typeof updateTeamUser>[1] = { displayName: editForm.displayName, role: editForm.role };
+      if (canManagePermissionsFor(userRole ?? "", editForm.role)) payload.permissions = editForm.permissions;
+      await updateTeamUser(editingUser.uid, payload);
       setTeamUsers((prev) =>
-        prev.map((u) => u.uid === editingUser.uid ? { ...u, displayName: editForm.displayName, role: editForm.role } : u)
+        prev.map((u) => u.uid === editingUser.uid ? { ...u, ...payload } : u)
       );
       setEditMsg({ type: "success", text: "Updated successfully." });
       setTimeout(() => { setEditingUser(null); setEditMsg(null); }, 1000);
@@ -259,6 +285,19 @@ export default function SettingsPage() {
       setEditMsg({ type: "error", text: "Failed to update. Please try again." });
     } finally {
       setSavingEdit(false);
+    }
+  };
+
+  const handleBackfillPermissions = async () => {
+    if (!canClean || backfilling) return;
+    setBackfilling(true);
+    setBackfillResult(null);
+    try {
+      const result = await backfillUserPermissions();
+      setBackfillResult(result);
+      getTeamUsers().then(setTeamUsers);
+    } finally {
+      setBackfilling(false);
     }
   };
 
@@ -379,13 +418,31 @@ export default function SettingsPage() {
               <p className="text-xs text-zinc-400 mt-0.5">Users who can log in to Nexora POS</p>
             </div>
           </div>
-          <button
-            onClick={() => { setShowAddUserModal(true); setUserMsg(null); }}
-            className="nexora-btn nexora-btn-primary text-xs py-1.5 px-3 self-start sm:self-auto"
-          >
-            <Plus size={12} /> Add User
-          </button>
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <button
+              onClick={handleBackfillPermissions}
+              disabled={backfilling}
+              title="Fill in any missing permission entries for Manager/Cashier/Technician accounts"
+              className="nexora-btn nexora-btn-outline text-xs py-1.5 px-3 disabled:opacity-60"
+            >
+              {backfilling ? <Loader2 size={12} className="animate-spin" /> : <ShieldCheck size={12} />}
+              {backfilling ? "Syncing…" : "Sync Permissions"}
+            </button>
+            <button
+              onClick={() => { setShowAddUserModal(true); setUserMsg(null); }}
+              className="nexora-btn nexora-btn-primary text-xs py-1.5 px-3"
+            >
+              <Plus size={12} /> Add User
+            </button>
+          </div>
         </div>
+        {backfillResult && (
+          <p className="text-xs text-zinc-500 px-4 sm:px-6 py-2 border-b border-zinc-50">
+            {backfillResult.usersTouched === 0
+              ? "Every account already has a complete permissions map."
+              : `Filled in permissions for ${backfillResult.usersTouched} account${backfillResult.usersTouched === 1 ? "" : "s"}.`}
+          </p>
+        )}
         <div className="divide-y divide-zinc-50">
           {(() => {
             const visibleTeamUsers = teamUsers.filter((u) => isSuperAdmin || u.role !== "Super Admin");
@@ -654,12 +711,12 @@ export default function SettingsPage() {
       {/* Edit User modal */}
       {editingUser && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl w-full max-w-sm mx-4">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-100">
+          <div className="bg-white rounded-xl w-full max-w-lg mx-4 max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-100 shrink-0">
               <h2 className="font-prata text-lg">Edit User</h2>
               <button onClick={() => setEditingUser(null)}><X size={16} className="text-zinc-400" /></button>
             </div>
-            <form onSubmit={handleEditUser} className="px-6 py-4 space-y-3">
+            <form onSubmit={handleEditUser} className="px-6 py-4 space-y-3 overflow-y-auto flex-1 min-h-0">
               <div>
                 <label className="text-xs text-zinc-500 mb-1 block">Full Name</label>
                 <input
@@ -678,7 +735,7 @@ export default function SettingsPage() {
                 <select
                   className="nexora-input"
                   value={editForm.role}
-                  onChange={e => setEditForm({ ...editForm, role: e.target.value })}
+                  onChange={e => handleRoleChange(e.target.value)}
                 >
                   {isSuperAdmin && <option value="Super Admin">Super Admin</option>}
                   <option value="Admin">Admin</option>
@@ -687,6 +744,40 @@ export default function SettingsPage() {
                   <option value="Technician">Technician</option>
                 </select>
               </div>
+              {canManagePermissionsFor(userRole ?? "", editForm.role) && (
+                <div className="border border-zinc-100 rounded-lg p-3">
+                  <p className="text-xs text-zinc-500 mb-2">
+                    Permissions for this {editForm.role} — untick anything they shouldn't be able to do.
+                  </p>
+                  <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
+                    {PERMISSION_MODULES.map(({ module, keys }) => (
+                      <div key={module}>
+                        <p className="text-[11px] font-medium text-zinc-400 uppercase tracking-wider mb-1">{module}</p>
+                        <div className="space-y-1">
+                          {keys.map((key) => {
+                            const def = PERMISSION_CATALOG.find((p) => p.key === key)!;
+                            return (
+                              <label key={key} className="flex items-center gap-2 text-sm text-black cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={!!editForm.permissions[key]}
+                                  onChange={(e) =>
+                                    setEditForm((prev) => ({
+                                      ...prev,
+                                      permissions: { ...prev.permissions, [key]: e.target.checked },
+                                    }))
+                                  }
+                                />
+                                {def.label}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {editMsg && (
                 <p className={`flex items-center gap-1.5 text-xs ${editMsg.type === "success" ? "text-green-600" : "text-red-500"}`}>
                   {editMsg.type === "success" ? <CheckCircle size={13} /> : <AlertCircle size={13} />}

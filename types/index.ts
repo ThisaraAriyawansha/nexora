@@ -409,6 +409,10 @@ export interface UserProfile {
   phone?: string;
   role: string;
   status?: "active" | "inactive";
+  // Per-action permission overrides — only meaningful when role is
+  // Manager/Cashier/Technician. Admin/Super Admin are always unconditionally
+  // allowed and never read this. See lib/permissions.ts.
+  permissions?: Partial<Record<import("@/lib/permissions").PermissionKey, boolean>>;
   createdAt?: any;
   updatedAt?: any;
 }

@@ -13,9 +13,9 @@ const PAGE_SIZE = 10;
 const REASON_LABELS: Record<string, string> = { job: "Job / Repair", sale: "Sale", other: "Other" };
 
 export default function StockOutPage() {
-  const { user, userDisplayName, userRole } = useAuth();
-  const canManageStock = userRole === "Super Admin" || userRole === "Admin" || userRole === "Manager";
-  const canAdminEdit = userRole === "Super Admin" || userRole === "Admin";
+  const { user, userDisplayName, can } = useAuth();
+  const canManageStock = can("stockOut.create");
+  const canAdminEdit = can("stockOut.edit");
 
   const [stockOuts, setStockOuts] = useState<any[]>([]);
   const [jobs, setJobs] = useState<any[]>([]);

@@ -20,8 +20,8 @@ const COLLECTION_LABELS: Record<string, string> = {
 const COLLECTION_OPTIONS = Object.entries(COLLECTION_LABELS).map(([value, label]) => ({ value, label }));
 
 export default function AuditLogPage() {
-  const { userRole } = useAuth();
-  const canView = userRole === "Super Admin" || userRole === "Admin";
+  const { can } = useAuth();
+  const canView = can("auditLog.view");
 
   const [entries, setEntries] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);

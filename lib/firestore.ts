@@ -10,6 +10,7 @@ import { db } from "./firebase";
 import { firebaseConfig } from "./firebase";
 import type { ShopSettings, UserProfile, JobStatus, StockLocation, StockMovementReason, SupplierPaymentMethod, SupplierPaymentStatus, ShiftStatus, ShiftReviewStatus, ExpenseCategory } from "@/types";
 import { diffFields, writeAuditLog } from "./audit";
+import { isEditableRole, getDefaultPermissions, PERMISSION_CATALOG } from "./permissions";
 
 // ─── BRANDS ───────────────────────────────────────────────────────────────────
 
@@ -2161,7 +2162,7 @@ export async function upsertUserProfile(uid: string, data: Partial<Omit<UserProf
 
 export async function updateTeamUser(
   uid: string,
-  data: Partial<Pick<UserProfile, "displayName" | "role" | "status">>
+  data: Partial<Pick<UserProfile, "displayName" | "role" | "status" | "permissions">>
 ) {
   return updateDoc(doc(db, "users", uid), { ...data, updatedAt: serverTimestamp() });
 }
@@ -2200,6 +2201,7 @@ export async function createTeamUser(
       displayName,
       role,
       status: "active",
+      ...(isEditableRole(role) ? { permissions: getDefaultPermissions(role) } : {}),
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
@@ -2207,6 +2209,24 @@ export async function createTeamUser(
     await signOut(secondaryAuth);
     await deleteApp(secondaryApp);
   }
+}
+
+// One-time, idempotent backfill so every existing Manager/Cashier/Technician
+// doc has a fully-seeded permissions map — new accounts get this from
+// createTeamUser already. Safe to re-run: only touches docs missing a key,
+// and never clobbers an existing override.
+export async function backfillUserPermissions(): Promise<{ usersTouched: number }> {
+  const users = await getTeamUsers();
+  let touched = 0;
+  for (const u of users) {
+    if (!isEditableRole(u.role)) continue;
+    const isComplete = !!u.permissions && PERMISSION_CATALOG.every((p) => p.key in u.permissions!);
+    if (isComplete) continue;
+    const merged = { ...getDefaultPermissions(u.role), ...(u.permissions ?? {}) };
+    await updateTeamUser(u.uid, { permissions: merged });
+    touched++;
+  }
+  return { usersTouched: touched };
 }
 
 // ─── FIREBASE USAGE STATS ─────────────────────────────────────────────────────

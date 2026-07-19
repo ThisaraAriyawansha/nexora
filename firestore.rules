@@ -16,15 +16,52 @@ service cloud.firestore {
       return isAuth() && myRole() in ['Super Admin', 'Admin'];
     }
 
-    // GRN/Transfer/Stock-Out creation is authorized for Manager as well as
-    // Admin+ — kept as its own helper so isAdminOrAbove() stays untouched for
-    // its existing Admin-only uses (sale cancellation, team management, etc).
-    function isManagerOrAbove() {
-      return isAuth() && myRole() in ['Super Admin', 'Admin', 'Manager'];
-    }
-
     function isSuperAdmin() {
       return isAuth() && myRole() == 'Super Admin';
+    }
+
+    // Exactly the Admin tier (not Super Admin) — used only to carve Super
+    // Admin docs out of what Admin can read, below.
+    function isAdmin() {
+      return isAuth() && myRole() == 'Admin';
+    }
+
+    // Granular per-action permissions for Admin/Manager/Cashier/Technician,
+    // set via Settings > Team (see lib/permissions.ts, the JS mirror of these
+    // defaults) — Admin manages Manager/Cashier/Technician, only Super Admin
+    // manages Admin's own permissions (see the users/{userId} update rule
+    // above for where that boundary is enforced on writes). Super Admin
+    // always passes without ever consulting a permissions map — Super Admin
+    // itself is never restricted.
+    //
+    // The `permissions` map is always written fully populated by the app
+    // (createTeamUser/updateTeamUser/backfillUserPermissions in
+    // lib/firestore.ts) once a Super Admin/Admin has touched that account, so
+    // the fallback below only matters for accounts nobody has edited yet —
+    // it's keyed off the caller's *role* so an Admin who's never had their
+    // permissions map written still gets their historical full access
+    // (myRole() == 'Admin' → true), while an un-backfilled Manager/Cashier/
+    // Technician still gets the restrictive false default they always had.
+    // `.data.get('permissions', {})` (not `.data.permissions`) on purpose —
+    // accessing `.data.permissions` directly throws when the field is absent
+    // entirely (any account nobody has ever saved via createTeamUser/
+    // updateTeamUser/the backfill tool), which errors the whole rule out to
+    // a deny instead of falling through to `key`'s default below. Routing
+    // through `.get()` with an empty-map default means a fully-missing
+    // `permissions` field behaves the same as an empty one.
+    function hasPerm(key) {
+      return isSuperAdmin() ||
+        (isAuth() &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('permissions', {}).get(key, myRole() == 'Admin') == true);
+    }
+
+    // Same as hasPerm(), but falls back to true regardless of role — for the
+    // two keys (products.edit, suppliers.editContact) whose baseline
+    // preserves the previously wide-open isAuth() behavior for every role,
+    // so an account the backfill hasn't reached yet isn't newly locked out.
+    function hasPermDefaultTrue(key) {
+      return isSuperAdmin() ||
+        (isAuth() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('permissions', {}).get(key, true) == true);
     }
 
     match /users/{userId} {
@@ -32,7 +69,31 @@ service cloud.firestore {
       // member (not just Admin+) can read profiles with role == 'Technician' —
       // the rule only holds documents-that-are-technicians open, not the
       // full team roster.
-      allow read: if isAuth() && (request.auth.uid == userId || isAdminOrAbove() || resource.data.role == 'Technician');
+      //
+      // Admin can fetch any single profile by ID EXCEPT a Super Admin's —
+      // Super Admin must be fully invisible to Admin, not just filtered out
+      // client-side (the Settings > Team list already does that; this closes
+      // the same gap at the data layer, e.g. against a direct devtools
+      // getDoc()). Super Admin itself is unaffected, and a user can always
+      // read their own doc.
+      //
+      // `get` (single-doc) and `list` (collection query) are split on
+      // purpose: Firestore requires every document a `list` query could
+      // possibly return to satisfy the rule, or it rejects the whole query —
+      // so getTeamUsers()'s unfiltered `orderBy(createdAt)` query over the
+      // whole collection would fail outright the moment any Super Admin
+      // account exists, if list used this same role != 'Super Admin' check.
+      // `list` therefore stays as permissive as the old combined rule was;
+      // the Team page's client-side filter (isSuperAdmin || u.role !==
+      // 'Super Admin') is what actually keeps Super Admin out of an Admin's
+      // view of that query's results.
+      allow get: if isAuth() && (
+        request.auth.uid == userId ||
+        isSuperAdmin() ||
+        (isAdmin() && resource.data.role != 'Super Admin') ||
+        resource.data.role == 'Technician'
+      );
+      allow list: if isAuth() && (isAdminOrAbove() || resource.data.role == 'Technician');
 
       // Team members are provisioned by Admin+ (see createTeamUser in lib/firestore.ts).
       // Admin can create Admin/Manager/Cashier accounts, but only a Super Admin
@@ -40,43 +101,56 @@ service cloud.firestore {
       allow create: if isAdminOrAbove() &&
         (request.resource.data.role != 'Super Admin' || isSuperAdmin());
 
-      // A user may edit their own profile fields, but not their own role/status —
-      // otherwise a Cashier could grant themselves Admin by writing their own doc.
-      // Role/status changes require Admin+, and only a Super Admin can grant or
-      // modify the Super Admin role itself.
+      // A user may edit their own profile fields, but not their own role/status/
+      // permissions — otherwise a Cashier could grant themselves Admin (or just
+      // grant themselves every permission) by writing their own doc. Role/status/
+      // permissions changes require Admin+, only a Super Admin can grant or
+      // modify the Super Admin role itself, and only a Super Admin can change an
+      // Admin's permissions (Admin manages Manager/Cashier/Technician, never a
+      // peer Admin — matches the Settings > Team UI, which only ever shows the
+      // permissions checklist for those combinations).
+      // `.get('permissions', {})` rather than `.permissions` directly on both
+      // sides — a doc predating this feature (never touched by
+      // createTeamUser/updateTeamUser/the backfill tool) has no `permissions`
+      // field at all, and accessing a fully-missing field throws instead of
+      // yielding a comparable value, which would error this whole rule out to
+      // a deny and block even a harmless self-service displayName edit.
       allow update: if isAuth() && (
         (request.auth.uid == userId
           && request.resource.data.role == resource.data.role
-          && request.resource.data.status == resource.data.status)
+          && request.resource.data.status == resource.data.status
+          && request.resource.data.get('permissions', {}) == resource.data.get('permissions', {}))
         || (isAdminOrAbove()
             && (request.resource.data.role != 'Super Admin' || isSuperAdmin())
-            && (resource.data.role != 'Super Admin' || isSuperAdmin()))
+            && (resource.data.role != 'Super Admin' || isSuperAdmin())
+            && (resource.data.role != 'Admin' || request.resource.data.get('permissions', {}) == resource.data.get('permissions', {}) || isSuperAdmin()))
       );
 
       allow delete: if isSuperAdmin();
     }
 
-    match /brands/{id}          { allow read: if isAuth(); allow create, update: if isAuth(); allow delete: if isAdminOrAbove(); }
-    match /main_categories/{id} { allow read: if isAuth(); allow create, update: if isAuth(); allow delete: if isAdminOrAbove(); }
-    match /sub_categories/{id}  { allow read: if isAuth(); allow create, update: if isAuth(); allow delete: if isAdminOrAbove(); }
-    match /suppliers/{id}       { allow read: if isAuth(); allow create, update: if isAuth(); allow delete: if isAdminOrAbove(); }
+    match /brands/{id}          { allow read: if isAuth(); allow create, update: if isAuth(); allow delete: if hasPerm('brands.delete'); }
+    match /main_categories/{id} { allow read: if isAuth(); allow create, update: if isAuth(); allow delete: if hasPerm('categories.delete'); }
+    match /sub_categories/{id}  { allow read: if isAuth(); allow create, update: if isAuth(); allow delete: if hasPerm('categories.delete'); }
+    match /suppliers/{id}       { allow read: if isAuth(); allow create: if isAuth(); allow update: if hasPermDefaultTrue('suppliers.editContact'); allow delete: if isAdminOrAbove(); }
     match /customers/{id}       { allow read: if isAuth(); allow create, update: if isAuth(); allow delete: if isAdminOrAbove(); }
 
     match /products/{productId} {
       allow read: if isAuth();
-      allow create, update: if isAuth();
-      allow delete: if isAdminOrAbove();
+      allow create: if isAuth();
+      allow update: if hasPermDefaultTrue('products.edit');
+      allow delete: if hasPerm('products.delete');
 
       match /batches/{batchId} {
         // Editing a batch's cost/price/qty is an Admin Edit action — tightened
         // from isAuth() so the Products-page "Edit Batch" quick-fix is no
         // longer usable by every logged-in staff member.
         allow read, create: if isAuth();
-        allow update, delete: if isAdminOrAbove();
+        allow update, delete: if hasPerm('products.batch.edit');
       }
       match /units/{unitId} {
         allow read, create, update: if isAuth();
-        allow delete: if isAdminOrAbove();
+        allow delete: if hasPerm('products.unit.delete');
       }
     }
 
@@ -86,7 +160,7 @@ service cloud.firestore {
       // points, so it's restricted the same way the Bills page UI restricts
       // the cancel button: Admin or Super Admin. Other field updates stay open.
       allow update: if isAuth() &&
-        (request.resource.data.status != 'cancelled' || isAdminOrAbove());
+        (request.resource.data.status != 'cancelled' || hasPerm('bills.cancel'));
       allow delete: if isAdminOrAbove();
 
       match /saleItems/{itemId} {
@@ -103,7 +177,7 @@ service cloud.firestore {
       allow read: if isAuth();
     }
 
-    match /quotations/{id} { allow read, create, update: if isAuth(); allow delete: if isAdminOrAbove(); }
+    match /quotations/{id} { allow read, create, update: if isAuth(); allow delete: if hasPerm('quotations.delete'); }
 
     match /jobs/{id} {
       allow read, create, update: if isAuth();
@@ -132,37 +206,43 @@ service cloud.firestore {
 
     match /grns/{id} {
       allow read: if isAuth();
-      allow create: if isManagerOrAbove();
-      allow update, delete: if isAdminOrAbove();
+      allow create: if hasPerm('grn.create');
+      allow update: if hasPerm('grn.edit');
+      allow delete: if isAdminOrAbove();
 
       match /grnItems/{itemId} {
         allow read: if isAuth();
-        allow create: if isManagerOrAbove();
-        allow update, delete: if isAdminOrAbove();
+        allow create: if hasPerm('grn.create');
+        allow update: if hasPerm('grn.edit');
+        allow delete: if isAdminOrAbove();
       }
     }
 
     match /stockTransfers/{id} {
       allow read: if isAuth();
-      allow create: if isManagerOrAbove();
-      allow update, delete: if isAdminOrAbove();
+      allow create: if hasPerm('stockTransfer.create');
+      allow update: if hasPerm('stockTransfer.edit');
+      allow delete: if isAdminOrAbove();
 
       match /transferItems/{itemId} {
         allow read: if isAuth();
-        allow create: if isManagerOrAbove();
-        allow update, delete: if isAdminOrAbove();
+        allow create: if hasPerm('stockTransfer.create');
+        allow update: if hasPerm('stockTransfer.edit');
+        allow delete: if isAdminOrAbove();
       }
     }
 
     match /stockOuts/{id} {
       allow read: if isAuth();
-      allow create: if isManagerOrAbove();
-      allow update, delete: if isAdminOrAbove();
+      allow create: if hasPerm('stockOut.create');
+      allow update: if hasPerm('stockOut.edit');
+      allow delete: if isAdminOrAbove();
 
       match /stockOutItems/{itemId} {
         allow read: if isAuth();
-        allow create: if isManagerOrAbove();
-        allow update, delete: if isAdminOrAbove();
+        allow create: if hasPerm('stockOut.create');
+        allow update: if hasPerm('stockOut.edit');
+        allow delete: if isAdminOrAbove();
       }
     }
 
@@ -178,7 +258,9 @@ service cloud.firestore {
     // the same tier as sale cancellation.
     match /supplierPayments/{id} {
       allow read: if isAuth();
-      allow create, update, delete: if isAdminOrAbove();
+      allow create: if hasPerm('suppliers.recordPayment');
+      allow update: if hasPerm('suppliers.editPayment');
+      allow delete: if isAdminOrAbove();
     }
 
     // Cash shift open/close/reconciliation. This is the first collection
@@ -229,7 +311,7 @@ service cloud.firestore {
           request.resource.data.transferSalesTotal == resource.data.transferSalesTotal
         )
         || (
-          isManagerOrAbove() &&
+          hasPerm('finance.reviewShift') &&
           resource.data.status == 'closed' &&
           request.resource.data.status == 'closed' &&
           request.resource.data.cashierId == resource.data.cashierId &&
@@ -260,8 +342,9 @@ service cloud.firestore {
     // delete tier used everywhere else in this file.
     match /expenses/{id} {
       allow read: if isAuth();
-      allow create: if isManagerOrAbove();
-      allow update, delete: if isAdminOrAbove();
+      allow create: if hasPerm('finance.addExpense');
+      allow update: if isAdminOrAbove();
+      allow delete: if hasPerm('finance.deleteExpense');
     }
 
     // Generic Admin Edit audit trail — every writer of this collection is

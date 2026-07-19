@@ -4,13 +4,16 @@ import {
   onAuthStateChanged, signInWithEmailAndPassword, signOut, User,
   updateProfile, updatePassword, reauthenticateWithCredential, EmailAuthProvider,
 } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, onSnapshot } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
+import { hasPermission, PermissionKey } from "@/lib/permissions";
 
 interface AuthContextType {
   user: User | null;
   userRole: string | null;
   userDisplayName: string | null;
+  userPermissions: Partial<Record<PermissionKey, boolean>> | null;
+  can: (key: PermissionKey) => boolean;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -25,30 +28,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [userDisplayName, setUserDisplayName] = useState<string | null>(null);
+  const [userPermissions, setUserPermissions] = useState<Partial<Record<PermissionKey, boolean>> | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (u) => {
+    let unsubProfile: (() => void) | null = null;
+
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
-      try {
-        if (u) {
-          const snap = await getDoc(doc(db, "users", u.uid));
-          const data = snap.exists() ? snap.data() : null;
-          setUserRole(data?.role ?? "Admin");
-          setUserDisplayName(data?.displayName ?? u.displayName ?? null);
-        } else {
-          setUserRole(null);
-          setUserDisplayName(null);
-        }
-      } catch {
-        setUserRole(u ? "Admin" : null);
-        setUserDisplayName(u?.displayName ?? null);
-      } finally {
+      if (unsubProfile) {
+        unsubProfile();
+        unsubProfile = null;
+      }
+
+      if (u) {
+        // Live-subscribed (not a one-off getDoc) so that role/permission
+        // changes an Admin makes in Settings take effect immediately for
+        // that staff member's already-open session, instead of requiring
+        // them to log out and back in.
+        unsubProfile = onSnapshot(
+          doc(db, "users", u.uid),
+          (snap) => {
+            const data = snap.exists() ? snap.data() : null;
+            setUserRole(data?.role ?? "Admin");
+            setUserDisplayName(data?.displayName ?? u.displayName ?? null);
+            setUserPermissions(data?.permissions ?? null);
+            setLoading(false);
+          },
+          () => {
+            setUserRole("Admin");
+            setUserDisplayName(u.displayName ?? null);
+            setUserPermissions(null);
+            setLoading(false);
+          }
+        );
+      } else {
+        setUserRole(null);
+        setUserDisplayName(null);
+        setUserPermissions(null);
         setLoading(false);
       }
     });
-    return unsubscribe;
+
+    return () => {
+      unsubscribe();
+      if (unsubProfile) unsubProfile();
+    };
   }, []);
+
+  const can = (key: PermissionKey) =>
+    hasPermission({ role: userRole ?? "", permissions: userPermissions ?? undefined }, key);
 
   const login = async (email: string, password: string) => {
     const cred = await signInWithEmailAndPassword(auth, email, password);
@@ -95,7 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, userRole, userDisplayName, loading, login, logout, updateDisplayName, updateUserPassword, updateUserEmail }}>
+    <AuthContext.Provider value={{ user, userRole, userDisplayName, userPermissions, can, loading, login, logout, updateDisplayName, updateUserPassword, updateUserEmail }}>
       {children}
     </AuthContext.Provider>
   );
