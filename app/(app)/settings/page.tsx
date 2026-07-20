@@ -512,7 +512,6 @@ export default function SettingsPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded font-medium">Free</span>
             <button
               onClick={() => { setLoadingUsage(true); getUsageStats().then((s) => { setUsageStats(s); setLoadingUsage(false); }); }}
               disabled={loadingUsage}
@@ -630,7 +629,7 @@ export default function SettingsPage() {
                   Estimated size: <span className="font-medium text-black">{formatBytes(totalBytes)}</span>
                 </p>
                 <p className="text-xs text-zinc-500">
-                  Free limit: <span className="font-medium text-black">1 GB storage · 50K reads/day · 20K writes/day</span>
+                  Plan limit: <span className="font-medium text-black">1 GB storage · 50K reads/day · 20K writes/day</span>
                 </p>
               </div>
             </>
