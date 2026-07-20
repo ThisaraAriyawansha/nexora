@@ -582,7 +582,7 @@ export default function SettingsPage() {
               {/* Collection breakdown */}
               <div className="space-y-2">
                 <p className="text-xs text-zinc-400 uppercase tracking-wider mb-2">Collection Breakdown</p>
-                {usageStats.filter((c) => c.key !== "users" || canClean).map((c) => {
+                {usageStats.filter((c) => c.key !== "users").map((c) => {
                   const bytes = c.count * c.avgBytes;
                   return (
                     <div key={c.key} className="flex items-center gap-2 sm:gap-3">

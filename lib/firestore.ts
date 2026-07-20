@@ -2252,6 +2252,13 @@ export async function getUsageStats(): Promise<CollectionStat[]> {
     { key: "suppliers",       label: "Suppliers",        avgBytes: 350  },
     { key: "main_categories", label: "Main Categories",  avgBytes: 200  },
     { key: "brands",          label: "Brands",           avgBytes: 200  },
+    { key: "auditLog",        label: "Audit Log",        avgBytes: 400  },
+    { key: "grns",            label: "GRNs",             avgBytes: 700  },
+    { key: "stockTransfers",  label: "Stock Transfers",  avgBytes: 600  },
+    { key: "stockOuts",       label: "Stock Outs",       avgBytes: 500  },
+    { key: "supplierPayments",label: "Supplier Payments",avgBytes: 350  },
+    { key: "shifts",          label: "Shifts",           avgBytes: 400  },
+    { key: "expenses",        label: "Expenses",         avgBytes: 350  },
   ];
 
   const results = await Promise.all(
@@ -2275,6 +2282,9 @@ const SUBCOLLECTIONS: Record<string, string[]> = {
   products: ["batches"],
   sales: ["saleItems"],
   jobs: ["statusHistory"],
+  grns: ["grnItems"],
+  stockTransfers: ["transferItems"],
+  stockOuts: ["stockOutItems"],
 };
 
 export async function cleanCollection(collectionName: string): Promise<number> {
