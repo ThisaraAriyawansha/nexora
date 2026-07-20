@@ -16,13 +16,10 @@ import { downloadElementAsPdf } from "@/lib/pdf";
 import AccessRestricted from "@/components/ui/AccessRestricted";
 
 interface EmailPrompt {
+  jobId: string;
   email: string;
-  customerName: string;
   jobNo: string;
-  statusLabel: string;
-  device: string;
   note: string;
-  repairCost: number | null;
   isNew: boolean;
 }
 
@@ -166,13 +163,8 @@ export default function JobsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           idToken,
-          customerEmail: emailPrompt.email,
-          customerName: emailPrompt.customerName,
-          jobNo: emailPrompt.jobNo,
-          statusLabel: emailPrompt.statusLabel,
-          device: emailPrompt.device,
+          jobId: emailPrompt.jobId,
           note: emailPrompt.note,
-          repairCost: emailPrompt.repairCost,
           isNew: emailPrompt.isNew,
         }),
       });
@@ -275,13 +267,10 @@ export default function JobsPage() {
       if (email) {
         setEmailNotice("");
         setEmailPrompt({
+          jobId: result.jobId,
           email,
-          customerName: form.customerName.trim(),
           jobNo: result.jobNo,
-          statusLabel: STATUS_LABEL.pending,
-          device: form.deviceType === "Other" ? form.deviceTypeOther.trim() : form.deviceType,
           note: "",
-          repairCost: null,
           isNew: true,
         });
       }
@@ -398,13 +387,10 @@ export default function JobsPage() {
       if (email) {
         setEmailNotice("");
         setEmailPrompt({
+          jobId: viewJob.id,
           email,
-          customerName: (refreshed as any).customerName || "",
           jobNo: (refreshed as any).jobNo,
-          statusLabel: STATUS_LABEL[newStatus],
-          device: (refreshed as any).deviceType === "Other" ? (refreshed as any).deviceTypeOther : (refreshed as any).deviceType,
           note,
-          repairCost: repairCost ?? null,
           isNew: false,
         });
       }

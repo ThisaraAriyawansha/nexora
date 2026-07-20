@@ -49,6 +49,8 @@ export default function ProductsPage() {
   });
   const [batchForm, setBatchForm] = useState({ costPrice: "", sellingPrice: "", qty: "", note: "", serials: "" });
   const [batchError, setBatchError] = useState("");
+  const [savingBatchEdit, setSavingBatchEdit] = useState(false);
+  const [batchEditError, setBatchEditError] = useState("");
   const [manageSerialsBatch, setManageSerialsBatch] = useState<any | null>(null);
   const [editingBatchUnits, setEditingBatchUnits] = useState<any[]>([]);
   const [newSerialsForBatch, setNewSerialsForBatch] = useState("");
@@ -111,6 +113,7 @@ export default function ProductsPage() {
 
   const openEditBatch = (b: any) => {
     setEditingBatchId(b.id);
+    setBatchEditError("");
     setEditBatchForm({
       costPrice: String(b.costPrice),
       sellingPrice: b.sellingPrice != null ? String(b.sellingPrice) : "",
@@ -195,18 +198,35 @@ export default function ProductsPage() {
 
   const handleUpdateBatch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!showBatchModal || !editingBatchId) return;
-    await updateBatch(showBatchModal, editingBatchId, {
-      costPrice: Number(editBatchForm.costPrice),
-      sellingPrice: editBatchForm.sellingPrice ? Number(editBatchForm.sellingPrice) : undefined,
-      totalQty: Number(editBatchForm.totalQty),
-      remainingQty: Number(editBatchForm.remainingQty),
-      note: editBatchForm.note,
-    }, user?.uid, userDisplayName);
-    setEditingBatchId(null);
-    const b = await getAllBatches(showBatchModal);
-    setBatches(b);
-    loadData();
+    if (!showBatchModal || !editingBatchId || savingBatchEdit) return;
+    setBatchEditError("");
+
+    const costPrice = Number(editBatchForm.costPrice);
+    const totalQty = Number(editBatchForm.totalQty);
+    const remainingQty = Number(editBatchForm.remainingQty);
+    if (!(costPrice > 0)) { setBatchEditError("Cost price must be greater than zero."); return; }
+    if (editBatchForm.sellingPrice && Number(editBatchForm.sellingPrice) < 0) { setBatchEditError("Selling price cannot be negative."); return; }
+    if (!(totalQty >= 0) || !(remainingQty >= 0)) { setBatchEditError("Quantities cannot be negative."); return; }
+    if (remainingQty > totalQty) { setBatchEditError("Remaining qty cannot exceed total qty."); return; }
+
+    setSavingBatchEdit(true);
+    try {
+      await updateBatch(showBatchModal, editingBatchId, {
+        costPrice,
+        sellingPrice: editBatchForm.sellingPrice ? Number(editBatchForm.sellingPrice) : undefined,
+        totalQty,
+        remainingQty,
+        note: editBatchForm.note,
+      }, user?.uid, userDisplayName);
+      setEditingBatchId(null);
+      const b = await getAllBatches(showBatchModal);
+      setBatches(b);
+      loadData();
+    } catch (err: any) {
+      setBatchEditError(err?.message || "Failed to save batch changes.");
+    } finally {
+      setSavingBatchEdit(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -629,9 +649,12 @@ export default function ProductsPage() {
                           )}
                         </div>
                         <input className="nexora-input" placeholder="Note (optional)" value={editBatchForm.note} onChange={e => setEditBatchForm({ ...editBatchForm, note: e.target.value })} />
+                        {batchEditError && <p className="text-xs text-red-500">{batchEditError}</p>}
                         <div className="flex gap-2">
-                          <button type="submit" className="nexora-btn nexora-btn-primary flex-1 justify-center text-xs py-1.5">Save</button>
-                          <button type="button" onClick={() => setEditingBatchId(null)} className="nexora-btn nexora-btn-outline text-xs py-1.5">Cancel</button>
+                          <button type="submit" disabled={savingBatchEdit} className="nexora-btn nexora-btn-primary flex-1 justify-center text-xs py-1.5 disabled:opacity-60 disabled:cursor-not-allowed">
+                            {savingBatchEdit ? "Saving…" : "Save"}
+                          </button>
+                          <button type="button" disabled={savingBatchEdit} onClick={() => setEditingBatchId(null)} className="nexora-btn nexora-btn-outline text-xs py-1.5">Cancel</button>
                         </div>
                       </form>
                     ) : (

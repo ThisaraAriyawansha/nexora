@@ -50,13 +50,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           doc(db, "users", u.uid),
           (snap) => {
             const data = snap.exists() ? snap.data() : null;
-            setUserRole(data?.role ?? "Admin");
+            // No profile doc yet (or role missing) must NOT default to a
+            // privileged role — hasPermission()/getDefaultPermissions() both
+            // deny-by-default for a null/unrecognized role, so this fails
+            // closed instead of transiently granting Admin-tier UI.
+            setUserRole(data?.role ?? null);
             setUserDisplayName(data?.displayName ?? u.displayName ?? null);
             setUserPermissions(data?.permissions ?? null);
             setLoading(false);
           },
           () => {
-            setUserRole("Admin");
+            // Firestore read error (offline, rules denial, etc.) — same
+            // least-privilege default as a missing doc, not "Admin".
+            setUserRole(null);
             setUserDisplayName(u.displayName ?? null);
             setUserPermissions(null);
             setLoading(false);

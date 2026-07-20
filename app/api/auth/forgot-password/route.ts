@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/lib/firebase-admin";
-import { sendMail } from "@/lib/mailer";
+import { sendMail, isValidEmail } from "@/lib/mailer";
 import { passwordResetOtpTemplate } from "@/lib/email-templates";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 
@@ -9,11 +9,16 @@ export const dynamic = "force-dynamic";
 const OTP_TTL_MS = 10 * 60 * 1000;
 const RESEND_COOLDOWN_MS = 60 * 1000;
 
+// Always returns the same generic success response whether or not an account
+// exists for the given email — a distinguishing 404 here would let anyone who
+// can solve the Turnstile challenge enumerate which emails have accounts.
+const GENERIC_SUCCESS = NextResponse.json({ success: true });
+
 export async function POST(req: NextRequest) {
   try {
     const { email, turnstileToken } = await req.json();
 
-    if (typeof email !== "string" || !email.includes("@")) {
+    if (!isValidEmail(email)) {
       return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
     }
 
@@ -29,7 +34,7 @@ export async function POST(req: NextRequest) {
       user = await adminAuth.getUserByEmail(email);
     } catch (err: any) {
       if (err?.code === "auth/user-not-found") {
-        return NextResponse.json({ error: "No account found with this email." }, { status: 404 });
+        return GENERIC_SUCCESS;
       }
       throw err;
     }
@@ -37,7 +42,9 @@ export async function POST(req: NextRequest) {
     const otpRef = getAdminDb().collection("passwordResetOtps").doc(email.toLowerCase());
     const existing = (await otpRef.get()).data();
     if (existing && !existing.used && Date.now() - existing.createdAt < RESEND_COOLDOWN_MS) {
-      return NextResponse.json({ error: "Please wait a moment before requesting another code." }, { status: 429 });
+      // Still a generic response — revealing "please wait" vs. success would
+      // itself distinguish an existing account from a nonexistent one.
+      return GENERIC_SUCCESS;
     }
 
     const otp = String(Math.floor(100000 + Math.random() * 900000));
@@ -53,7 +60,7 @@ export async function POST(req: NextRequest) {
 
     await sendMail(email, "Your password reset code - Nexora POS", passwordResetOtpTemplate(otp));
 
-    return NextResponse.json({ success: true });
+    return GENERIC_SUCCESS;
   } catch (err: any) {
     console.error("forgot-password error:", err);
     return NextResponse.json({ error: "Failed to send reset code. Please try again." }, { status: 500 });

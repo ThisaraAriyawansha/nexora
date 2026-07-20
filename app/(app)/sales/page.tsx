@@ -32,6 +32,8 @@ export default function SalesPage() {
   const [completedSale, setCompletedSale] = useState<any>(null);
   const [processing, setProcessing] = useState(false);
   const [newCustomerForm, setNewCustomerForm] = useState({ name: "", phone: "", email: "" });
+  const [savingCustomer, setSavingCustomer] = useState(false);
+  const [addCustomerError, setAddCustomerError] = useState("");
   const [batchPickerProduct, setBatchPickerProduct] = useState<Product | null>(null);
   const [productBatches, setProductBatches] = useState<any[]>([]);
   const [loadingBatches, setLoadingBatches] = useState(false);
@@ -87,14 +89,7 @@ export default function SalesPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           idToken,
-          customerEmail: completedSale.customerEmail,
-          customerName: completedSale.customerName,
-          invoiceNo: completedSale.invoiceNo,
-          items: completedSale.items?.map((i: any) => ({ productName: i.productName, qty: i.qty, unitPrice: i.unitPrice, lineTotal: i.lineTotal })),
-          subtotal: completedSale.subtotal,
-          discountAmount: completedSale.discountAmount,
-          totalAmount: completedSale.totalAmount,
-          paymentMethod: completedSale.paymentMethod,
+          saleId: completedSale.saleId,
           pdfBase64,
         }),
       });
@@ -418,13 +413,22 @@ export default function SalesPage() {
 
   const handleAddCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
-    const ref = await addCustomer(newCustomerForm);
-    const newCust = { id: ref.id, ...newCustomerForm, loyaltyPoints: 0 } as Customer;
-    setCustomers([...customers, newCust]);
-    setSelectedCustomer(newCust);
-    setShowAddCustomer(false);
-    setShowCustomerPicker(false);
-    setNewCustomerForm({ name: "", phone: "", email: "" });
+    if (savingCustomer) return;
+    setSavingCustomer(true);
+    setAddCustomerError("");
+    try {
+      const ref = await addCustomer(newCustomerForm);
+      const newCust = { id: ref.id, ...newCustomerForm, loyaltyPoints: 0 } as Customer;
+      setCustomers([...customers, newCust]);
+      setSelectedCustomer(newCust);
+      setShowAddCustomer(false);
+      setShowCustomerPicker(false);
+      setNewCustomerForm({ name: "", phone: "", email: "" });
+    } catch (err: any) {
+      setAddCustomerError(err?.message || "Failed to add customer. Please try again.");
+    } finally {
+      setSavingCustomer(false);
+    }
   };
 
   if (!canView) return <AccessRestricted message="You don't have permission to view the POS / New Sale page." />;
@@ -619,7 +623,7 @@ export default function SalesPage() {
             <input
               type="number"
               value={discount || ""}
-              onChange={e => setDiscount(Number(e.target.value))}
+              onChange={e => setDiscount(Math.max(0, Math.min(Number(e.target.value) || 0, subtotal)))}
               className="nexora-input w-28 py-1.5 text-sm text-right"
               placeholder="0"
             />
@@ -826,7 +830,7 @@ export default function SalesPage() {
                   </button>
                 ))}
               </div>
-              <button onClick={() => setShowAddCustomer(true)}
+              <button onClick={() => { setAddCustomerError(""); setShowAddCustomer(true); }}
                 className="nexora-btn nexora-btn-outline w-full justify-center mt-2 text-sm">
                 <Plus size={13} /> New Customer
               </button>
@@ -847,7 +851,10 @@ export default function SalesPage() {
               <input className="nexora-input" required placeholder="Full name" value={newCustomerForm.name} onChange={e => setNewCustomerForm({...newCustomerForm, name: e.target.value})} />
               <input className="nexora-input" required placeholder="Phone number" value={newCustomerForm.phone} onChange={e => setNewCustomerForm({...newCustomerForm, phone: e.target.value})} />
               <input className="nexora-input" placeholder="Email (optional)" value={newCustomerForm.email} onChange={e => setNewCustomerForm({...newCustomerForm, email: e.target.value})} />
-              <button type="submit" className="nexora-btn nexora-btn-primary w-full justify-center">Add Customer</button>
+              {addCustomerError && <p className="text-xs text-red-500">{addCustomerError}</p>}
+              <button type="submit" disabled={savingCustomer} className="nexora-btn nexora-btn-primary w-full justify-center disabled:opacity-60 disabled:cursor-not-allowed">
+                {savingCustomer ? "Adding…" : "Add Customer"}
+              </button>
             </form>
           </div>
         </div>

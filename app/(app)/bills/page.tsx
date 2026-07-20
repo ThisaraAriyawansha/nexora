@@ -9,17 +9,18 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { useAuth } from "@/hooks/useAuth";
 import { downloadElementAsPdf, getElementPdfBase64 } from "@/lib/pdf";
 import AccessRestricted from "@/components/ui/AccessRestricted";
+import type { Sale } from "@/types";
 
 const PAGE_SIZE = 10;
 
 export default function BillsPage() {
   const { user, userDisplayName, can } = useAuth();
   const canView = can("bills.view");
-  const [sales, setSales] = useState<any[]>([]);
+  const [sales, setSales] = useState<Sale[]>([]);
   const [search, setSearch] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
-  const [viewSale, setViewSale] = useState<any>(null);
+  const [viewSale, setViewSale] = useState<Sale | null>(null);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [confirmingCancel, setConfirmingCancel] = useState(false);
@@ -62,14 +63,7 @@ export default function BillsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           idToken,
-          customerEmail: viewSale.customerEmail,
-          customerName: viewSale.customerName,
-          invoiceNo: viewSale.invoiceNo,
-          items: viewSale.items?.map((i: any) => ({ productName: i.productName, qty: i.qty, unitPrice: i.unitPrice, lineTotal: i.lineTotal })),
-          subtotal: viewSale.subtotal,
-          discountAmount: viewSale.discountAmount,
-          totalAmount: viewSale.totalAmount,
-          paymentMethod: viewSale.paymentMethod,
+          saleId: viewSale.id,
           pdfBase64,
         }),
       });
@@ -87,7 +81,7 @@ export default function BillsPage() {
   const canEditBills = can("bills.edit");
   const canCancelBills = can("bills.cancel");
 
-  const loadSales = () => getSales().then((s) => { setSales(s); setLoading(false); });
+  const loadSales = () => getSales().then((s) => { setSales(s as Sale[]); setLoading(false); });
 
   useEffect(() => {
     loadSales();
@@ -99,7 +93,7 @@ export default function BillsPage() {
 
   const openSale = async (id: string) => {
     const full = await getSale(id);
-    setViewSale(full);
+    setViewSale(full as Sale | null);
     setConfirmingCancel(false);
     setCancelReason("");
     setCancelError("");
@@ -137,7 +131,7 @@ export default function BillsPage() {
       );
       await loadSales();
       const refreshed = await getSale(viewSale.id);
-      setViewSale(refreshed);
+      setViewSale(refreshed as Sale | null);
       setEditingBill(false);
     } finally {
       setSavingBillEdit(false);
@@ -156,7 +150,7 @@ export default function BillsPage() {
       );
       await loadSales();
       const refreshed = await getSale(viewSale.id);
-      setViewSale(refreshed);
+      setViewSale(refreshed as Sale | null);
       setConfirmingCancel(false);
       setCancelReason("");
     } catch (err: any) {
@@ -459,7 +453,7 @@ export default function BillsPage() {
                     <span>Discount</span><span>- Rs. {viewSale.discountAmount?.toLocaleString()}</span>
                   </div>
                 )}
-                {viewSale.pointsRedeemed > 0 && (
+                {(viewSale.pointsRedeemed ?? 0) > 0 && (
                   <div className="flex justify-between text-sm text-violet-600">
                     <span>Points Redeemed ({viewSale.pointsRedeemed} pts)</span>
                     <span>- Rs. {viewSale.pointsRedeemed?.toLocaleString()}</span>

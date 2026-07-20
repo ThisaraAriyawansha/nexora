@@ -148,6 +148,8 @@ export interface SaleItem {
   batchAllocations?: { batchId: string; qty: number }[];
 }
 
+export type SaleStatus = "cancelled";
+
 export interface Sale {
   id: string;
   invoiceNo: string;
@@ -166,10 +168,18 @@ export interface Sale {
   paymentStatus: "paid" | "partial" | "pending";
   amountTendered?: number;
   changeAmount?: number;
+  pointsRedeemed?: number;
   note?: string;
   shiftId?: string | null;
   shiftNo?: string;
+  // Set only once a sale is reversed via cancelSale() — absent on a normal sale.
+  status?: SaleStatus;
+  cancelledAt?: any;
+  cancelledById?: string;
+  cancelledByName?: string;
+  cancelReason?: string;
   createdAt?: any;
+  updatedAt?: any;
 }
 
 export type ShiftStatus = "open" | "closed";

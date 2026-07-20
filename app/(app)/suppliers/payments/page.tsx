@@ -2,9 +2,11 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getSupplierPayments, getSuppliers } from "@/lib/firestore";
+import { useAuth } from "@/hooks/useAuth";
 import { Search, ArrowLeft, Download } from "lucide-react";
 import Pagination from "@/components/ui/Pagination";
 import { rowsToCSV, downloadCSV } from "@/lib/csv";
+import AccessRestricted from "@/components/ui/AccessRestricted";
 
 const PAGE_SIZE = 20;
 
@@ -28,6 +30,8 @@ const METHOD_LABEL: Record<string, string> = {
 };
 
 export default function SupplierPaymentsReportPage() {
+  const { can } = useAuth();
+  const canView = can("suppliers.view");
   const [payments, setPayments] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -94,6 +98,8 @@ export default function SupplierPaymentsReportPage() {
     }));
     downloadCSV(`outstanding-balances-${new Date().toISOString().slice(0, 10)}.csv`, rowsToCSV(rows));
   };
+
+  if (!canView) return <AccessRestricted message="You don't have permission to view Suppliers." />;
 
   return (
     <div className="p-4 sm:p-8">

@@ -50,7 +50,8 @@ export default function NewGrnPage() {
   const handleAddItem = () => {
     setError("");
     if (!selectedProduct) { setError("Choose a product."); return; }
-    if (!costPrice) { setError("Enter a cost price."); return; }
+    if (!costPrice || Number(costPrice) <= 0) { setError("Enter a cost price greater than zero."); return; }
+    if (sellingPrice && Number(sellingPrice) < 0) { setError("Selling price cannot be negative."); return; }
 
     let itemQty = Number(qty);
     if (selectedProduct.trackSerial) {

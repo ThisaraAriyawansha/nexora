@@ -194,10 +194,17 @@ export function canManagePermissionsFor(viewerRole: string, targetRole: string):
 }
 
 // Super Admin never reads this — hasPermission() short-circuits to true for
-// Super Admin before this is consulted.
+// Super Admin before this is consulted. An unrecognized role (e.g. an empty
+// string from a not-yet-loaded or unreadable profile) must deny by default —
+// granting everything here would fail open for exactly the situation this
+// function exists to guard against. Callers that legitimately want the
+// Admin/Super-Admin "everything checked" default (e.g. rendering their
+// read-only permission toggles in Settings) pass the literal role string
+// "Admin" explicitly rather than relying on this fallback.
 export function getDefaultPermissions(role: string): Record<PermissionKey, boolean> {
   if (isEditableRole(role)) return ROLE_DEFAULT_PERMISSIONS[role];
-  return buildDefaults(PERMISSION_CATALOG.map((p) => p.key));
+  if (role === "Admin" || role === "Super Admin") return buildDefaults(PERMISSION_CATALOG.map((p) => p.key));
+  return buildDefaults([]);
 }
 
 export function hasPermission(
