@@ -7,7 +7,7 @@ import {
 } from "@/lib/firestore";
 import { useAuth } from "@/hooks/useAuth";
 import type { Supplier, SupplierPaymentMethod } from "@/types";
-import { Search, Plus, Eye, X, Truck, Pencil, Mail, Wallet, FileDown } from "lucide-react";
+import { Search, Plus, Eye, X, Truck, Pencil, Mail, Wallet, FileDown, Bell, ChevronDown, ChevronUp } from "lucide-react";
 import Pagination from "@/components/ui/Pagination";
 import { rowsToCSV, downloadCSV } from "@/lib/csv";
 import AccessRestricted from "@/components/ui/AccessRestricted";
@@ -73,6 +73,8 @@ export default function SuppliersPage() {
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
   const [editPaymentForm, setEditPaymentForm] = useState({ amount: "", method: "cash" as SupplierPaymentMethod, reference: "", note: "" });
   const [savingPaymentEdit, setSavingPaymentEdit] = useState(false);
+
+  const [remindersOpen, setRemindersOpen] = useState(true);
 
   const loadSuppliers = () => getSuppliers().then((s) => { setSuppliers(s as Supplier[]); setLoading(false); });
 
@@ -248,6 +250,20 @@ export default function SuppliersPage() {
     downloadCSV(`suppliers-${new Date().toISOString().slice(0, 10)}.csv`, rowsToCSV(rows));
   };
 
+  // Payment reminders — suppliers we still owe money to, ranked by how long
+  // it's been since we last paid them (or since the account was opened, if
+  // never paid) so the oldest unpaid balance surfaces first.
+  const paymentReminders = suppliers
+    .filter((s) => (s.balance ?? 0) > 0)
+    .map((s) => {
+      const anchor = s.lastPaymentAt || s.createdAt;
+      const anchorDate = anchor?.toDate ? anchor.toDate() : anchor ? new Date(anchor) : null;
+      const daysSince = anchorDate ? Math.floor((Date.now() - anchorDate.getTime()) / 86400000) : null;
+      return { ...s, daysSince };
+    })
+    .sort((a, b) => (b.daysSince ?? 0) - (a.daysSince ?? 0));
+  const totalReminderBalance = paymentReminders.reduce((s, x) => s + (x.balance || 0), 0);
+
   if (!canView) return <AccessRestricted message="You don't have permission to view Suppliers." />;
 
   return (
@@ -269,6 +285,46 @@ export default function SuppliersPage() {
           </button>
         </div>
       </div>
+
+      {/* Payment reminders — outstanding balances we owe suppliers */}
+      {paymentReminders.length > 0 && (
+        <div className="mb-6">
+          <button
+            onClick={() => setRemindersOpen((v) => !v)}
+            className="w-full flex items-start sm:items-center gap-2.5 sm:gap-3 bg-amber-50 border border-amber-200 rounded-lg px-3 sm:px-4 py-3 text-left"
+          >
+            <Bell size={15} className="text-amber-600 shrink-0 mt-0.5 sm:mt-0" />
+            <p className="text-sm text-amber-700 flex-1">
+              <span className="font-medium">{paymentReminders.length} supplier{paymentReminders.length > 1 ? "s" : ""}</span> with an outstanding balance — Rs. {totalReminderBalance.toLocaleString()} total.
+            </p>
+            {remindersOpen ? <ChevronUp size={14} className="text-amber-600 shrink-0" /> : <ChevronDown size={14} className="text-amber-600 shrink-0" />}
+          </button>
+          {remindersOpen && (
+            <div className="nexora-card overflow-x-auto mt-2">
+              <table className="w-full text-sm min-w-[560px]">
+                <thead>
+                  <tr className="border-b border-zinc-100">
+                    <th className="text-left px-4 py-2.5 text-xs text-zinc-500 font-medium uppercase tracking-wider">Supplier</th>
+                    <th className="text-left px-4 py-2.5 text-xs text-zinc-500 font-medium uppercase tracking-wider">Balance</th>
+                    <th className="text-left px-4 py-2.5 text-xs text-zinc-500 font-medium uppercase tracking-wider">Last Payment</th>
+                    <th className="text-left px-4 py-2.5 text-xs text-zinc-500 font-medium uppercase tracking-wider">Unpaid For</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-50">
+                  {paymentReminders.map((s) => (
+                    <tr key={s.id} onClick={() => openSupplier(s)} className="hover:bg-zinc-50 transition-colors cursor-pointer">
+                      <td className="px-4 py-2.5 font-medium text-black">{s.name}</td>
+                      <td className="px-4 py-2.5">Rs. {s.balance?.toLocaleString() ?? 0}</td>
+                      <td className="px-4 py-2.5 text-zinc-500 text-xs">{s.lastPaymentAt ? formatDate(s.lastPaymentAt) : "Never paid"}</td>
+                      <td className="px-4 py-2.5 text-zinc-500 text-xs">{s.daysSince != null ? `${s.daysSince} day${s.daysSince === 1 ? "" : "s"}` : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="relative flex-1 min-w-[200px] sm:max-w-sm mb-6">
         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />

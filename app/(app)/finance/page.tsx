@@ -58,7 +58,7 @@ export default function FinancePage() {
   const canAddExpense = can("finance.addExpense");
   const canDeleteExpense = can("finance.deleteExpense");
 
-  const [tab, setTab] = useState<"overview" | "shifts" | "expenses">("overview");
+  const [tab, setTab] = useState<"overview" | "daily" | "shifts" | "expenses">("overview");
 
   // ─── Overview ───────────────────────────────────────────────────────────
   const [ovFromDate, setOvFromDate] = useState(monthStartStr());
@@ -146,6 +146,95 @@ export default function FinancePage() {
       "Margin %": margin.toFixed(1),
     }];
     downloadCSV(`finance-overview-${ovFromDate}_to_${ovToDate}.csv`, rowsToCSV(rows));
+  };
+
+  // ─── Daily Balance ──────────────────────────────────────────────────────
+  // There's no persistent cash-ledger field anywhere in the system to seed
+  // this from, so the starting balance is an admin-entered number kept in
+  // localStorage (per-browser) rather than a new Firestore field.
+  const OPENING_BALANCE_KEY = "nexora-daily-balance-opening";
+  const [dbFromDate, setDbFromDate] = useState(monthStartStr());
+  const [dbToDate, setDbToDate] = useState(todayStr());
+  const [dbLoading, setDbLoading] = useState(true);
+  const [dbSales, setDbSales] = useState<any[]>([]);
+  const [dbExpenses, setDbExpenses] = useState<any[]>([]);
+  const [openingBalance, setOpeningBalance] = useState(0);
+
+  useEffect(() => {
+    const stored = typeof window !== "undefined" ? window.localStorage.getItem(OPENING_BALANCE_KEY) : null;
+    if (stored) setOpeningBalance(Number(stored) || 0);
+  }, []);
+
+  const handleOpeningBalanceChange = (value: string) => {
+    const n = Number(value) || 0;
+    setOpeningBalance(n);
+    if (typeof window !== "undefined") window.localStorage.setItem(OPENING_BALANCE_KEY, String(n));
+  };
+
+  useEffect(() => {
+    if (!canView || tab !== "daily") return;
+    setDbLoading(true);
+    const from = dbFromDate ? new Date(`${dbFromDate}T00:00:00`) : undefined;
+    const to = dbToDate ? new Date(`${dbToDate}T23:59:59.999`) : undefined;
+    Promise.all([
+      getSales({ fromDate: from, toDate: to }),
+      getExpenses({ fromDate: from, toDate: to }),
+    ]).then(([sales, exp]) => {
+      setDbSales((sales as any[]).filter((s) => s.status !== "cancelled"));
+      setDbExpenses(exp as any[]);
+      setDbLoading(false);
+    });
+  }, [canView, tab, dbFromDate, dbToDate]);
+
+  const dayKey = (ts: any) => {
+    const d = ts?.toDate ? ts.toDate() : new Date(ts);
+    return d.toLocaleDateString("en-CA");
+  };
+
+  const dailyRows = (() => {
+    const byDay = new Map<string, { income: number; expenses: number }>();
+    for (const s of dbSales) {
+      if (!s.createdAt) continue;
+      const key = dayKey(s.createdAt);
+      const entry = byDay.get(key) || { income: 0, expenses: 0 };
+      entry.income += s.totalAmount || 0;
+      byDay.set(key, entry);
+    }
+    for (const e of dbExpenses) {
+      if (!e.createdAt) continue;
+      const key = dayKey(e.createdAt);
+      const entry = byDay.get(key) || { income: 0, expenses: 0 };
+      entry.expenses += e.amount || 0;
+      byDay.set(key, entry);
+    }
+    let running = openingBalance;
+    return Array.from(byDay.keys())
+      .sort()
+      .map((date) => {
+        const { income, expenses } = byDay.get(date)!;
+        const net = income - expenses;
+        running += net;
+        return { date, income, expenses, net, closingBalance: running };
+      });
+  })();
+
+  const dbTotalIncome = dailyRows.reduce((s, r) => s + r.income, 0);
+  const dbTotalExpenses = dailyRows.reduce((s, r) => s + r.expenses, 0);
+  const dbNet = dbTotalIncome - dbTotalExpenses;
+  const dbFinalBalance = dailyRows.length > 0 ? dailyRows[dailyRows.length - 1].closingBalance : openingBalance;
+
+  const formatDayLabel = (dateStr: string) =>
+    new Date(`${dateStr}T00:00:00`).toLocaleDateString("en-US", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+
+  const handleExportDailyBalance = () => {
+    const rows = dailyRows.map((r) => ({
+      Date: r.date,
+      Income: r.income,
+      Expenses: r.expenses,
+      Net: r.net,
+      "Closing Balance": r.closingBalance,
+    }));
+    downloadCSV(`daily-balance-${dbFromDate}_to_${dbToDate}.csv`, rowsToCSV(rows));
   };
 
   // ─── Cash Shifts ────────────────────────────────────────────────────────
@@ -357,7 +446,7 @@ export default function FinancePage() {
       <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
         <h1 className="font-prata text-2xl text-black">Finance</h1>
         <div className="flex items-center gap-1 bg-zinc-100 rounded p-1">
-          {(["overview", "shifts", "expenses"] as const).map((t) => (
+          {(["overview", "daily", "shifts", "expenses"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -365,7 +454,7 @@ export default function FinancePage() {
                 tab === t ? "bg-white text-black shadow-sm" : "text-zinc-500 hover:text-black"
               }`}
             >
-              {t === "shifts" ? "Cash Shifts" : t}
+              {t === "shifts" ? "Cash Shifts" : t === "daily" ? "Daily Balance" : t}
             </button>
           ))}
         </div>
@@ -492,6 +581,79 @@ export default function FinancePage() {
                   </tr>
                 </tfoot>
               )}
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Daily Balance tab ─── */}
+      {tab === "daily" && (
+        <div>
+          <div className="flex flex-wrap items-center gap-2 mb-6">
+            <input type="date" aria-label="From date" className="nexora-input w-auto" value={dbFromDate} max={dbToDate || undefined} onChange={(e) => setDbFromDate(e.target.value)} />
+            <span className="text-zinc-300 text-xs">–</span>
+            <input type="date" aria-label="To date" className="nexora-input w-auto" value={dbToDate} min={dbFromDate || undefined} onChange={(e) => setDbToDate(e.target.value)} />
+            <div className="flex items-center gap-2 ml-1">
+              <label className="text-xs text-zinc-500 whitespace-nowrap">Opening Balance (Rs.)</label>
+              <input
+                type="number"
+                className="nexora-input w-32"
+                value={openingBalance}
+                onChange={(e) => handleOpeningBalanceChange(e.target.value)}
+              />
+            </div>
+            <button onClick={handleExportDailyBalance} disabled={dailyRows.length === 0} className="nexora-btn nexora-btn-outline text-xs ml-auto disabled:opacity-50 disabled:cursor-not-allowed">
+              <Download size={12} /> Download CSV
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-6">
+            <div className="nexora-card p-4 sm:p-5 min-w-0">
+              <p className="text-[11px] sm:text-xs text-zinc-500 uppercase tracking-wider mb-2">Total Income</p>
+              <p className="font-prata text-lg sm:text-2xl text-black truncate">{dbLoading ? "…" : `Rs. ${dbTotalIncome.toLocaleString()}`}</p>
+            </div>
+            <div className="nexora-card p-4 sm:p-5 min-w-0">
+              <p className="text-[11px] sm:text-xs text-zinc-500 uppercase tracking-wider mb-2">Total Expenses</p>
+              <p className="font-prata text-lg sm:text-2xl text-black truncate">{dbLoading ? "…" : `Rs. ${dbTotalExpenses.toLocaleString()}`}</p>
+            </div>
+            <div className="nexora-card p-4 sm:p-5 min-w-0">
+              <p className="text-[11px] sm:text-xs text-zinc-500 uppercase tracking-wider mb-2">Net Change</p>
+              <p className={`font-prata text-lg sm:text-2xl truncate ${dbNet < 0 ? "text-red-600" : "text-black"}`}>{dbLoading ? "…" : `Rs. ${dbNet.toLocaleString()}`}</p>
+            </div>
+            <div className="nexora-card p-4 sm:p-5 min-w-0">
+              <p className="text-[11px] sm:text-xs text-zinc-500 uppercase tracking-wider mb-2">Closing Balance</p>
+              <p className="font-prata text-lg sm:text-2xl text-black truncate">{dbLoading ? "…" : `Rs. ${dbFinalBalance.toLocaleString()}`}</p>
+            </div>
+          </div>
+
+          <div className="nexora-card overflow-x-auto">
+            <table className="w-full text-sm min-w-[640px]">
+              <thead>
+                <tr className="border-b border-zinc-100">
+                  <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase tracking-wider">Date</th>
+                  <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase tracking-wider">Income</th>
+                  <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase tracking-wider">Expenses</th>
+                  <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase tracking-wider">Net</th>
+                  <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase tracking-wider">Closing Balance</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-50">
+                {dbLoading ? (
+                  <tr><td colSpan={5} className="text-center py-10 text-zinc-400">Loading…</td></tr>
+                ) : dailyRows.length === 0 ? (
+                  <tr><td colSpan={5} className="text-center py-10 text-zinc-400">No activity in range</td></tr>
+                ) : (
+                  dailyRows.map((r) => (
+                    <tr key={r.date} className="hover:bg-zinc-50 transition-colors">
+                      <td className="px-4 py-3 font-medium text-black">{formatDayLabel(r.date)}</td>
+                      <td className="px-4 py-3">Rs. {r.income.toLocaleString()}</td>
+                      <td className="px-4 py-3">Rs. {r.expenses.toLocaleString()}</td>
+                      <td className={`px-4 py-3 font-medium ${r.net < 0 ? "text-red-600" : ""}`}>Rs. {r.net.toLocaleString()}</td>
+                      <td className="px-4 py-3 font-medium">Rs. {r.closingBalance.toLocaleString()}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
             </table>
           </div>
         </div>
