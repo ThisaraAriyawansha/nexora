@@ -173,7 +173,7 @@ export default function AuditLogPage() {
 
       {viewEntry && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl w-full max-w-lg max-h-[85vh] overflow-y-auto">
+          <div className="bg-white rounded-xl w-full max-w-lg max-h-[85vh] overflow-y-auto overflow-x-hidden">
             <div className="px-6 py-4 border-b border-zinc-100 sticky top-0 bg-white flex items-center justify-between">
               <div>
                 <h2 className="font-prata text-lg">{COLLECTION_LABELS[viewEntry.collectionName] || viewEntry.collectionName} · {viewEntry.label}</h2>
@@ -187,10 +187,10 @@ export default function AuditLogPage() {
               {(viewEntry.changes ?? []).map((c: any, i: number) => (
                 <div key={i} className="border border-zinc-100 rounded-lg p-3">
                   <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1.5">{c.field}</p>
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="text-red-500 line-through">{String(c.before ?? "—")}</span>
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <span className="text-red-500 line-through break-all">{String(c.before ?? "—")}</span>
                     <span className="text-zinc-300">→</span>
-                    <span className="text-green-700 font-medium">{String(c.after ?? "—")}</span>
+                    <span className="text-green-700 font-medium break-all">{String(c.after ?? "—")}</span>
                   </div>
                 </div>
               ))}
