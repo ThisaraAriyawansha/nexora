@@ -1,0 +1,1059 @@
+"use client";
+import { useEffect, useState, useRef } from "react";
+import { getProducts, getCustomers, addCustomer, createSale, getBatches, getAvailableUnits, getMainCategories, getSubCategories, getCurrentOpenShift, openShift, closeShift } from "@/lib/firestore";
+import { Product, Customer, CartItem, MainCategory, SubCategory, Shift } from "@/types";
+import { Search, Plus, Minus, Trash2, Printer, User, X, Check, Download, Mail, Wallet, Lock } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import BillPrint from "@/components/pos/BillPrint";
+import { useReactToPrint } from "react-to-print";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { downloadElementAsPdf, getElementPdfBase64 } from "@/lib/pdf";
+import AccessRestricted from "@/components/ui/AccessRestricted";
+
+export default function SalesPage() {
+  const { user, userDisplayName, can } = useAuth();
+  const canView = can("sales.view");
+  const [products, setProducts] = useState<Product[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [mainCats, setMainCats] = useState<MainCategory[]>([]);
+  const [subCats, setSubCats] = useState<SubCategory[]>([]);
+  const [filterMainCat, setFilterMainCat] = useState("");
+  const [filterSubCat, setFilterSubCat] = useState("");
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [productSearch, setProductSearch] = useState("");
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [showCustomerPicker, setShowCustomerPicker] = useState(false);
+  const [showAddCustomer, setShowAddCustomer] = useState(false);
+  const [discount, setDiscount] = useState(0);
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "card" | "transfer">("cash");
+  const [amountTendered, setAmountTendered] = useState("");
+  const [note, setNote] = useState("");
+  const [completedSale, setCompletedSale] = useState<any>(null);
+  const [processing, setProcessing] = useState(false);
+  const [newCustomerForm, setNewCustomerForm] = useState({ name: "", phone: "", email: "" });
+  const [savingCustomer, setSavingCustomer] = useState(false);
+  const [addCustomerError, setAddCustomerError] = useState("");
+  const [batchPickerProduct, setBatchPickerProduct] = useState<Product | null>(null);
+  const [productBatches, setProductBatches] = useState<any[]>([]);
+  const [loadingBatches, setLoadingBatches] = useState(false);
+  const [pointsToRedeem, setPointsToRedeem] = useState(0);
+  const [serialPickerProduct, setSerialPickerProduct] = useState<Product | null>(null);
+  const [availableUnits, setAvailableUnits] = useState<{ id: string; serialNumber: string; batchId: string; costPrice: number; sellingPrice?: number | null }[]>([]);
+  const [selectedUnitIds, setSelectedUnitIds] = useState<string[]>([]);
+  const [loadingUnits, setLoadingUnits] = useState(false);
+
+  const [downloadingBill, setDownloadingBill] = useState(false);
+  const printRef = useRef<HTMLDivElement>(null);
+  const handlePrint = useReactToPrint({ content: () => printRef.current });
+
+  const [confirmingEmailBill, setConfirmingEmailBill] = useState(false);
+  const [sendingBillEmail, setSendingBillEmail] = useState(false);
+  const [billEmailNotice, setBillEmailNotice] = useState("");
+
+  const [currentShift, setCurrentShift] = useState<Shift | null>(null);
+  const [shiftLoading, setShiftLoading] = useState(true);
+  const [showOpenShift, setShowOpenShift] = useState(false);
+  const [openingFloatInput, setOpeningFloatInput] = useState("");
+  const [openNoteInput, setOpenNoteInput] = useState("");
+  const [openingShift, setOpeningShift] = useState(false);
+  const [openShiftError, setOpenShiftError] = useState("");
+  const [showCloseShift, setShowCloseShift] = useState(false);
+  const [countedCashInput, setCountedCashInput] = useState("");
+  const [closeNoteInput, setCloseNoteInput] = useState("");
+  const [closingShift, setClosingShift] = useState(false);
+  const [closeShiftError, setCloseShiftError] = useState("");
+  const [closeSummary, setCloseSummary] = useState<{ expectedCash: number; countedCash: number; variance: number } | null>(null);
+
+  async function handleDownloadBill() {
+    if (!printRef.current || downloadingBill) return;
+    setDownloadingBill(true);
+    try {
+      await downloadElementAsPdf(printRef.current, `${completedSale?.invoiceNo || "invoice"}.pdf`);
+    } finally {
+      setDownloadingBill(false);
+    }
+  }
+
+  async function handleSendBillEmail() {
+    if (!printRef.current || !completedSale?.customerEmail || sendingBillEmail) return;
+    setSendingBillEmail(true);
+    setBillEmailNotice("");
+    try {
+      const [pdfBase64, idToken] = await Promise.all([
+        getElementPdfBase64(printRef.current),
+        user!.getIdToken(),
+      ]);
+      const res = await fetch("/api/bills/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          idToken,
+          saleId: completedSale.saleId,
+          pdfBase64,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to send email");
+      setBillEmailNotice(`Emailed ${completedSale.customerEmail}.`);
+    } catch (err: any) {
+      setBillEmailNotice(err?.message || "Failed to send email.");
+    } finally {
+      setSendingBillEmail(false);
+      setConfirmingEmailBill(false);
+    }
+  }
+
+  useEffect(() => {
+    async function load() {
+      const [p, c, mc, sc] = await Promise.all([getProducts(), getCustomers(), getMainCategories(), getSubCategories()]);
+      // POS only sells from Showroom Stock — items with stock only in Stores
+      // must be Transferred to Showroom first.
+      setProducts(p.filter((p: any) => p.active && p.showroomStock > 0) as Product[]);
+      setCustomers(c as Customer[]);
+      setMainCats(mc as MainCategory[]);
+      setSubCats(sc as SubCategory[]);
+    }
+    load();
+  }, []);
+
+  useEffect(() => {
+    async function loadShift() {
+      if (!user) return;
+      setShiftLoading(true);
+      const shift = await getCurrentOpenShift(user.uid);
+      setCurrentShift(shift as Shift | null);
+      setShiftLoading(false);
+    }
+    loadShift();
+  }, [user]);
+
+  const handleOpenShift = async () => {
+    if (!user) return;
+    const openingFloat = Number(openingFloatInput);
+    if (!openingFloatInput || openingFloat < 0) {
+      setOpenShiftError("Enter a valid opening float");
+      return;
+    }
+    setOpeningShift(true);
+    setOpenShiftError("");
+    try {
+      const { shiftId, shiftNo } = await openShift({
+        cashierId: user.uid,
+        cashierName: userDisplayName || "Cashier",
+        openingFloat,
+        openNote: openNoteInput || undefined,
+      });
+      setCurrentShift({
+        id: shiftId,
+        shiftNo,
+        cashierId: user.uid,
+        cashierName: userDisplayName || "Cashier",
+        status: "open",
+        openingFloat,
+        openedAt: null,
+        cashSalesTotal: 0,
+        cardSalesTotal: 0,
+        transferSalesTotal: 0,
+        salesCount: 0,
+      });
+      setShowOpenShift(false);
+      setOpeningFloatInput("");
+      setOpenNoteInput("");
+    } catch (err: any) {
+      setOpenShiftError(err?.message || "Failed to open shift");
+    }
+    setOpeningShift(false);
+  };
+
+  const handleCloseShift = async () => {
+    if (!user || !currentShift) return;
+    const countedCash = Number(countedCashInput);
+    if (!countedCashInput || countedCash < 0) {
+      setCloseShiftError("Enter a valid counted cash amount");
+      return;
+    }
+    setClosingShift(true);
+    setCloseShiftError("");
+    try {
+      const result = await closeShift(currentShift.id, {
+        countedCash,
+        closeNote: closeNoteInput || undefined,
+        performedBy: { uid: user.uid, name: userDisplayName || "Cashier" },
+      });
+      setCloseSummary(result);
+      setCurrentShift(null);
+      setShowCloseShift(false);
+      setCountedCashInput("");
+      setCloseNoteInput("");
+    } catch (err: any) {
+      setCloseShiftError(err?.message || "Failed to close shift");
+    }
+    setClosingShift(false);
+  };
+
+  const filterSubCatOptions = subCats.filter(s => s.mainCategoryId === filterMainCat);
+
+  const filteredProducts = products.filter(p => {
+    const matchesSearch =
+      p.name.toLowerCase().includes(productSearch.toLowerCase()) || p.sku?.includes(productSearch);
+    if (!matchesSearch) return false;
+    if (filterMainCat && p.mainCategoryId !== filterMainCat) return false;
+    if (filterSubCat && p.subCategoryId !== filterSubCat) return false;
+    return true;
+  });
+
+  const filteredCustomers = customers.filter(c =>
+    c.name.toLowerCase().includes(customerSearch.toLowerCase()) || c.phone?.includes(customerSearch)
+  );
+
+  const openBatchPicker = async (product: Product) => {
+    if (product.trackSerial) {
+      openSerialPicker(product);
+      return;
+    }
+    setLoadingBatches(true);
+    const b = await getBatches(product.id, "showroom");
+    setLoadingBatches(false);
+    if (b.length === 0) {
+      // Nothing to pick between — add straight to cart.
+      addToCart(product);
+      return;
+    }
+    setProductBatches(b);
+    setBatchPickerProduct(product);
+  };
+
+  const openSerialPicker = async (product: Product) => {
+    setLoadingUnits(true);
+    const units = (await getAvailableUnits(product.id, "showroom")) as { id: string; serialNumber: string; batchId: string; costPrice: number; sellingPrice?: number | null }[];
+    setLoadingUnits(false);
+    // Units already picked into another cart line for this product aren't available to pick again.
+    const takenUnitIds = new Set(cart.flatMap(i => i.units?.map(u => u.unitId) ?? []));
+    setAvailableUnits(units.filter(u => !takenUnitIds.has(u.id)));
+    setSelectedUnitIds([]);
+    setSerialPickerProduct(product);
+  };
+
+  const toggleUnitSelected = (unitId: string) => {
+    setSelectedUnitIds(ids => ids.includes(unitId) ? ids.filter(id => id !== unitId) : [...ids, unitId]);
+  };
+
+  // Each unit sells at its own batch's price (falling back to the product price),
+  // so units picked at different prices are split into separate cart lines.
+  const addSerializedToCart = (product: Product) => {
+    const chosen = availableUnits.filter(u => selectedUnitIds.includes(u.id));
+    if (chosen.length === 0) return;
+
+    const groups = new Map<number, typeof chosen>();
+    for (const u of chosen) {
+      const price = u.sellingPrice ?? product.sellingPrice;
+      groups.set(price, [...(groups.get(price) ?? []), u]);
+    }
+
+    let nextCart = cart;
+    for (const [price, units] of Array.from(groups.entries())) {
+      const newUnits = units.map(u => ({ unitId: u.id, serialNumber: u.serialNumber, batchId: u.batchId }));
+      const existing = nextCart.find(i => i.productId === product.id && i.units && i.unitPrice === price);
+      if (existing) {
+        const allUnits = [...(existing.units || []), ...newUnits];
+        nextCart = nextCart.map(i => i.tempId === existing.tempId
+          ? { ...i, qty: allUnits.length, units: allUnits, lineTotal: allUnits.length * (price - i.discount) }
+          : i);
+      } else {
+        nextCart = [...nextCart, {
+          tempId: `${Date.now()}-${price}`,
+          productId: product.id,
+          productName: product.name,
+          sku: product.sku,
+          batchId: null,
+          qty: units.length,
+          unitPrice: price,
+          costPrice: units[0].costPrice,
+          discount: 0,
+          lineTotal: units.length * price,
+          warrantyMonths: product.warrantyMonths || 0,
+          units: newUnits,
+        }];
+      }
+    }
+    setCart(nextCart);
+    setSerialPickerProduct(null);
+  };
+
+  const removeLastUnit = (item: CartItem) => {
+    if (!item.units || item.units.length === 0) return;
+    const units = item.units.slice(0, -1);
+    if (units.length === 0) { removeItem(item.tempId); return; }
+    setCart(cart.map(i => i.tempId === item.tempId
+      ? { ...i, units, qty: units.length, lineTotal: units.length * (i.unitPrice - i.discount) }
+      : i));
+  };
+
+  const addToCart = (product: Product, batch?: { id: string; costPrice: number; sellingPrice?: number | null } | null) => {
+    const batchId = batch?.id || null;
+    const unitPrice = batch?.sellingPrice ?? product.sellingPrice;
+    const existing = cart.find(i => i.productId === product.id && (i.batchId || null) === batchId);
+    if (existing) {
+      if (existing.qty >= product.showroomStock) return;
+      setCart(cart.map(i =>
+        i.tempId === existing.tempId
+          ? { ...i, qty: i.qty + 1, lineTotal: (i.qty + 1) * (i.unitPrice - i.discount) }
+          : i
+      ));
+    } else {
+      setCart([...cart, {
+        tempId: Date.now().toString(),
+        productId: product.id,
+        productName: product.name,
+        sku: product.sku,
+        batchId,
+        qty: 1,
+        unitPrice,
+        costPrice: batch?.costPrice ?? 0,
+        discount: 0,
+        lineTotal: unitPrice,
+        warrantyMonths: product.warrantyMonths || 0,
+      }]);
+    }
+    setBatchPickerProduct(null);
+  };
+
+  const updateQty = (tempId: string, qty: number) => {
+    if (qty <= 0) { removeItem(tempId); return; }
+    setCart(cart.map(i => i.tempId === tempId ? { ...i, qty, lineTotal: qty * (i.unitPrice - i.discount) } : i));
+  };
+
+  const updateDiscount = (tempId: string, disc: number) => {
+    setCart(cart.map(i => {
+      if (i.tempId !== tempId) return i;
+      const clamped = Math.max(0, Math.min(disc, i.unitPrice));
+      return { ...i, discount: clamped, lineTotal: i.qty * (i.unitPrice - clamped) };
+    }));
+  };
+
+  const removeItem = (tempId: string) => setCart(cart.filter(i => i.tempId !== tempId));
+
+  const subtotal = cart.reduce((s, i) => s + i.lineTotal, 0);
+  const totalAmount = Math.max(0, subtotal - discount - pointsToRedeem);
+  const change = Number(amountTendered) - totalAmount;
+
+  const handleCheckout = async () => {
+    if (cart.length === 0) return;
+    if (!currentShift) {
+      alert("No open shift — open a shift before selling.");
+      return;
+    }
+    setProcessing(true);
+    try {
+      const result = await createSale({
+        customerId: selectedCustomer?.id || null,
+        customerName: selectedCustomer?.name || "Walk-in Customer",
+        customerPhone: selectedCustomer?.phone || undefined,
+        customerEmail: selectedCustomer?.email || undefined,
+        cashierId: user!.uid,
+        cashierName: userDisplayName || "Cashier",
+        items: cart,
+        subtotal,
+        discountAmount: discount,
+        taxAmount: 0,
+        totalAmount,
+        pointsRedeemed: pointsToRedeem || 0,
+        paymentMethod,
+        paymentStatus: "paid",
+        amountTendered: Number(amountTendered) || totalAmount,
+        changeAmount: Math.max(0, change),
+        note,
+        shiftId: currentShift.id,
+        shiftNo: currentShift.shiftNo,
+      });
+      setCurrentShift(prev => prev ? {
+        ...prev,
+        cashSalesTotal: prev.cashSalesTotal + (paymentMethod === "cash" ? totalAmount : 0),
+        cardSalesTotal: prev.cardSalesTotal + (paymentMethod === "card" ? totalAmount : 0),
+        transferSalesTotal: prev.transferSalesTotal + (paymentMethod === "transfer" ? totalAmount : 0),
+        salesCount: prev.salesCount + 1,
+      } : prev);
+      // Warranties and loyalty-point adjustments are written server-side inside
+      // createSale's own transaction, so they can't drift from the sale itself.
+      setCompletedSale({ ...result, items: cart, subtotal, discountAmount: discount, pointsRedeemed: pointsToRedeem, totalAmount, customerName: selectedCustomer?.name || "Walk-in Customer", customerPhone: selectedCustomer?.phone, customerEmail: selectedCustomer?.email, cashierName: userDisplayName || "Cashier", paymentMethod, amountTendered: Number(amountTendered), changeAmount: Math.max(0, change) });
+      setBillEmailNotice("");
+
+      // Fire-and-forget: don't hold up the checkout flow on the alert email.
+      if (result.lowStockItems && result.lowStockItems.length > 0) {
+        user!.getIdToken()
+          .then((idToken) => fetch("/api/products/low-stock-alert", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ idToken, items: result.lowStockItems }),
+          }))
+          .catch((err) => console.error("Low stock alert failed:", err));
+      }
+      const soldQtyByProduct = new Map<string, number>();
+      for (const item of cart) {
+        soldQtyByProduct.set(item.productId, (soldQtyByProduct.get(item.productId) || 0) + item.qty);
+      }
+      setProducts(prev => prev
+        .map(p => soldQtyByProduct.has(p.id)
+          ? { ...p, totalStock: p.totalStock - soldQtyByProduct.get(p.id)!, showroomStock: p.showroomStock - soldQtyByProduct.get(p.id)! }
+          : p)
+        .filter(p => p.showroomStock > 0));
+      setCart([]);
+      setDiscount(0);
+      setPointsToRedeem(0);
+      setSelectedCustomer(null);
+      setAmountTendered("");
+      setNote("");
+    } catch (err: any) {
+      console.error("Checkout failed:", err);
+      alert(err?.message || "Error processing sale. Please try again.");
+    }
+    setProcessing(false);
+  };
+
+  const handleAddCustomer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (savingCustomer) return;
+    setSavingCustomer(true);
+    setAddCustomerError("");
+    try {
+      const ref = await addCustomer(newCustomerForm);
+      const newCust = { id: ref.id, ...newCustomerForm, loyaltyPoints: 0 } as Customer;
+      setCustomers([...customers, newCust]);
+      setSelectedCustomer(newCust);
+      setShowAddCustomer(false);
+      setShowCustomerPicker(false);
+      setNewCustomerForm({ name: "", phone: "", email: "" });
+    } catch (err: any) {
+      setAddCustomerError(err?.message || "Failed to add customer. Please try again.");
+    } finally {
+      setSavingCustomer(false);
+    }
+  };
+
+  if (!canView) return <AccessRestricted message="You don't have permission to view the POS / New Sale page." />;
+
+  return (
+    <div className="flex flex-col lg:flex-row lg:h-full lg:overflow-hidden">
+      {/* Left: Product search */}
+      <div className="flex flex-col border-b lg:border-b-0 lg:border-r border-zinc-200 lg:flex-1 lg:min-h-0 lg:overflow-hidden">
+        <div className="px-4 sm:px-6 py-4 border-b border-zinc-100">
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <h1 className="font-prata text-xl text-black">New Sale</h1>
+            {!shiftLoading && (
+              currentShift ? (
+                <button
+                  onClick={() => setShowCloseShift(true)}
+                  className="flex items-center gap-2 text-xs bg-zinc-50 border border-zinc-200 rounded px-3 py-1.5 hover:border-black transition-colors"
+                >
+                  <Wallet size={13} />
+                  <span className="font-medium">{currentShift.shiftNo}</span>
+                  <span className="text-zinc-400">
+                    Cash Rs. {currentShift.cashSalesTotal.toLocaleString()} · Card Rs. {currentShift.cardSalesTotal.toLocaleString()}
+                  </span>
+                  <span className="underline">Close Shift</span>
+                </button>
+              ) : (
+                <button
+                  onClick={() => setShowOpenShift(true)}
+                  className="flex items-center gap-2 text-xs bg-amber-50 text-amber-700 border border-amber-200 rounded px-3 py-1.5 hover:border-amber-400 transition-colors"
+                >
+                  <Lock size={13} />
+                  No open shift — tap to open
+                </button>
+              )
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+              <input
+                className="nexora-input pl-9"
+                placeholder="Search product by name or SKU…"
+                value={productSearch}
+                onChange={e => setProductSearch(e.target.value)}
+              />
+            </div>
+            <select
+              className="nexora-input w-auto"
+              value={filterMainCat}
+              onChange={e => { setFilterMainCat(e.target.value); setFilterSubCat(""); }}
+            >
+              <option value="">All categories</option>
+              {mainCats.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <select
+              className="nexora-input w-auto"
+              value={filterSubCat}
+              onChange={e => setFilterSubCat(e.target.value)}
+              disabled={!filterMainCat}
+            >
+              <option value="">All subcategories</option>
+              {filterSubCatOptions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            {(filterMainCat || filterSubCat) && (
+              <button
+                onClick={() => { setFilterMainCat(""); setFilterSubCat(""); }}
+                className="nexora-btn nexora-btn-ghost text-xs py-2"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="lg:flex-1 lg:overflow-y-auto p-4 grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 content-start">
+          {filteredProducts.map(p => (
+            <button
+              key={p.id}
+              onClick={() => openBatchPicker(p)}
+              className="nexora-card p-3 text-left hover:border-black transition-colors group"
+            >
+              <p className="text-sm font-medium text-black group-hover:underline">{p.name}</p>
+              <p className="text-xs text-zinc-400 mt-0.5">{p.sku}</p>
+              <div className="flex items-center justify-between mt-2">
+                <span className="text-sm font-medium">Rs. {p.sellingPrice?.toLocaleString()}</span>
+                <span className={`badge ${p.showroomStock <= 5 ? "badge-warning" : "badge-default"}`}>{p.showroomStock}</span>
+              </div>
+            </button>
+          ))}
+          {filteredProducts.length === 0 && (
+            <p className="col-span-2 sm:col-span-3 xl:col-span-4 text-center py-12 text-sm text-zinc-400">No products found</p>
+          )}
+        </div>
+      </div>
+
+      {/* Right: Cart */}
+      <div className="lg:flex-none lg:w-96 lg:min-h-0 flex flex-col bg-white lg:overflow-hidden">
+        {/* Customer */}
+        <div className="px-4 py-3 border-b border-zinc-100">
+          <button
+            onClick={() => setShowCustomerPicker(true)}
+            className="w-full flex items-center gap-2 p-2.5 rounded border border-zinc-200 hover:border-black transition-colors text-left"
+          >
+            <User size={14} className="text-zinc-400" />
+            <span className={`text-sm flex-1 ${selectedCustomer ? "text-black font-medium" : "text-zinc-400"}`}>
+              {selectedCustomer ? selectedCustomer.name : "Walk-in customer (tap to select)"}
+            </span>
+            {selectedCustomer && (
+              <button onClick={e => { e.stopPropagation(); setSelectedCustomer(null); setPointsToRedeem(0); }}>
+                <X size={13} className="text-zinc-400" />
+              </button>
+            )}
+          </button>
+          {selectedCustomer ? (
+            <p className="text-xs text-zinc-400 mt-1.5">
+              <span className="text-amber-500 font-medium">{selectedCustomer.loyaltyPoints || 0} pts</span> available · Earns 1 pt per Rs. 100 spent
+            </p>
+          ) : (
+            <p className="text-xs text-zinc-400 mt-1.5">Select a customer to earn <span className="font-medium">1% loyalty reward</span></p>
+          )}
+        </div>
+
+        {/* Cart items */}
+        <div className="lg:flex-1 lg:overflow-y-auto">
+          {cart.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-zinc-300">
+              <p className="text-sm">Cart is empty</p>
+              <p className="text-xs mt-1">Tap a product to add</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-zinc-50">
+              {cart.map(item => (
+                <div key={item.tempId} className="px-4 py-3">
+                  <div className="flex items-start justify-between mb-1.5">
+                    <div className="flex-1 pr-2">
+                      <p className="text-sm font-medium text-black">{item.productName}</p>
+                      <p className="text-xs text-zinc-400">
+                        {item.units
+                          ? `Serial: ${item.units.map(u => u.serialNumber).join(", ")}`
+                          : item.batchId ? `Batch · Rs. ${item.costPrice?.toLocaleString()}/unit cost` : "Auto (FIFO)"}
+                      </p>
+                    </div>
+                    <button onClick={() => removeItem(item.tempId)} className="text-zinc-300 hover:text-red-500 transition-colors">
+                      <X size={13} />
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center border border-zinc-200 rounded">
+                      <button
+                        onClick={() => item.units ? removeLastUnit(item) : updateQty(item.tempId, item.qty - 1)}
+                        className="w-7 h-7 flex items-center justify-center hover:bg-zinc-50 transition-colors"
+                      >
+                        <Minus size={11} />
+                      </button>
+                      <span className="w-8 text-center text-sm font-medium">{item.qty}</span>
+                      <button
+                        onClick={() => {
+                          if (item.units) { openSerialPicker(products.find(p => p.id === item.productId)!); return; }
+                          const product = products.find(p => p.id === item.productId);
+                          if (product && item.qty >= product.showroomStock) return;
+                          updateQty(item.tempId, item.qty + 1);
+                        }}
+                        disabled={!item.units && (products.find(p => p.id === item.productId)?.showroomStock ?? Infinity) <= item.qty}
+                        className="w-7 h-7 flex items-center justify-center hover:bg-zinc-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                      >
+                        <Plus size={11} />
+                      </button>
+                    </div>
+                    <input
+                      type="number"
+                      min={0}
+                      max={item.unitPrice}
+                      value={item.discount || ""}
+                      onChange={e => updateDiscount(item.tempId, Number(e.target.value))}
+                      className="nexora-input flex-1 py-1.5 text-xs"
+                      placeholder="Discount"
+                    />
+                    <span className="text-sm font-medium text-black w-20 text-right">Rs. {item.lineTotal.toLocaleString()}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Totals & Checkout */}
+        <div className="border-t border-zinc-100 px-4 py-4 space-y-3">
+          <div className="flex justify-between text-sm">
+            <span className="text-zinc-500">Subtotal</span>
+            <span>Rs. {subtotal.toLocaleString()}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-zinc-500">Bill Discount</span>
+            <input
+              type="number"
+              value={discount || ""}
+              onChange={e => setDiscount(Math.max(0, Math.min(Number(e.target.value) || 0, subtotal)))}
+              className="nexora-input w-28 py-1.5 text-sm text-right"
+              placeholder="0"
+            />
+          </div>
+          {selectedCustomer && (selectedCustomer.loyaltyPoints || 0) > 0 && (
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-sm text-zinc-500">Redeem Points</span>
+                <p className="text-xs text-zinc-400">{(selectedCustomer.loyaltyPoints || 0)} pts available</p>
+              </div>
+              <input
+                type="number"
+                value={pointsToRedeem || ""}
+                onChange={e => {
+                  const val = Number(e.target.value);
+                  const max = Math.min(selectedCustomer.loyaltyPoints || 0, Math.floor(subtotal - discount));
+                  setPointsToRedeem(Math.max(0, Math.min(val, max)));
+                }}
+                className="nexora-input w-28 py-1.5 text-sm text-right"
+                placeholder="0"
+                max={Math.min(selectedCustomer.loyaltyPoints || 0, Math.floor(subtotal - discount))}
+                min={0}
+              />
+            </div>
+          )}
+          <div className="flex justify-between font-prata text-lg border-t border-zinc-100 pt-2">
+            <span>Total</span>
+            <span>Rs. {totalAmount.toLocaleString()}</span>
+          </div>
+
+          {/* Payment method */}
+          <div className="grid grid-cols-3 gap-2">
+            {(["cash", "card", "transfer"] as const).map(m => (
+              <button
+                key={m}
+                onClick={() => setPaymentMethod(m)}
+                className={`py-2 text-xs font-medium rounded border transition-colors capitalize ${
+                  paymentMethod === m ? "bg-black text-white border-black" : "border-zinc-200 text-zinc-500 hover:border-black"
+                }`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+
+          {paymentMethod === "cash" && (
+            <div>
+              <input
+                type="number"
+                value={amountTendered}
+                onChange={e => setAmountTendered(e.target.value)}
+                className="nexora-input"
+                placeholder="Amount tendered"
+              />
+              {Number(amountTendered) > 0 && totalAmount > 0 && Number(amountTendered) >= totalAmount && (
+                <p className="text-xs text-green-600 mt-1 font-medium">Change: Rs. {change.toLocaleString()}</p>
+              )}
+            </div>
+          )}
+
+          {selectedCustomer && cart.length > 0 && (
+            <div className="flex items-center justify-between text-xs text-zinc-400 bg-zinc-50 rounded px-3 py-2">
+              <span>Points after this sale</span>
+              <span className="font-medium text-zinc-600">
+                {(selectedCustomer.loyaltyPoints || 0) - pointsToRedeem + Math.floor((subtotal - discount) / 100)} pts
+                <span className="text-green-600 ml-1">(+{Math.floor((subtotal - discount) / 100)})</span>
+              </span>
+            </div>
+          )}
+
+          {!shiftLoading && !currentShift && (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2 text-center">
+              Open a shift above before checking out.
+            </p>
+          )}
+          <button
+            onClick={handleCheckout}
+            disabled={cart.length === 0 || processing || !currentShift}
+            className="nexora-btn nexora-btn-primary w-full justify-center py-3 text-base"
+          >
+            {processing ? "Processing…" : `Checkout — Rs. ${totalAmount.toLocaleString()}`}
+          </button>
+        </div>
+      </div>
+
+      {/* Batch picker modal */}
+      {batchPickerProduct && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-sm mx-4">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100">
+              <h2 className="font-prata text-base">{batchPickerProduct.name}</h2>
+              <button onClick={() => setBatchPickerProduct(null)}><X size={16} className="text-zinc-400" /></button>
+            </div>
+            <div className="p-3 space-y-2 max-h-80 overflow-y-auto">
+              <button
+                onClick={() => addToCart(batchPickerProduct)}
+                className="w-full text-left px-3 py-2.5 rounded border border-zinc-200 hover:border-black transition-colors"
+              >
+                <p className="text-sm font-medium">Auto (FIFO)</p>
+                <p className="text-xs text-zinc-400">Bills from the oldest stock automatically</p>
+              </button>
+              {loadingBatches ? (
+                <p className="text-xs text-zinc-400 text-center py-3">Loading batches…</p>
+              ) : productBatches.length === 0 ? (
+                <p className="text-xs text-zinc-400 text-center py-3">No batches recorded for this product</p>
+              ) : (
+                productBatches.map((b, i) => {
+                  const effectivePrice = b.sellingPrice ?? batchPickerProduct.sellingPrice;
+                  const isLoss = effectivePrice < b.costPrice;
+                  return (
+                    <button
+                      key={b.id}
+                      onClick={() => addToCart(batchPickerProduct, { id: b.id, costPrice: b.costPrice, sellingPrice: b.sellingPrice })}
+                      className="w-full text-left px-3 py-2.5 rounded border border-zinc-200 hover:border-black transition-colors flex items-center justify-between"
+                    >
+                      <div>
+                        <p className="text-sm font-medium">Batch {i + 1}</p>
+                        <p className="text-xs text-zinc-400">
+                          Cost Rs. {b.costPrice?.toLocaleString()} · Sells Rs. {effectivePrice?.toLocaleString()} · {b.remainingQty} left
+                        </p>
+                      </div>
+                      {isLoss && <span className="badge badge-danger text-xs shrink-0 ml-2">Selling at a loss</span>}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Serial picker modal */}
+      {serialPickerProduct && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-sm mx-4">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100">
+              <h2 className="font-prata text-base">{serialPickerProduct.name}</h2>
+              <button onClick={() => setSerialPickerProduct(null)}><X size={16} className="text-zinc-400" /></button>
+            </div>
+            <div className="p-3">
+              <p className="text-xs text-zinc-400 mb-2">Select the unit(s) being sold by serial number</p>
+              <div className="space-y-1.5 max-h-72 overflow-y-auto">
+                {loadingUnits ? (
+                  <p className="text-xs text-zinc-400 text-center py-3">Loading serial numbers…</p>
+                ) : availableUnits.length === 0 ? (
+                  <p className="text-xs text-zinc-400 text-center py-3">No serialized units in stock for this product</p>
+                ) : (
+                  availableUnits.map(u => {
+                    const price = u.sellingPrice ?? serialPickerProduct.sellingPrice;
+                    return (
+                      <button
+                        key={u.id}
+                        onClick={() => toggleUnitSelected(u.id)}
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded border transition-colors ${
+                          selectedUnitIds.includes(u.id) ? "border-black bg-zinc-50" : "border-zinc-200 hover:border-black"
+                        }`}
+                      >
+                        <span className="text-sm font-mono">{u.serialNumber}</span>
+                        <span className="flex items-center gap-2">
+                          <span className="text-xs text-zinc-400">Rs. {price.toLocaleString()}</span>
+                          {selectedUnitIds.includes(u.id) && <Check size={13} className="text-black" />}
+                        </span>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+              <button
+                onClick={() => addSerializedToCart(serialPickerProduct)}
+                disabled={selectedUnitIds.length === 0}
+                className="nexora-btn nexora-btn-primary w-full justify-center mt-3"
+              >
+                Add {selectedUnitIds.length || ""} to Cart
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Customer picker modal */}
+      {showCustomerPicker && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-sm mx-4">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100">
+              <h2 className="font-prata text-base">Select Customer</h2>
+              <button onClick={() => setShowCustomerPicker(false)}><X size={16} className="text-zinc-400" /></button>
+            </div>
+            <div className="p-3">
+              <input
+                className="nexora-input mb-2"
+                placeholder="Search name or phone…"
+                value={customerSearch}
+                onChange={e => setCustomerSearch(e.target.value)}
+              />
+              <div className="max-h-48 overflow-y-auto divide-y divide-zinc-50">
+                {filteredCustomers.map(c => (
+                  <button key={c.id} onClick={() => { setSelectedCustomer(c); setShowCustomerPicker(false); }}
+                    className="w-full text-left px-3 py-2.5 hover:bg-zinc-50 transition-colors flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium">{c.name}</p>
+                      <p className="text-xs text-zinc-400">{c.phone}</p>
+                    </div>
+                    {selectedCustomer?.id === c.id && <Check size={13} className="text-green-500" />}
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => { setAddCustomerError(""); setShowAddCustomer(true); }}
+                className="nexora-btn nexora-btn-outline w-full justify-center mt-2 text-sm">
+                <Plus size={13} /> New Customer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add customer modal */}
+      {showAddCustomer && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-xl w-full max-w-sm mx-4">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100">
+              <h2 className="font-prata text-base">New Customer</h2>
+              <button onClick={() => setShowAddCustomer(false)}><X size={16} className="text-zinc-400" /></button>
+            </div>
+            <form onSubmit={handleAddCustomer} className="p-4 space-y-3">
+              <input className="nexora-input" required placeholder="Full name" value={newCustomerForm.name} onChange={e => setNewCustomerForm({...newCustomerForm, name: e.target.value})} />
+              <input className="nexora-input" required placeholder="Phone number" value={newCustomerForm.phone} onChange={e => setNewCustomerForm({...newCustomerForm, phone: e.target.value})} />
+              <input className="nexora-input" placeholder="Email (optional)" value={newCustomerForm.email} onChange={e => setNewCustomerForm({...newCustomerForm, email: e.target.value})} />
+              {addCustomerError && <p className="text-xs text-red-500">{addCustomerError}</p>}
+              <button type="submit" disabled={savingCustomer} className="nexora-btn nexora-btn-primary w-full justify-center disabled:opacity-60 disabled:cursor-not-allowed">
+                {savingCustomer ? "Adding…" : "Add Customer"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Open shift modal */}
+      {showOpenShift && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-sm mx-4">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100">
+              <h2 className="font-prata text-base">Open Shift</h2>
+              <button onClick={() => setShowOpenShift(false)}><X size={16} className="text-zinc-400" /></button>
+            </div>
+            <div className="p-4 space-y-3">
+              <div>
+                <label className="text-xs text-zinc-500 mb-1 block">Opening cash float</label>
+                <input
+                  type="number"
+                  min={0}
+                  autoFocus
+                  className="nexora-input"
+                  placeholder="0"
+                  value={openingFloatInput}
+                  onChange={e => setOpeningFloatInput(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-zinc-500 mb-1 block">Note (optional)</label>
+                <input
+                  className="nexora-input"
+                  placeholder="e.g. Morning shift"
+                  value={openNoteInput}
+                  onChange={e => setOpenNoteInput(e.target.value)}
+                />
+              </div>
+              {openShiftError && <p className="text-xs text-red-600">{openShiftError}</p>}
+              <button
+                onClick={handleOpenShift}
+                disabled={openingShift}
+                className="nexora-btn nexora-btn-primary w-full justify-center"
+              >
+                {openingShift ? "Opening…" : "Open Shift"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Close shift modal */}
+      {showCloseShift && currentShift && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-sm mx-4">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100">
+              <h2 className="font-prata text-base">Close Shift — {currentShift.shiftNo}</h2>
+              <button onClick={() => setShowCloseShift(false)}><X size={16} className="text-zinc-400" /></button>
+            </div>
+            <div className="p-4 space-y-3">
+              <div className="bg-zinc-50 rounded p-3 space-y-1 text-sm">
+                <div className="flex justify-between"><span className="text-zinc-500">Opening float</span><span>Rs. {currentShift.openingFloat.toLocaleString()}</span></div>
+                <div className="flex justify-between"><span className="text-zinc-500">Cash sales</span><span>Rs. {currentShift.cashSalesTotal.toLocaleString()}</span></div>
+                <div className="flex justify-between"><span className="text-zinc-500">Card sales</span><span>Rs. {currentShift.cardSalesTotal.toLocaleString()}</span></div>
+                <div className="flex justify-between"><span className="text-zinc-500">Transfer sales</span><span>Rs. {currentShift.transferSalesTotal.toLocaleString()}</span></div>
+                <div className="flex justify-between font-medium border-t border-zinc-200 pt-1 mt-1">
+                  <span>Expected cash</span>
+                  <span>Rs. {(currentShift.openingFloat + currentShift.cashSalesTotal).toLocaleString()}</span>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-zinc-500 mb-1 block">Counted cash</label>
+                <input
+                  type="number"
+                  min={0}
+                  autoFocus
+                  className="nexora-input"
+                  placeholder="0"
+                  value={countedCashInput}
+                  onChange={e => setCountedCashInput(e.target.value)}
+                />
+                {countedCashInput !== "" && (
+                  (() => {
+                    const variance = Number(countedCashInput) - (currentShift.openingFloat + currentShift.cashSalesTotal);
+                    return (
+                      <p className={`text-xs mt-1 font-medium ${variance === 0 ? "text-green-600" : "text-red-600"}`}>
+                        {variance === 0 ? "Balanced" : variance > 0 ? `Over by Rs. ${variance.toLocaleString()}` : `Short by Rs. ${Math.abs(variance).toLocaleString()}`}
+                      </p>
+                    );
+                  })()
+                )}
+              </div>
+              <div>
+                <label className="text-xs text-zinc-500 mb-1 block">Note (optional)</label>
+                <input
+                  className="nexora-input"
+                  placeholder="e.g. Rs. 200 short — coin drawer miscount"
+                  value={closeNoteInput}
+                  onChange={e => setCloseNoteInput(e.target.value)}
+                />
+              </div>
+              {closeShiftError && <p className="text-xs text-red-600">{closeShiftError}</p>}
+              <button
+                onClick={handleCloseShift}
+                disabled={closingShift}
+                className="nexora-btn nexora-btn-primary w-full justify-center"
+              >
+                {closingShift ? "Closing…" : "Close Shift"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Close shift summary */}
+      {closeSummary && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-sm mx-4 text-center relative">
+            <button onClick={() => setCloseSummary(null)} className="absolute top-3 right-3 text-zinc-400 hover:text-zinc-600">
+              <X size={18} />
+            </button>
+            <div className="px-6 py-8">
+              <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4 ${closeSummary.variance === 0 ? "bg-green-100" : "bg-red-100"}`}>
+                <Wallet size={22} className={closeSummary.variance === 0 ? "text-green-600" : "text-red-600"} />
+              </div>
+              <h2 className="font-prata text-xl text-black mb-1">Shift Closed</h2>
+              <div className="text-sm text-zinc-500 space-y-1 mt-3">
+                <div className="flex justify-between"><span>Expected</span><span>Rs. {closeSummary.expectedCash.toLocaleString()}</span></div>
+                <div className="flex justify-between"><span>Counted</span><span>Rs. {closeSummary.countedCash.toLocaleString()}</span></div>
+                <div className={`flex justify-between font-medium ${closeSummary.variance === 0 ? "text-green-600" : "text-red-600"}`}>
+                  <span>Variance</span>
+                  <span>{closeSummary.variance === 0 ? "Balanced" : `Rs. ${closeSummary.variance.toLocaleString()}`}</span>
+                </div>
+              </div>
+              <button onClick={() => setCloseSummary(null)} className="nexora-btn nexora-btn-primary w-full justify-center mt-6">
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Completed sale modal */}
+      {completedSale && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-sm mx-4 text-center relative">
+            <button onClick={() => setCompletedSale(null)} className="absolute top-3 right-3 text-zinc-400 hover:text-zinc-600">
+              <X size={18} />
+            </button>
+            <div className="px-6 py-8">
+              <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Check size={22} className="text-green-600" />
+              </div>
+              <h2 className="font-prata text-xl text-black mb-1">Sale Complete</h2>
+              <p className="text-zinc-500 text-sm mb-1">{completedSale.invoiceNo}</p>
+              <p className="text-2xl font-prata text-black mt-3">Rs. {completedSale.totalAmount?.toLocaleString()}</p>
+              {completedSale.change > 0 && (
+                <p className="text-green-600 text-sm mt-1">Change: Rs. {completedSale.change.toLocaleString()}</p>
+              )}
+              {billEmailNotice && (
+                <p className="text-xs text-zinc-500 mt-3 bg-zinc-50 border border-zinc-200 rounded px-3 py-2">{billEmailNotice}</p>
+              )}
+              <div className="grid grid-cols-2 gap-3 mt-6">
+                <button onClick={() => { handlePrint(); }} className="nexora-btn nexora-btn-outline justify-center">
+                  <Printer size={14} /> Print Bill
+                </button>
+                <button onClick={handleDownloadBill} disabled={downloadingBill} className="nexora-btn nexora-btn-outline justify-center">
+                  <Download size={14} /> {downloadingBill ? "Downloading..." : "Download"}
+                </button>
+              </div>
+              {completedSale.customerEmail && (
+                <button onClick={() => { setBillEmailNotice(""); setConfirmingEmailBill(true); }} className="nexora-btn nexora-btn-outline w-full justify-center mt-3">
+                  <Mail size={14} /> Send Mail
+                </button>
+              )}
+              <button onClick={() => setCompletedSale(null)} className="nexora-btn nexora-btn-primary w-full justify-center mt-3">
+                New Sale
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={confirmingEmailBill}
+        title="Email the receipt?"
+        message={`Send this bill by email to ${completedSale?.customerEmail} with the PDF invoice attached?`}
+        confirmText="Send Email"
+        loadingText="Sending…"
+        cancelText="Cancel"
+        danger={false}
+        loading={sendingBillEmail}
+        onConfirm={handleSendBillEmail}
+        onCancel={() => setConfirmingEmailBill(false)}
+      />
+
+      {/* Off-screen print/PDF area (kept out of view but still rendered so html2canvas can capture it) */}
+      <div style={{ position: "fixed", top: 0, left: "-10000px", zIndex: -1 }}>
+        <div ref={printRef}>
+          {completedSale && <BillPrint sale={completedSale} />}
+        </div>
+      </div>
+    </div>
+  );
+}

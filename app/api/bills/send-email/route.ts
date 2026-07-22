@@ -1,27 +1,45 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/lib/firebase-admin";
-import { sendMail } from "@/lib/mailer";
+import { sendMail, isValidEmail } from "@/lib/mailer";
 import { billEmailTemplate } from "@/lib/email-templates";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
-    const { idToken, customerEmail, customerName, invoiceNo, items, subtotal, discountAmount, totalAmount, paymentMethod, pdfBase64 } = await req.json();
+    const { idToken, saleId, pdfBase64 } = await req.json();
 
     if (!idToken) {
       return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
     }
-    if (typeof customerEmail !== "string" || !customerEmail.includes("@")) {
-      return NextResponse.json({ error: "Customer has no valid email on file." }, { status: 400 });
-    }
-    if (!invoiceNo || !Array.isArray(items)) {
+    if (!saleId || typeof saleId !== "string") {
       return NextResponse.json({ error: "Missing bill details." }, { status: 400 });
     }
 
     await getAdminAuth().verifyIdToken(idToken);
 
-    const shopSnap = await getAdminDb().collection("shopSettings").doc("main").get();
+    // Pull the real sale record instead of trusting the client body for
+    // customerEmail/invoiceNo/items/amounts — otherwise any authenticated
+    // account could get the shop's mailer to send a fabricated "receipt" to
+    // an arbitrary address.
+    const db = getAdminDb();
+    const saleSnap = await db.collection("sales").doc(saleId).get();
+    if (!saleSnap.exists) {
+      return NextResponse.json({ error: "Bill not found." }, { status: 404 });
+    }
+    const sale = saleSnap.data()!;
+
+    if (!isValidEmail(sale.customerEmail)) {
+      return NextResponse.json({ error: "Customer has no valid email on file." }, { status: 400 });
+    }
+
+    const itemsSnap = await db.collection("sales").doc(saleId).collection("saleItems").get();
+    const items = itemsSnap.docs.map((d) => {
+      const i = d.data();
+      return { productName: i.productName, qty: i.qty, unitPrice: i.unitPrice, lineTotal: i.lineTotal };
+    });
+
+    const shopSnap = await db.collection("shopSettings").doc("main").get();
     const shopData = shopSnap.exists ? shopSnap.data() : null;
     const shop = {
       name: shopData?.name || "Nexora",
@@ -30,20 +48,20 @@ export async function POST(req: NextRequest) {
     };
 
     await sendMail(
-      customerEmail,
-      `Your receipt ${invoiceNo} - ${shop.name}`,
+      sale.customerEmail,
+      `Your receipt ${sale.invoiceNo} - ${shop.name}`,
       billEmailTemplate({
-        customerName: customerName || "there",
-        invoiceNo,
+        customerName: sale.customerName || "there",
+        invoiceNo: sale.invoiceNo,
         items,
-        subtotal: subtotal || 0,
-        discountAmount: discountAmount || 0,
-        totalAmount: totalAmount || 0,
-        paymentMethod: paymentMethod || "cash",
+        subtotal: sale.subtotal || 0,
+        discountAmount: sale.discountAmount || 0,
+        totalAmount: sale.totalAmount || 0,
+        paymentMethod: sale.paymentMethod || "cash",
         shop,
       }),
       typeof pdfBase64 === "string" && pdfBase64
-        ? [{ filename: `${invoiceNo}.pdf`, content: pdfBase64, encoding: "base64" }]
+        ? [{ filename: `${sale.invoiceNo}.pdf`, content: pdfBase64, encoding: "base64" }]
         : undefined
     );
 

@@ -102,6 +102,12 @@ export async function addProduct(data: {
   const productRef = doc(collection(db, "products"));
   batch.set(productRef, {
     ...data,
+    // Stock only ever arrives later via addBatch/createGrn/createStockTransfer,
+    // all of which use increment() — seed both explicitly so a freshly created
+    // product always has these fields rather than relying on increment() to
+    // create them on first stock movement (types/index.ts declares them required).
+    storesStock: 0,
+    showroomStock: 0,
     active: data.active ?? true,
     lowStockAlert: data.lowStockAlert ?? 5,
     createdAt: serverTimestamp(),
@@ -706,7 +712,7 @@ export async function createSale(data: SaleData) {
     // Loyalty points earned/redeemed on this sale, applied in the same
     // transaction as everything above so it can never drift from the sale.
     if (data.customerId) {
-      const pointsEarned = Math.floor((data.subtotal - data.discountAmount) / 100);
+      const pointsEarned = Math.max(0, Math.floor((data.subtotal - data.discountAmount) / 100));
       const pointsRedeemed = data.pointsRedeemed || 0;
       const delta = pointsEarned - pointsRedeemed;
       if (delta !== 0) {
@@ -806,7 +812,12 @@ export async function cancelSale(saleId: string, cancelledBy: { uid: string; nam
     }))
   );
 
+  const shiftRef = sale.shiftId ? doc(db, "shifts", sale.shiftId) : null;
+
   return runTransaction(db, async (tx) => {
+    // Read before any write — a transaction's reads must all happen first.
+    const shiftSnap = shiftRef ? await tx.get(shiftRef) : null;
+
     tx.update(saleRef, {
       status: "cancelled",
       cancelledAt: serverTimestamp(),
@@ -814,6 +825,17 @@ export async function cancelSale(saleId: string, cancelledBy: { uid: string; nam
       cancelledByName: cancelledBy.name,
       cancelReason: reason || "",
     });
+
+    // Reverse this sale's contribution to its shift's running totals so a
+    // mid-shift cancellation doesn't leave cashSalesTotal (and therefore
+    // expectedCash at close time) inflated by a sale that no longer counts.
+    // Only applies if the shift is still open — once closed, expectedCash/
+    // variance are already computed and frozen, so there's nothing to correct.
+    if (shiftSnap && shiftSnap.exists() && shiftSnap.data().status === "open") {
+      const totalsField =
+        sale.paymentMethod === "cash" ? "cashSalesTotal" : sale.paymentMethod === "card" ? "cardSalesTotal" : "transferSalesTotal";
+      tx.update(shiftRef!, { [totalsField]: increment(-sale.totalAmount), salesCount: increment(-1) });
+    }
 
     for (const item of items) {
       // Sales only ever draw from Showroom Stock, so a cancellation always
@@ -857,7 +879,7 @@ export async function cancelSale(saleId: string, cancelledBy: { uid: string; nam
     }
 
     if (sale.customerId) {
-      const pointsEarned = Math.floor((sale.subtotal - sale.discountAmount) / 100);
+      const pointsEarned = Math.max(0, Math.floor((sale.subtotal - sale.discountAmount) / 100));
       const pointsRedeemed = sale.pointsRedeemed || 0;
       const delta = pointsRedeemed - pointsEarned;
       if (delta !== 0) {
@@ -1205,6 +1227,10 @@ export interface GrnData {
 }
 
 export async function createGrn(data: GrnData): Promise<{ grnId: string; grnNo: string; totalCost: number }> {
+  for (const item of data.items) {
+    if (item.costPrice <= 0) throw new Error(`Cost price for "${item.productName}" must be greater than zero`);
+    if (item.sellingPrice != null && item.sellingPrice < 0) throw new Error(`Selling price for "${item.productName}" cannot be negative`);
+  }
   const totalCost = data.items.reduce((sum, item) => sum + item.costPrice * (item.serials?.length ?? item.qty), 0);
 
   return runTransaction(db, async (tx) => {
@@ -1372,6 +1398,15 @@ export async function adminUpdateGrn(
           costPrice: itemPatch.costPrice ?? itemBefore.costPrice,
           sellingPrice: itemPatch.sellingPrice !== undefined ? itemPatch.sellingPrice : itemBefore.sellingPrice,
         });
+        // Keep the batch this GRN line created in sync — allocateFifo() reads
+        // batch.costPrice for every sale's cost basis, so a cost correction
+        // here that never reached the batch would silently never affect COGS.
+        if (itemBefore.batchId) {
+          tx.update(doc(db, "products", itemBefore.productId, "batches", itemBefore.batchId), {
+            costPrice: itemPatch.costPrice ?? itemBefore.costPrice,
+            sellingPrice: itemPatch.sellingPrice !== undefined ? itemPatch.sellingPrice : itemBefore.sellingPrice,
+          });
+        }
         changes.push(...itemChanges.map((c) => ({ ...c, field: `items.${itemBefore.productName}.${c.field}` })));
       }
     });
@@ -1928,6 +1963,10 @@ export async function adminUpdateSupplierPayment(
     if (!supplierSnap.exists()) throw new Error("Supplier not found");
     const supplier = supplierSnap.data() as any;
 
+    if (patch.amount !== undefined && patch.amount <= 0) {
+      throw new Error("Payment amount must be greater than zero");
+    }
+
     const changes = diffFields(before, patch, SUPPLIER_PAYMENT_EDITABLE_FIELDS);
     const amountDelta = (patch.amount ?? before.amount) - before.amount;
 
@@ -1935,6 +1974,11 @@ export async function adminUpdateSupplierPayment(
       const totalPayable = supplier.totalPayable ?? 0;
       const amountPaidAfter = (supplier.amountPaid ?? 0) + amountDelta;
       const balanceAfter = totalPayable - amountPaidAfter;
+      if (balanceAfter < 0) {
+        throw new Error(
+          `Edited amount of Rs. ${(patch.amount ?? before.amount).toLocaleString()} would overpay the supplier — total payable is Rs. ${totalPayable.toLocaleString()} but amount paid would become Rs. ${amountPaidAfter.toLocaleString()}`
+        );
+      }
       tx.update(supplierRef, {
         amountPaid: amountPaidAfter,
         balance: balanceAfter,
@@ -2252,6 +2296,13 @@ export async function getUsageStats(): Promise<CollectionStat[]> {
     { key: "suppliers",       label: "Suppliers",        avgBytes: 350  },
     { key: "main_categories", label: "Main Categories",  avgBytes: 200  },
     { key: "brands",          label: "Brands",           avgBytes: 200  },
+    { key: "auditLog",        label: "Audit Log",        avgBytes: 400  },
+    { key: "grns",            label: "GRNs",             avgBytes: 700  },
+    { key: "stockTransfers",  label: "Stock Transfers",  avgBytes: 600  },
+    { key: "stockOuts",       label: "Stock Outs",       avgBytes: 500  },
+    { key: "supplierPayments",label: "Supplier Payments",avgBytes: 350  },
+    { key: "shifts",          label: "Shifts",           avgBytes: 400  },
+    { key: "expenses",        label: "Expenses",         avgBytes: 350  },
   ];
 
   const results = await Promise.all(
@@ -2275,6 +2326,9 @@ const SUBCOLLECTIONS: Record<string, string[]> = {
   products: ["batches"],
   sales: ["saleItems"],
   jobs: ["statusHistory"],
+  grns: ["grnItems"],
+  stockTransfers: ["transferItems"],
+  stockOuts: ["stockOutItems"],
 };
 
 export async function cleanCollection(collectionName: string): Promise<number> {

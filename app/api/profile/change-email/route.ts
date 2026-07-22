@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminAuth } from "@/lib/firebase-admin";
-import { sendMail } from "@/lib/mailer";
+import { sendMail, isValidEmail } from "@/lib/mailer";
 import { changeEmailTemplate } from "@/lib/email-templates";
 
 export const dynamic = "force-dynamic";
@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
   try {
     const { idToken, newEmail } = await req.json();
 
-    if (!idToken || typeof newEmail !== "string" || !newEmail.includes("@")) {
+    if (!idToken || !isValidEmail(newEmail)) {
       return NextResponse.json({ error: "Missing or invalid fields." }, { status: 400 });
     }
 

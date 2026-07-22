@@ -1,25 +1,43 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/lib/firebase-admin";
-import { sendMail } from "@/lib/mailer";
+import { sendMail, isValidEmail } from "@/lib/mailer";
 import { jobUpdateTemplate } from "@/lib/email-templates";
 
 export const dynamic = "force-dynamic";
 
+const STATUS_LABEL: Record<string, string> = {
+  pending: "Pending",
+  ongoing: "Ongoing",
+  done: "Done",
+  unrepairable: "Unrepairable",
+};
+
 export async function POST(req: NextRequest) {
   try {
-    const { idToken, customerEmail, customerName, jobNo, statusLabel, device, note, repairCost, isNew } = await req.json();
+    const { idToken, jobId, note, isNew } = await req.json();
 
     if (!idToken) {
       return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
     }
-    if (typeof customerEmail !== "string" || !customerEmail.includes("@")) {
-      return NextResponse.json({ error: "Customer has no valid email on file." }, { status: 400 });
-    }
-    if (!jobNo || !statusLabel) {
+    if (!jobId || typeof jobId !== "string") {
       return NextResponse.json({ error: "Missing job details." }, { status: 400 });
     }
 
     await getAdminAuth().verifyIdToken(idToken);
+
+    // Pull the real job record instead of trusting the client body for
+    // customerEmail/customerName/jobNo/device/repairCost/status — otherwise
+    // any authenticated account could get the shop's mailer to send a
+    // fabricated "job update" to an arbitrary address.
+    const jobSnap = await getAdminDb().collection("jobs").doc(jobId).get();
+    if (!jobSnap.exists) {
+      return NextResponse.json({ error: "Job not found." }, { status: 404 });
+    }
+    const job = jobSnap.data()!;
+
+    if (!isValidEmail(job.customerEmail)) {
+      return NextResponse.json({ error: "Customer has no valid email on file." }, { status: 400 });
+    }
 
     const shopSnap = await getAdminDb().collection("shopSettings").doc("main").get();
     const shopData = shopSnap.exists ? shopSnap.data() : null;
@@ -29,17 +47,20 @@ export async function POST(req: NextRequest) {
       email: shopData?.email || undefined,
     };
 
-    const subject = isNew ? `We've received your job ${jobNo} - ${shop.name}` : `Update on your job ${jobNo} - ${shop.name}`;
+    const statusLabel = STATUS_LABEL[job.status] || job.status;
+    const device = job.deviceType === "Other" ? job.deviceTypeOther : job.deviceType;
+    const subject = isNew ? `We've received your job ${job.jobNo} - ${shop.name}` : `Update on your job ${job.jobNo} - ${shop.name}`;
+
     await sendMail(
-      customerEmail,
+      job.customerEmail,
       subject,
       jobUpdateTemplate({
-        customerName: customerName || "there",
-        jobNo,
+        customerName: job.customerName || "there",
+        jobNo: job.jobNo,
         statusLabel,
         device,
-        note,
-        repairCost: repairCost ?? null,
+        note: typeof note === "string" ? note : "",
+        repairCost: job.repairCost ?? null,
         isNew: !!isNew,
         shop,
       })

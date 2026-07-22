@@ -1,5 +1,15 @@
 import nodemailer from "nodemailer";
 
+// Stricter than `.includes("@")` — rejects comma/semicolon-separated strings
+// that nodemailer's `to` field would otherwise treat as multiple recipients,
+// and rejects whitespace/control characters that could be used for header
+// injection if a field is ever passed to a raw header instead of the `to` option.
+const EMAIL_RE = /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/;
+
+export function isValidEmail(value: unknown): value is string {
+  return typeof value === "string" && EMAIL_RE.test(value);
+}
+
 let transporter: ReturnType<typeof nodemailer.createTransport> | null = null;
 
 function getTransporter() {

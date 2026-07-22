@@ -1,3 +1,18 @@
+// All string fields interpolated into these templates ultimately come from
+// customer/user input (names, notes, device descriptions) or admin-editable
+// settings (shop name) — escape before embedding in HTML so a value like
+// `<script>` or `"><img onerror=...>` can't inject markup into an email sent
+// from the shop's real address.
+function escapeHtml(value: unknown): string {
+  return String(value ?? "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  }[c]!));
+}
+
 function emailFooter(year: number) {
   return `
     <div style="padding:16px 24px;border-top:1px solid #eee;font-family:Arial,Helvetica,sans-serif">
@@ -29,7 +44,7 @@ export function changeEmailTemplate(newEmail: string, link: string, currentEmail
     `
       <h1 style="font-size:16px;margin:0 0 12px">Confirm your email change</h1>
       <p style="margin:0 0 8px;font-size:14px;line-height:1.5">
-        ${currentEmail ? `You asked to change the email on your Nexora POS account from <strong>${currentEmail}</strong> to <strong>${newEmail}</strong>.` : `Confirm <strong>${newEmail}</strong> as your new Nexora POS email.`}
+        ${currentEmail ? `You asked to change the email on your Nexora POS account from <strong>${escapeHtml(currentEmail)}</strong> to <strong>${escapeHtml(newEmail)}</strong>.` : `Confirm <strong>${escapeHtml(newEmail)}</strong> as your new Nexora POS email.`}
       </p>
       <p style="color:#999;font-size:12px;margin:0 0 20px">This link expires in 1 hour for your security.</p>
       <a href="${link}" style="background:#000;color:#fff;font-size:13px;padding:10px 22px;text-decoration:none;border-radius:6px;display:inline-block">
@@ -57,15 +72,15 @@ function shopEmailFooter(shop: { name: string; phone?: string; email?: string },
   // footer uses, which is what made this look inconsistent before.
   const linkStyle = "color:#999;text-decoration:none";
   const parts = [
-    shop.phone ? `<a href="tel:${shop.phone}" style="${linkStyle}">${shop.phone}</a>` : "",
-    shop.email ? `<a href="mailto:${shop.email}" style="${linkStyle}">${shop.email}</a>` : "",
+    shop.phone ? `<a href="tel:${escapeHtml(shop.phone)}" style="${linkStyle}">${escapeHtml(shop.phone)}</a>` : "",
+    shop.email ? `<a href="mailto:${escapeHtml(shop.email)}" style="${linkStyle}">${escapeHtml(shop.email)}</a>` : "",
   ].filter(Boolean);
   const contact = parts.join('<span style="color:#ddd;padding:0 6px">&middot;</span>');
 
   return `
     <div style="padding:18px 24px;border-top:1px solid #f0f0f0;font-family:Arial,Helvetica,sans-serif;text-align:center">
       ${contact ? `<p style="font-size:11.5px;margin:0 0 6px">${contact}</p>` : ""}
-      <p style="color:#ccc;font-size:10.5px;margin:0">© ${year} ${shop.name}</p>
+      <p style="color:#ccc;font-size:10.5px;margin:0">© ${year} ${escapeHtml(shop.name)}</p>
     </div>
   `;
 }
@@ -75,7 +90,7 @@ function shopEmailShell(body: string, shop: { name: string; phone?: string; emai
     <div style="background:#f4f4f5;padding:32px 16px;font-family:Georgia,'Times New Roman',serif">
       <div style="max-width:420px;margin:0 auto;background:#fff;border-radius:8px;overflow:hidden">
         <div style="background:#000;padding:20px 24px">
-          <span style="font-size:22px;color:#fff;letter-spacing:0.5px;font-style:italic">${shop.name}</span>
+          <span style="font-size:22px;color:#fff;letter-spacing:0.5px;font-style:italic">${escapeHtml(shop.name)}</span>
         </div>
         <div style="padding:28px 24px;font-family:Arial,Helvetica,sans-serif;color:#111">
           ${body}
@@ -98,24 +113,27 @@ export function jobUpdateTemplate(params: {
 }) {
   const { customerName, jobNo, statusLabel, device, note, repairCost, isNew, shop } = params;
   const year = new Date().getFullYear();
+  const safeName = escapeHtml(customerName);
+  const safeDevice = escapeHtml(device || "device");
+  const safeShopName = escapeHtml(shop.name);
   return shopEmailShell(
     `
       <h1 style="font-size:16px;margin:0 0 12px">
         ${isNew ? "We've received your device for service" : "Your job status has been updated"}
       </h1>
       <p style="margin:0 0 16px;font-size:14px;line-height:1.5">
-        Hi ${customerName}, ${isNew
-          ? `we've logged your ${device || "device"} for service with ${shop.name}. You can quote the job number below when following up with us.`
-          : `here's the latest update on your ${device || "device"} repair at ${shop.name}.`}
+        Hi ${safeName}, ${isNew
+          ? `we've logged your ${safeDevice} for service with ${safeShopName}. You can quote the job number below when following up with us.`
+          : `here's the latest update on your ${safeDevice} repair at ${safeShopName}.`}
       </p>
       <table style="width:100%;border-collapse:collapse;margin:0 0 16px">
         <tr>
           <td style="padding:6px 0;color:#999;font-size:12px;width:110px">Job No.</td>
-          <td style="padding:6px 0;font-size:13px;font-weight:bold">${jobNo}</td>
+          <td style="padding:6px 0;font-size:13px;font-weight:bold">${escapeHtml(jobNo)}</td>
         </tr>
         <tr>
           <td style="padding:6px 0;color:#999;font-size:12px">Status</td>
-          <td style="padding:6px 0;font-size:13px;font-weight:bold">${statusLabel}</td>
+          <td style="padding:6px 0;font-size:13px;font-weight:bold">${escapeHtml(statusLabel)}</td>
         </tr>
         ${repairCost != null ? `
         <tr>
@@ -123,10 +141,10 @@ export function jobUpdateTemplate(params: {
           <td style="padding:6px 0;font-size:13px">Rs. ${Number(repairCost).toLocaleString()}</td>
         </tr>` : ""}
       </table>
-      ${note ? `<p style="margin:0 0 8px;font-size:13px;line-height:1.5;color:#333">${note}</p>` : ""}
+      ${note ? `<p style="margin:0 0 8px;font-size:13px;line-height:1.5;color:#333">${escapeHtml(note)}</p>` : ""}
       ${shop.phone ? `
-      <a href="tel:${shop.phone}" style="background:#000;color:#fff;font-size:13px;padding:10px 22px;text-decoration:none;border-radius:6px;display:inline-block;margin-top:8px">
-        Call ${shop.name} · ${shop.phone}
+      <a href="tel:${escapeHtml(shop.phone)}" style="background:#000;color:#fff;font-size:13px;padding:10px 22px;text-decoration:none;border-radius:6px;display:inline-block;margin-top:8px">
+        Call ${safeShopName} · ${escapeHtml(shop.phone)}
       </a>` : ""}
       <p style="color:#999;font-size:12px;margin:16px 0 0">
         Please bring this job number when collecting your device. Contact us if you have any questions.
@@ -156,22 +174,22 @@ export function billEmailTemplate(params: {
     `
       <h1 style="font-size:16px;margin:0 0 12px">Thank you for your purchase!</h1>
       <p style="margin:0 0 16px;font-size:14px;line-height:1.5">
-        Hi ${customerName}, here's your receipt from ${shop.name}. The full invoice is also attached as a PDF.
+        Hi ${escapeHtml(customerName)}, here's your receipt from ${escapeHtml(shop.name)}. The full invoice is also attached as a PDF.
       </p>
       <table style="width:100%;border-collapse:collapse;margin:0 0 12px">
         <tr>
           <td style="padding:6px 0;color:#999;font-size:12px;width:110px">Invoice No.</td>
-          <td style="padding:6px 0;font-size:13px;font-weight:bold">${invoiceNo}</td>
+          <td style="padding:6px 0;font-size:13px;font-weight:bold">${escapeHtml(invoiceNo)}</td>
         </tr>
         <tr>
           <td style="padding:6px 0;color:#999;font-size:12px">Payment</td>
-          <td style="padding:6px 0;font-size:13px;text-transform:capitalize">${paymentMethod}</td>
+          <td style="padding:6px 0;font-size:13px;text-transform:capitalize">${escapeHtml(paymentMethod)}</td>
         </tr>
       </table>
       <table style="width:100%;border-collapse:collapse;margin:0 0 12px;border-top:1px solid #eee">
         ${items.map((i) => `
         <tr>
-          <td style="padding:6px 0;font-size:12px;border-bottom:1px solid #f4f4f5">${i.productName} <span style="color:#999">x${i.qty}</span></td>
+          <td style="padding:6px 0;font-size:12px;border-bottom:1px solid #f4f4f5">${escapeHtml(i.productName)} <span style="color:#999">x${i.qty}</span></td>
           <td style="padding:6px 0;font-size:12px;text-align:right;border-bottom:1px solid #f4f4f5;white-space:nowrap">Rs. ${i.lineTotal.toLocaleString()}</td>
         </tr>`).join("")}
       </table>
@@ -210,7 +228,7 @@ export function lowStockAlertTemplate(params: {
     `
       <h1 style="font-size:16px;margin:0 0 12px">Low stock alert</h1>
       <p style="margin:0 0 16px;font-size:14px;line-height:1.5">
-        ${items.length === 1 ? "This item has" : `These ${items.length} items have`} dropped to or below its restock threshold at ${shop.name}.
+        ${items.length === 1 ? "This item has" : `These ${items.length} items have`} dropped to or below its restock threshold at ${escapeHtml(shop.name)}.
       </p>
       <table style="width:100%;border-collapse:collapse;margin:0 0 4px">
         <tr>
@@ -220,7 +238,7 @@ export function lowStockAlertTemplate(params: {
         </tr>
         ${items.map((i) => `
         <tr>
-          <td style="padding:8px 0;font-size:13px;border-bottom:1px solid #f4f4f5">${i.productName}${i.sku ? ` <span style="color:#999;font-size:11px">(${i.sku})</span>` : ""}</td>
+          <td style="padding:8px 0;font-size:13px;border-bottom:1px solid #f4f4f5">${escapeHtml(i.productName)}${i.sku ? ` <span style="color:#999;font-size:11px">(${escapeHtml(i.sku)})</span>` : ""}</td>
           <td style="padding:8px 0;font-size:13px;text-align:right;border-bottom:1px solid #f4f4f5;font-weight:bold;color:${i.totalStock <= 0 ? "#dc2626" : "#111"}">${i.totalStock}</td>
           <td style="padding:8px 0;font-size:13px;text-align:right;border-bottom:1px solid #f4f4f5;color:#999">${i.lowStockAlert}</td>
         </tr>`).join("")}
@@ -251,7 +269,7 @@ export function supplierAccountStatementTemplate(params: {
     `
       <h1 style="font-size:16px;margin:0 0 12px">Account Statement</h1>
       <p style="margin:0 0 16px;font-size:14px;line-height:1.5">
-        Hi ${supplierName}, here's a summary of our current account with you at ${shop.name}.
+        Hi ${escapeHtml(supplierName)}, here's a summary of our current account with you at ${escapeHtml(shop.name)}.
       </p>
       <table style="width:100%;border-collapse:collapse;margin:0 0 16px">
         <tr>
@@ -268,8 +286,8 @@ export function supplierAccountStatementTemplate(params: {
         </tr>
       </table>
       ${shop.phone ? `
-      <a href="tel:${shop.phone}" style="background:#000;color:#fff;font-size:13px;padding:10px 22px;text-decoration:none;border-radius:6px;display:inline-block;margin-top:8px">
-        Call ${shop.name} · ${shop.phone}
+      <a href="tel:${escapeHtml(shop.phone)}" style="background:#000;color:#fff;font-size:13px;padding:10px 22px;text-decoration:none;border-radius:6px;display:inline-block;margin-top:8px">
+        Call ${escapeHtml(shop.name)} · ${escapeHtml(shop.phone)}
       </a>` : ""}
       <p style="color:#999;font-size:12px;margin:16px 0 0">
         Please let us know if these figures don't match your own records.

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/lib/firebase-admin";
-import { sendMail } from "@/lib/mailer";
+import { sendMail, isValidEmail } from "@/lib/mailer";
 import { supplierAccountStatementTemplate } from "@/lib/email-templates";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
     if (!idToken) {
       return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
     }
-    if (!supplierEmail || !supplierEmail.includes("@")) {
+    if (!isValidEmail(supplierEmail)) {
       return NextResponse.json({ error: "This supplier has no valid email on file." }, { status: 400 });
     }
 
