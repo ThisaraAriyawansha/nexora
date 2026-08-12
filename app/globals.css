@@ -1,12 +1,12 @@
-@import url('https://fonts.googleapis.com/css2?family=Milonga&family=Prata&family=Poppins:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700&family=Prata&family=Poppins:wght@300;400;500;600&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --font-milonga: 'Milonga', serif;
-  --font-prata: 'Prata', serif;
+  --font-milonga: 'Open Sans', sans-serif;
+  --font-prata: 'Poppins', sans-serif;
   --font-poppins: 'Poppins', sans-serif;
 }
 
@@ -69,7 +69,7 @@ body {
 
   .bill-header { margin-bottom: 8mm; }
   .bill-title {
-    font-family: var(--font-milonga);
+    font-family: var(--font-poppins);
     font-size: 28pt;
     color: #000;
     letter-spacing: -0.5px;

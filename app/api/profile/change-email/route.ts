@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminAuth } from "@/lib/firebase-admin";
+import { getAdminAuth, getAdminDb } from "@/lib/firebase-admin";
 import { sendMail, isValidEmail } from "@/lib/mailer";
 import { changeEmailTemplate } from "@/lib/email-templates";
 
@@ -38,10 +38,13 @@ export async function POST(req: NextRequest) {
 
     const link = await adminAuth.generateVerifyAndChangeEmailLink(currentEmail, newEmail, actionCodeSettings);
 
+    const shopSnap = await getAdminDb().collection("shopSettings").doc("main").get();
+    const shopName = (shopSnap.exists ? shopSnap.data()?.name : null) || "Nexora";
+
     await sendMail(
       newEmail,
-      "Confirm your new email - Nexora POS",
-      changeEmailTemplate(newEmail, link, currentEmail)
+      `Confirm your new email - ${shopName}`,
+      changeEmailTemplate(newEmail, link, shopName, currentEmail)
     );
 
     return NextResponse.json({ success: true });
