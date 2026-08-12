@@ -55,7 +55,7 @@ export default function JobPrint({ job }: JobPrintProps) {
         </div>
         <div style={{ textAlign: "right" }}>
           <div style={{ fontSize: "8pt", color: "#555", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "2px" }}>Service Job Note</div>
-          <div style={{ fontSize: "14pt", fontFamily: "'Prata', serif", fontWeight: "400" }}>{job.jobNo}</div>
+          <div style={{ fontSize: "14pt", fontFamily: "'Poppins', sans-serif", fontWeight: "400" }}>{job.jobNo}</div>
           <div style={{ fontSize: "7.5pt", color: "#666", marginTop: "3px" }}>{dateStr}</div>
           <div style={{ fontSize: "7.5pt", color: "#666" }}>{timeStr}</div>
         </div>
@@ -148,7 +148,7 @@ export default function JobPrint({ job }: JobPrintProps) {
             </div>
           )}
           <hr style={{ border: "none", borderTop: "1.5pt solid #000", margin: "3mm 0" }} />
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13pt", fontFamily: "'Prata', serif", fontWeight: "400" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13pt", fontFamily: "'Poppins', sans-serif", fontWeight: "400" }}>
             <span>Balance</span>
             <span>Rs. {balance.toLocaleString()}</span>
           </div>

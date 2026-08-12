@@ -3,6 +3,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
+import { useShopName } from "@/hooks/useShopName";
 import { PermissionKey } from "@/lib/permissions";
 import {
   LayoutDashboard, Package, Layers, BookMarked,
@@ -52,6 +53,7 @@ export default function Sidebar({
   const pathname = usePathname();
   const router = useRouter();
   const { user, userRole, logout, can } = useAuth();
+  const shopName = useShopName();
 
   const handleLogout = async () => {
     await logout();
@@ -148,7 +150,7 @@ export default function Sidebar({
           </button>
 
           <div className="text-zinc-600 text-[10px] font-poppins text-center mt-3 space-y-0.5">
-            <p>© {year} Nexora POS</p>
+            <p>© {year} {shopName}</p>
             <p className="text-zinc-700">Design &amp; Developed by plexCode</p>
           </div>
         </div>

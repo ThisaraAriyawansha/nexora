@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Menu } from "lucide-react";
 import Sidebar from "@/components/layout/Sidebar";
 import LoadingScreen from "@/components/LoadingScreen";
+import { useShopName } from "@/hooks/useShopName";
 
 function HeaderClock() {
   const [now, setNow] = useState<Date | null>(null);
@@ -27,10 +28,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const shopName = useShopName();
 
   useEffect(() => {
     if (!loading && !user) router.push("/auth/login");
   }, [user, loading, router]);
+
+  useEffect(() => {
+    document.title = `${shopName} POS`;
+  }, [shopName]);
 
   if (loading) {
     return <LoadingScreen />;
@@ -50,7 +56,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             >
               <Menu size={22} />
             </button>
-            <span className="font-milonga text-white text-lg lg:hidden">Nexora</span>
+            <span className="font-milonga text-white text-lg lg:hidden">{shopName}</span>
           </div>
           <HeaderClock />
         </header>

@@ -9,8 +9,8 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        milonga: ["var(--font-milonga)", "serif"],
-        prata: ["var(--font-prata)", "serif"],
+        milonga: ["var(--font-milonga)", "sans-serif"],
+        prata: ["var(--font-prata)", "sans-serif"],
         poppins: ["var(--font-poppins)", "sans-serif"],
       },
       colors: {

@@ -58,7 +58,10 @@ export async function POST(req: NextRequest) {
       createdAt: Date.now(),
     });
 
-    await sendMail(email, "Your password reset code - Nexora POS", passwordResetOtpTemplate(otp));
+    const shopSnap = await getAdminDb().collection("shopSettings").doc("main").get();
+    const shopName = (shopSnap.exists ? shopSnap.data()?.name : null) || "Nexora";
+
+    await sendMail(email, `Your password reset code - ${shopName}`, passwordResetOtpTemplate(otp, shopName));
 
     return GENERIC_SUCCESS;
   } catch (err: any) {

@@ -53,7 +53,7 @@ export default function QuotationPrint({ quotation }: QuotationPrintProps) {
         </div>
         <div style={{ textAlign: "right" }}>
           <div style={{ fontSize: "8pt", color: "#555", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "2px" }}>Quotation</div>
-          <div style={{ fontSize: "14pt", fontFamily: "'Prata', serif", fontWeight: "400" }}>{quotation.quotationNo}</div>
+          <div style={{ fontSize: "14pt", fontFamily: "'Poppins', sans-serif", fontWeight: "400" }}>{quotation.quotationNo}</div>
           <div style={{ fontSize: "7.5pt", color: "#666", marginTop: "3px" }}>Issued: {formatDate(quotation.createdAt || now)}</div>
           <div style={{ fontSize: "7.5pt", color: "#666" }}>Valid Until: {formatDate(quotation.validUntil)}</div>
         </div>
@@ -124,7 +124,7 @@ export default function QuotationPrint({ quotation }: QuotationPrintProps) {
             </div>
           )}
           <hr style={{ border: "none", borderTop: "1.5pt solid #000", margin: "3mm 0" }} />
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13pt", fontFamily: "'Prata', serif", fontWeight: "400" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13pt", fontFamily: "'Poppins', sans-serif", fontWeight: "400" }}>
             <span>Total</span>
             <span>Rs. {quotation.totalAmount?.toLocaleString()}</span>
           </div>
