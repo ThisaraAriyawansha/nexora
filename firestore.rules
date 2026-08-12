@@ -132,7 +132,11 @@ service cloud.firestore {
             && (resource.data.role != 'Admin' || request.resource.data.get('permissions', {}) == resource.data.get('permissions', {}) || isSuperAdmin()))
       );
 
-      allow delete: if isSuperAdmin();
+      // Admin can delete a Manager/Cashier/Technician/Staff account, never a
+      // peer Admin or a Super Admin — same tier boundary as the update rule
+      // above. Only Super Admin can delete an Admin or another Super Admin.
+      allow delete: if isAdminOrAbove() &&
+        (!(resource.data.role in ['Super Admin', 'Admin']) || isSuperAdmin());
     }
 
     match /brands/{id}          { allow read: if isAuth(); allow create, update: if isAuth(); allow delete: if hasPerm('brands.delete'); }

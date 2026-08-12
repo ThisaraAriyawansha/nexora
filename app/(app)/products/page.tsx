@@ -406,13 +406,14 @@ export default function ProductsPage() {
 
       {/* Table */}
       <div className="nexora-card overflow-x-auto">
-        <table className="w-full text-sm min-w-[760px]">
+        <table className="w-full text-sm min-w-[860px]">
           <thead>
             <tr className="border-b border-zinc-100">
               <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase tracking-wider">Product</th>
               <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase tracking-wider">Brand</th>
               <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase tracking-wider">Category</th>
               <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase tracking-wider">Selling Price</th>
+              <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase tracking-wider">Warranty</th>
               <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase tracking-wider">Stock</th>
               <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase tracking-wider">Batches</th>
               <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase tracking-wider">Status</th>
@@ -421,9 +422,9 @@ export default function ProductsPage() {
           </thead>
           <tbody className="divide-y divide-zinc-50">
             {loading ? (
-              <tr><td colSpan={8} className="text-center py-10 text-zinc-400">Loading…</td></tr>
+              <tr><td colSpan={9} className="text-center py-10 text-zinc-400">Loading…</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={8} className="text-center py-10 text-zinc-400">No products found</td></tr>
+              <tr><td colSpan={9} className="text-center py-10 text-zinc-400">No products found</td></tr>
             ) : (
               paginated.map(p => (
                 <tr key={p.id} className="hover:bg-zinc-50 transition-colors">
@@ -437,6 +438,9 @@ export default function ProductsPage() {
                     <p className="text-xs text-zinc-400">{getSubCat(p.subCategoryId)}</p>
                   </td>
                   <td className="px-4 py-3 font-medium">Rs. {p.sellingPrice?.toLocaleString()}</td>
+                  <td className="px-4 py-3 text-zinc-600">
+                    {p.warrantyMonths ? `${p.warrantyMonths} mo` : "—"}
+                  </td>
                   <td className="px-4 py-3">
                     <span className={`badge ${p.totalStock <= p.lowStockAlert ? "badge-danger" : "badge-success"}`}>
                       {p.totalStock} units

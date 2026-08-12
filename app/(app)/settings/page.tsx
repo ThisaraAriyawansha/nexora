@@ -106,6 +106,9 @@ export default function SettingsPage() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [editMsg, setEditMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [togglingUid, setTogglingUid] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<UserProfile | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const [usageStats, setUsageStats] = useState<CollectionStat[]>([]);
   const [loadingUsage, setLoadingUsage] = useState(true);
   const [showCleanModal, setShowCleanModal] = useState(false);
@@ -315,6 +318,28 @@ export default function SettingsPage() {
     }
   };
 
+  const handleDeleteUser = async () => {
+    if (!deleteTarget || deleteTarget.uid === user?.uid) return;
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      const idToken = await user!.getIdToken();
+      const res = await fetch("/api/settings/delete-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken, targetUid: deleteTarget.uid }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to delete user");
+      setTeamUsers((prev) => prev.filter((t) => t.uid !== deleteTarget.uid));
+      setDeleteTarget(null);
+    } catch (err: any) {
+      setDeleteError(err.message || "Failed to delete user.");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="p-4 sm:p-8">
       <div className="mb-6">
@@ -490,6 +515,15 @@ export default function SettingsPage() {
                       title={isInactive ? "Enable user" : "Disable user"}
                     >
                       {isInactive ? <ToggleLeft size={16} /> : <ToggleRight size={16} />}
+                    </button>
+                  )}
+                  {!isSelf && (isSuperAdmin || canManagePermissionsFor(userRole ?? "", u.role)) && (
+                    <button
+                      onClick={() => { setDeleteTarget(u); setDeleteError(""); }}
+                      className="p-1.5 rounded hover:bg-red-50 text-zinc-400 hover:text-red-500 transition-colors shrink-0"
+                      title="Delete user"
+                    >
+                      <Trash2 size={13} />
                     </button>
                   )}
                 </div>
@@ -741,6 +775,7 @@ export default function SettingsPage() {
                   <option value="Manager">Manager</option>
                   <option value="Cashier">Cashier</option>
                   <option value="Technician">Technician</option>
+                  <option value="Staff">Staff</option>
                 </select>
               </div>
               {canManagePermissionsFor(userRole ?? "", editForm.role) && (
@@ -837,6 +872,7 @@ export default function SettingsPage() {
                   <option value="Manager">Manager</option>
                   <option value="Cashier">Cashier</option>
                   <option value="Technician">Technician</option>
+                  <option value="Staff">Staff</option>
                 </select>
               </div>
               <div>
@@ -875,6 +911,54 @@ export default function SettingsPage() {
                 {addingUser ? "Creating..." : "Create User"}
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete User modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-sm mx-4">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-100">
+              <div className="flex items-center gap-2">
+                <Trash2 size={15} className="text-red-500" />
+                <h2 className="font-prata text-base">Delete User</h2>
+              </div>
+              <button onClick={() => setDeleteTarget(null)} disabled={deleting}>
+                <X size={16} className="text-zinc-400" />
+              </button>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+                <AlertTriangle size={14} className="text-red-500 shrink-0 mt-0.5" />
+                <p className="text-xs text-red-700">
+                  This permanently deletes <span className="font-semibold">{deleteTarget.displayName || deleteTarget.email}</span>'s
+                  login and profile. This action cannot be undone.
+                </p>
+              </div>
+              {deleteError && (
+                <p className="flex items-center gap-1.5 text-xs text-red-500">
+                  <AlertCircle size={13} /> {deleteError}
+                </p>
+              )}
+              <div className="flex gap-3 pt-1">
+                <button
+                  onClick={() => setDeleteTarget(null)}
+                  className="nexora-btn nexora-btn-outline flex-1 justify-center"
+                  disabled={deleting}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteUser}
+                  disabled={deleting}
+                  className="flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded bg-red-500 text-white text-sm font-medium hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  <Trash2 size={13} />
+                  {deleting ? "Deleting…" : "Delete User"}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
