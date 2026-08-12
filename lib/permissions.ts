@@ -54,13 +54,13 @@ export type PermissionKey =
 
 // Roles whose permissions can be configured at all (Super Admin is never
 // configurable — it's always unconditionally allowed everywhere).
-export const EDITABLE_ROLES = ["Admin", "Manager", "Cashier", "Technician"] as const;
+export const EDITABLE_ROLES = ["Admin", "Manager", "Cashier", "Technician", "Staff"] as const;
 export type EditableRole = (typeof EDITABLE_ROLES)[number];
 
 // Roles an Admin (not Super Admin) is allowed to configure — never a peer
 // Admin, only the tier below. Super Admin can configure any EditableRole,
 // including Admin.
-const ADMIN_MANAGEABLE_ROLES: EditableRole[] = ["Manager", "Cashier", "Technician"];
+const ADMIN_MANAGEABLE_ROLES: EditableRole[] = ["Manager", "Cashier", "Technician", "Staff"];
 
 export interface PermissionDef {
   key: PermissionKey;
@@ -175,6 +175,7 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<EditableRole, Record<PermissionKey
   ]),
   Cashier: buildDefaults(DEFAULT_TRUE_KEYS),
   Technician: buildDefaults(DEFAULT_TRUE_KEYS),
+  Staff: buildDefaults(DEFAULT_TRUE_KEYS),
 };
 
 export function isEditableRole(role: string): role is EditableRole {
