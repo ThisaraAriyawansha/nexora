@@ -34,6 +34,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     if (!loading && !user) router.push("/auth/login");
   }, [user, loading, router]);
 
+  useEffect(() => {
+    document.title = `${shopName} POS`;
+  }, [shopName]);
+
   if (loading) {
     return <LoadingScreen />;
   }

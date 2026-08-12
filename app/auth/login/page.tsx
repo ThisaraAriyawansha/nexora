@@ -1,8 +1,9 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useAuth } from "@/hooks/useAuth";
+import { useShopName } from "@/hooks/useShopName";
 import TurnstileWidget from "@/components/ui/TurnstileWidget";
 
 type Mode = "login" | "forgot" | "reset";
@@ -11,6 +12,11 @@ export default function LoginPage() {
   const { login } = useAuth();
   const router = useRouter();
   const year = new Date().getFullYear();
+  const shopName = useShopName();
+
+  useEffect(() => {
+    document.title = `${shopName} POS`;
+  }, [shopName]);
 
   const [mode, setMode] = useState<Mode>("login");
 
@@ -156,7 +162,7 @@ export default function LoginPage() {
           priority
         />
         <div className="text-zinc-600 text-xs font-poppins text-center space-y-0.5 absolute bottom-12">
-          <p>© {year} Nexora POS</p>
+          <p>© {year} {shopName}</p>
           <p className="text-zinc-700">Design &amp; Developed by plexCode</p>
         </div>
       </div>
@@ -355,7 +361,7 @@ export default function LoginPage() {
 
           {/* Mobile footer */}
           <div className="lg:hidden text-zinc-400 text-xs font-poppins text-center space-y-0.5 mt-10">
-            <p>© {year} Nexora POS</p>
+            <p>© {year} {shopName}</p>
             <p className="text-zinc-500">Design &amp; Developed by plexCode</p>
           </div>
         </div>
