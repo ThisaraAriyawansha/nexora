@@ -7,7 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import AccessRestricted from "@/components/ui/AccessRestricted";
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const PAYMENT_COLORS = ["#0a0a0a", "#a1a1aa", "#e4e4e7", "#71717a"];
+const PAYMENT_COLORS = ["#10233d", "#a1a1aa", "#e4e4e7", "#71717a"];
 
 function delta(current: number, previous: number): { pct: number; up: boolean } | null {
   if (previous === 0) return current > 0 ? { pct: 100, up: true } : null;
@@ -195,7 +195,7 @@ export default function DashboardPage() {
     <div className="p-4 sm:p-8">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="font-prata text-2xl text-black">Dashboard</h1>
+        <h1 className="font-prata text-2xl text-ink">Dashboard</h1>
         <p className="text-zinc-500 text-sm mt-1">
           {new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
         </p>
@@ -222,7 +222,7 @@ export default function DashboardPage() {
                 <p className="text-[11px] sm:text-xs text-zinc-500 uppercase tracking-wider">{card.label}</p>
                 <Icon size={14} className="text-zinc-400 shrink-0" />
               </div>
-              <p className="font-prata text-lg sm:text-2xl text-black truncate">{card.value}</p>
+              <p className="font-prata text-lg sm:text-2xl text-ink truncate">{card.value}</p>
               {card.delta ? (
                 <p className={`inline-flex items-center gap-0.5 text-xs mt-1 ${card.delta.up ? "text-emerald-600" : "text-red-500"}`}>
                   {card.delta.up ? <ArrowUp size={10} /> : <ArrowDown size={10} />}
@@ -252,7 +252,7 @@ export default function DashboardPage() {
                 return (
                   <div key={i} className="group relative flex-1 flex flex-col items-center justify-end h-full min-w-0">
                     {isPeak && (
-                      <p className="text-[9px] sm:text-[10px] font-medium text-black mb-1 whitespace-nowrap">
+                      <p className="text-[9px] sm:text-[10px] font-medium text-ink mb-1 whitespace-nowrap">
                         Rs. {d.amount.toLocaleString()}
                       </p>
                     )}
@@ -304,7 +304,7 @@ export default function DashboardPage() {
                   })()}
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center px-2">
-                  <p className="font-prata text-[11px] sm:text-xs text-black leading-none whitespace-nowrap">
+                  <p className="font-prata text-[11px] sm:text-xs text-ink leading-none whitespace-nowrap">
                     Rs. {(paymentBreakdown.reduce((s, p) => s + p.amount, 0) / 1000).toFixed(0)}K
                   </p>
                   <p className="text-[8px] text-zinc-400 uppercase tracking-wider mt-1">Total</p>
@@ -409,7 +409,7 @@ export default function DashboardPage() {
       {canViewFinance && (
       <div className="nexora-card mb-4">
         <div className="px-4 sm:px-6 py-4 border-b border-zinc-100">
-          <h2 className="font-prata text-base text-black">Top Products</h2>
+          <h2 className="font-prata text-base text-ink">Top Products</h2>
         </div>
         <div className="divide-y divide-zinc-50">
           {loading ? (
@@ -421,13 +421,13 @@ export default function DashboardPage() {
               <div key={p.name + i} className="px-3 sm:px-6 py-1.5 flex items-center gap-2 sm:gap-4">
                 <span className="text-xs text-zinc-400 w-4 shrink-0">{i + 1}</span>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-black truncate leading-tight">{p.name}</p>
+                  <p className="text-sm font-medium text-ink truncate leading-tight">{p.name}</p>
                   <div className="h-1 rounded-full bg-zinc-100 overflow-hidden mt-1 max-w-full sm:max-w-[220px]">
                     <div className="h-full bg-black rounded-full" style={{ width: `${(p.revenue / maxProductRevenue) * 100}%` }} />
                   </div>
                 </div>
                 <div className="text-right shrink-0">
-                  <p className="text-sm font-medium text-black leading-tight">Rs. {p.revenue.toLocaleString()}</p>
+                  <p className="text-sm font-medium text-ink leading-tight">Rs. {p.revenue.toLocaleString()}</p>
                   <p className="text-xs text-zinc-400 leading-tight">{p.qty} sold</p>
                 </div>
               </div>
@@ -440,8 +440,8 @@ export default function DashboardPage() {
       {/* Recent sales */}
       <div className="nexora-card">
         <div className="px-4 sm:px-6 py-4 border-b border-zinc-100 flex items-center justify-between">
-          <h2 className="font-prata text-base text-black">Recent Sales</h2>
-          <Link href="/bills" className="text-xs text-zinc-500 hover:text-black transition-colors">
+          <h2 className="font-prata text-base text-ink">Recent Sales</h2>
+          <Link href="/bills" className="text-xs text-zinc-500 hover:text-ink transition-colors">
             View all →
           </Link>
         </div>
@@ -454,11 +454,11 @@ export default function DashboardPage() {
             recentSales.map((sale: any) => (
               <div key={sale.id} className="px-4 sm:px-6 py-1.5 flex items-center justify-between gap-3 hover:bg-zinc-50 transition-colors">
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-black leading-tight">{sale.invoiceNo}</p>
+                  <p className="text-sm font-medium text-ink leading-tight">{sale.invoiceNo}</p>
                   <p className="text-xs text-zinc-400 leading-tight">{sale.customerName || "Walk-in customer"}</p>
                 </div>
                 <div className="shrink-0 flex items-center gap-2">
-                  <p className="text-sm font-medium text-black">Rs. {sale.totalAmount?.toLocaleString()}</p>
+                  <p className="text-sm font-medium text-ink">Rs. {sale.totalAmount?.toLocaleString()}</p>
                   <span className={`badge ${sale.paymentStatus === "paid" ? "badge-success" : "badge-warning"}`}>
                     {sale.paymentStatus}
                   </span>
@@ -472,16 +472,16 @@ export default function DashboardPage() {
       {/* Quick actions */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
         <Link href="/sales" className="nexora-card p-4 hover:border-black transition-colors flex items-center gap-3 group">
-          <ShoppingBag size={16} className="text-zinc-400 group-hover:text-black transition-colors" />
-          <span className="text-sm font-medium text-zinc-700 group-hover:text-black transition-colors">New Sale</span>
+          <ShoppingBag size={16} className="text-zinc-400 group-hover:text-ink transition-colors" />
+          <span className="text-sm font-medium text-zinc-700 group-hover:text-ink transition-colors">New Sale</span>
         </Link>
         <Link href="/products" className="nexora-card p-4 hover:border-black transition-colors flex items-center gap-3 group">
-          <Package size={16} className="text-zinc-400 group-hover:text-black transition-colors" />
-          <span className="text-sm font-medium text-zinc-700 group-hover:text-black transition-colors">Add Product</span>
+          <Package size={16} className="text-zinc-400 group-hover:text-ink transition-colors" />
+          <span className="text-sm font-medium text-zinc-700 group-hover:text-ink transition-colors">Add Product</span>
         </Link>
         <Link href="/warranty" className="nexora-card p-4 hover:border-black transition-colors flex items-center gap-3 group">
-          <Users size={16} className="text-zinc-400 group-hover:text-black transition-colors" />
-          <span className="text-sm font-medium text-zinc-700 group-hover:text-black transition-colors">Warranties</span>
+          <Users size={16} className="text-zinc-400 group-hover:text-ink transition-colors" />
+          <span className="text-sm font-medium text-zinc-700 group-hover:text-ink transition-colors">Warranties</span>
         </Link>
       </div>
     </div>

@@ -439,7 +439,7 @@ export default function SalesPage() {
       <div className="flex flex-col border-b lg:border-b-0 lg:border-r border-zinc-200 lg:flex-1 lg:min-h-0 lg:overflow-hidden">
         <div className="px-4 sm:px-6 py-4 border-b border-zinc-100">
           <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-            <h1 className="font-prata text-xl text-black">New Sale</h1>
+            <h1 className="font-prata text-xl text-ink">New Sale</h1>
             {!shiftLoading && (
               currentShift ? (
                 <button
@@ -508,7 +508,7 @@ export default function SalesPage() {
               onClick={() => openBatchPicker(p)}
               className="nexora-card p-3 text-left hover:border-black transition-colors group"
             >
-              <p className="text-sm font-medium text-black group-hover:underline">{p.name}</p>
+              <p className="text-sm font-medium text-ink group-hover:underline">{p.name}</p>
               <p className="text-xs text-zinc-400 mt-0.5">{p.sku}</p>
               <div className="flex items-center justify-between mt-2">
                 <span className="text-sm font-medium">Rs. {p.sellingPrice?.toLocaleString()}</span>
@@ -531,7 +531,7 @@ export default function SalesPage() {
             className="w-full flex items-center gap-2 p-2.5 rounded border border-zinc-200 hover:border-black transition-colors text-left"
           >
             <User size={14} className="text-zinc-400" />
-            <span className={`text-sm flex-1 ${selectedCustomer ? "text-black font-medium" : "text-zinc-400"}`}>
+            <span className={`text-sm flex-1 ${selectedCustomer ? "text-ink font-medium" : "text-zinc-400"}`}>
               {selectedCustomer ? selectedCustomer.name : "Walk-in customer (tap to select)"}
             </span>
             {selectedCustomer && (
@@ -562,7 +562,7 @@ export default function SalesPage() {
                 <div key={item.tempId} className="px-4 py-3">
                   <div className="flex items-start justify-between mb-1.5">
                     <div className="flex-1 pr-2">
-                      <p className="text-sm font-medium text-black">{item.productName}</p>
+                      <p className="text-sm font-medium text-ink">{item.productName}</p>
                       <p className="text-xs text-zinc-400">
                         {item.units
                           ? `Serial: ${item.units.map(u => u.serialNumber).join(", ")}`
@@ -604,7 +604,7 @@ export default function SalesPage() {
                       className="nexora-input flex-1 py-1.5 text-xs"
                       placeholder="Discount"
                     />
-                    <span className="text-sm font-medium text-black w-20 text-right">Rs. {item.lineTotal.toLocaleString()}</span>
+                    <span className="text-sm font-medium text-ink w-20 text-right">Rs. {item.lineTotal.toLocaleString()}</span>
                   </div>
                 </div>
               ))}
@@ -784,7 +784,7 @@ export default function SalesPage() {
                         <span className="text-sm font-mono">{u.serialNumber}</span>
                         <span className="flex items-center gap-2">
                           <span className="text-xs text-zinc-400">Rs. {price.toLocaleString()}</span>
-                          {selectedUnitIds.includes(u.id) && <Check size={13} className="text-black" />}
+                          {selectedUnitIds.includes(u.id) && <Check size={13} className="text-ink" />}
                         </span>
                       </button>
                     );
@@ -977,7 +977,7 @@ export default function SalesPage() {
               <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4 ${closeSummary.variance === 0 ? "bg-green-100" : "bg-red-100"}`}>
                 <Wallet size={22} className={closeSummary.variance === 0 ? "text-green-600" : "text-red-600"} />
               </div>
-              <h2 className="font-prata text-xl text-black mb-1">Shift Closed</h2>
+              <h2 className="font-prata text-xl text-ink mb-1">Shift Closed</h2>
               <div className="text-sm text-zinc-500 space-y-1 mt-3">
                 <div className="flex justify-between"><span>Expected</span><span>Rs. {closeSummary.expectedCash.toLocaleString()}</span></div>
                 <div className="flex justify-between"><span>Counted</span><span>Rs. {closeSummary.countedCash.toLocaleString()}</span></div>
@@ -1005,9 +1005,9 @@ export default function SalesPage() {
               <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Check size={22} className="text-green-600" />
               </div>
-              <h2 className="font-prata text-xl text-black mb-1">Sale Complete</h2>
+              <h2 className="font-prata text-xl text-ink mb-1">Sale Complete</h2>
               <p className="text-zinc-500 text-sm mb-1">{completedSale.invoiceNo}</p>
-              <p className="text-2xl font-prata text-black mt-3">Rs. {completedSale.totalAmount?.toLocaleString()}</p>
+              <p className="text-2xl font-prata text-ink mt-3">Rs. {completedSale.totalAmount?.toLocaleString()}</p>
               {completedSale.change > 0 && (
                 <p className="text-green-600 text-sm mt-1">Change: Rs. {completedSale.change.toLocaleString()}</p>
               )}

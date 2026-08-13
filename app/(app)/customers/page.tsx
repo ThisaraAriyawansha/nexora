@@ -43,7 +43,7 @@ export default function CustomersPage() {
     <div className="p-4 sm:p-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
-          <h1 className="font-prata text-2xl text-black">Customers</h1>
+          <h1 className="font-prata text-2xl text-ink">Customers</h1>
           <p className="text-zinc-500 text-sm mt-1">{customers.length} customers</p>
         </div>
         <button onClick={openAdd} className="nexora-btn nexora-btn-primary self-start sm:self-auto">
@@ -69,7 +69,7 @@ export default function CustomersPage() {
             filtered.map(c => (
               <div key={c.id} className="px-4 sm:px-6 py-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 hover:bg-zinc-50 transition-colors">
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-black">{c.name}</p>
+                  <p className="text-sm font-medium text-ink">{c.name}</p>
                   <p className="text-xs text-zinc-400">{c.phone} {c.email ? `· ${c.email}` : ""}</p>
                   {c.address && <p className="text-xs text-zinc-400">{c.address}</p>}
                 </div>

@@ -38,7 +38,7 @@ function UsageBar({ label, used, total, usedLabel, totalLabel, icon: Icon }: {
       <div className="flex items-center justify-between mb-1.5">
         <div className="flex items-center gap-2">
           <Icon size={13} className="text-zinc-400" />
-          <span className="text-sm font-medium text-black">{label}</span>
+          <span className="text-sm font-medium text-ink">{label}</span>
         </div>
         <span className={`text-xs font-medium ${statusColor}`}>{statusText}</span>
       </div>
@@ -343,7 +343,7 @@ export default function SettingsPage() {
   return (
     <div className="p-4 sm:p-8">
       <div className="mb-6">
-        <h1 className="font-prata text-2xl text-black">Settings</h1>
+        <h1 className="font-prata text-2xl text-ink">Settings</h1>
         <p className="text-zinc-500 text-sm mt-1">Manage shop info and team — supplier management has moved to its own page</p>
       </div>
 
@@ -353,7 +353,7 @@ export default function SettingsPage() {
           <div className="nexora-card p-4 sm:p-6">
             <div className="flex items-center gap-3 mb-4">
               <Store size={16} className="text-zinc-400" />
-              <h2 className="font-prata text-base text-black">Shop Info</h2>
+              <h2 className="font-prata text-base text-ink">Shop Info</h2>
             </div>
             <p className="text-xs text-zinc-400 mb-4">
               These details are printed on every bill. "Nexora" is just the system's name — set your own shop name, phone, email and address below.
@@ -378,7 +378,7 @@ export default function SettingsPage() {
             </form>
             <div className="mt-4 pt-4 border-t border-zinc-100">
               <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Logged in as</p>
-              <p className="text-sm font-medium text-black">{user?.email}</p>
+              <p className="text-sm font-medium text-ink">{user?.email}</p>
             </div>
           </div>
         </div>
@@ -390,7 +390,7 @@ export default function SettingsPage() {
             <div className="nexora-card p-4 sm:p-6 mt-6">
               <div className="flex items-center gap-3 mb-4">
                 <BellRing size={16} className="text-zinc-400" />
-                <h2 className="font-prata text-base text-black">Low Stock Alerts</h2>
+                <h2 className="font-prata text-base text-ink">Low Stock Alerts</h2>
               </div>
               <p className="text-xs text-zinc-400 mb-4">
                 When a sale takes a product to or below its restock threshold, an email is sent to everyone listed here.
@@ -439,7 +439,7 @@ export default function SettingsPage() {
           <div className="flex items-center gap-3">
             <Users size={16} className="text-zinc-400" />
             <div>
-              <h2 className="font-prata text-base text-black">Team</h2>
+              <h2 className="font-prata text-base text-ink">Team</h2>
               <p className="text-xs text-zinc-400 mt-0.5">Users who can log in to Nexora POS</p>
             </div>
           </div>
@@ -489,7 +489,7 @@ export default function SettingsPage() {
                     </span>
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-black truncate">{u.displayName || "—"}</p>
+                    <p className="text-sm font-medium text-ink truncate">{u.displayName || "—"}</p>
                     <p className="text-xs text-zinc-400 truncate">{u.email}</p>
                   </div>
                   <span className="text-xs bg-zinc-100 text-zinc-600 px-2 py-0.5 rounded font-poppins shrink-0">
@@ -541,7 +541,7 @@ export default function SettingsPage() {
           <div className="flex items-center gap-3">
             <Database size={16} className="text-zinc-400" />
             <div>
-              <h2 className="font-prata text-base text-black">Firebase Usage</h2>
+              <h2 className="font-prata text-base text-ink">Firebase Usage</h2>
               <p className="text-xs text-zinc-400 mt-0.5"> live count</p>
             </div>
           </div>
@@ -549,7 +549,7 @@ export default function SettingsPage() {
             <button
               onClick={() => { setLoadingUsage(true); getUsageStats().then((s) => { setUsageStats(s); setLoadingUsage(false); }); }}
               disabled={loadingUsage}
-              className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-black border border-zinc-200 hover:border-zinc-400 px-2 py-0.5 rounded transition-colors disabled:opacity-50"
+              className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-ink border border-zinc-200 hover:border-zinc-400 px-2 py-0.5 rounded transition-colors disabled:opacity-50"
             >
               <Loader2 size={11} className={loadingUsage ? "animate-spin" : ""} /> Refresh
             </button>
@@ -640,7 +640,7 @@ export default function SettingsPage() {
                           onClick={() => handleExportCSV(c)}
                           disabled={c.count === 0 || exportingKey === c.key}
                           title={`Download ${c.label} as CSV`}
-                          className="p-1 rounded text-zinc-400 hover:text-black hover:bg-zinc-100 transition-colors shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
+                          className="p-1 rounded text-zinc-400 hover:text-ink hover:bg-zinc-100 transition-colors shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
                         >
                           {exportingKey === c.key ? (
                             <Loader2 size={13} className="animate-spin" />
@@ -657,13 +657,13 @@ export default function SettingsPage() {
               {/* Totals */}
               <div className="mt-4 pt-4 border-t border-zinc-100 flex flex-wrap gap-x-6 gap-y-1">
                 <p className="text-xs text-zinc-500">
-                  Total documents: <span className="font-medium text-black">{totalDocs.toLocaleString()}</span>
+                  Total documents: <span className="font-medium text-ink">{totalDocs.toLocaleString()}</span>
                 </p>
                 <p className="text-xs text-zinc-500">
-                  Estimated size: <span className="font-medium text-black">{formatBytes(totalBytes)}</span>
+                  Estimated size: <span className="font-medium text-ink">{formatBytes(totalBytes)}</span>
                 </p>
                 <p className="text-xs text-zinc-500">
-                  Plan limit: <span className="font-medium text-black">1 GB storage · 50K reads/day · 20K writes/day</span>
+                  Plan limit: <span className="font-medium text-ink">1 GB storage · 50K reads/day · 20K writes/day</span>
                 </p>
               </div>
             </>
@@ -678,7 +678,7 @@ export default function SettingsPage() {
         <div className="flex items-center gap-3 mb-3">
           <Boxes size={16} className="text-zinc-400" />
           <div>
-            <h2 className="font-prata text-base text-black">Stock Location Migration</h2>
+            <h2 className="font-prata text-base text-ink">Stock Location Migration</h2>
             <p className="text-xs text-zinc-400 mt-0.5">Splits stock into Stores Stock and Showroom Stock</p>
           </div>
         </div>
@@ -716,7 +716,7 @@ export default function SettingsPage() {
 
       {/* Firebase collections reference */}
       <div className="nexora-card p-4 sm:p-6" style={{ display: "none" }}>
-        <h2 className="font-prata text-base text-black mb-4">Firebase Collections</h2>
+        <h2 className="font-prata text-base text-ink mb-4">Firebase Collections</h2>
         <div className="space-y-1.5">
           {[
             ["shopSettings/main", "Shop name, phone, email, address shown on bills"],
@@ -791,7 +791,7 @@ export default function SettingsPage() {
                           {keys.map((key) => {
                             const def = PERMISSION_CATALOG.find((p) => p.key === key)!;
                             return (
-                              <label key={key} className="flex items-center gap-2 text-sm text-black cursor-pointer">
+                              <label key={key} className="flex items-center gap-2 text-sm text-ink cursor-pointer">
                                 <input
                                   type="checkbox"
                                   checked={!!editForm.permissions[key]}
@@ -1001,9 +1001,9 @@ export default function SettingsPage() {
                     <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
                       <CheckCircle size={22} className="text-green-600" />
                     </div>
-                    <p className="text-sm font-medium text-black">Done</p>
+                    <p className="text-sm font-medium text-ink">Done</p>
                     <p className="text-xs text-zinc-500 mt-1">
-                      Deleted <span className="font-medium text-black">{cleanResult.count}</span> documents from <code className="bg-zinc-100 px-1 rounded">{cleanTarget?.key}</code>
+                      Deleted <span className="font-medium text-ink">{cleanResult.count}</span> documents from <code className="bg-zinc-100 px-1 rounded">{cleanTarget?.key}</code>
                     </p>
                     <button
                       onClick={() => setShowCleanModal(false)}
@@ -1034,7 +1034,7 @@ export default function SettingsPage() {
                                 : "border-zinc-200 hover:border-zinc-400"
                             }`}
                           >
-                            <span className="text-sm font-medium text-black">{c.label}</span>
+                            <span className="text-sm font-medium text-ink">{c.label}</span>
                             <span className={`text-xs px-2 py-0.5 rounded ${
                               c.count === 0
                                 ? "bg-zinc-100 text-zinc-400"
@@ -1050,7 +1050,7 @@ export default function SettingsPage() {
                     {cleanTarget && (
                       <div>
                         <label className="text-xs text-zinc-500 mb-1.5 block">
-                          Type <code className="bg-zinc-100 px-1 rounded text-black">{cleanTarget.key}</code> to confirm
+                          Type <code className="bg-zinc-100 px-1 rounded text-ink">{cleanTarget.key}</code> to confirm
                         </label>
                         <input
                           className="nexora-input"

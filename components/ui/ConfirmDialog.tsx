@@ -42,7 +42,7 @@ export default function ConfirmDialog({
             <AlertTriangle size={16} />
           </div>
           <div className="min-w-0">
-            <h2 className="font-prata text-base text-black">{title}</h2>
+            <h2 className="font-prata text-base text-ink">{title}</h2>
             <p className="text-sm text-zinc-500 mt-1">{message}</p>
           </div>
         </div>

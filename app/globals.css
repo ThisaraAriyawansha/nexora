@@ -42,6 +42,12 @@ body {
 ::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 2px; }
 ::-webkit-scrollbar-thumb:hover { background: #a1a1aa; }
 
+/* Sidebar nav scrollbar (dark navy background) */
+.sidebar-nav-scroll { scrollbar-color: rgba(255, 255, 255, 0.2) transparent; scrollbar-width: thin; }
+.sidebar-nav-scroll::-webkit-scrollbar-track { background: transparent; }
+.sidebar-nav-scroll::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 2px; }
+.sidebar-nav-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.35); }
+
 /* Print styles for A4 bill */
 @media print {
   @page {
@@ -156,7 +162,7 @@ input[type="number"]::-webkit-inner-spin-button {
     outline: none;
     transition: border-color 0.15s;
   }
-  .nexora-input:focus { border-color: #0a0a0a; }
+  .nexora-input:focus { border-color: #10233d; }
   .nexora-input::placeholder { color: #a1a1aa; }
 
   .nexora-btn {
@@ -173,13 +179,13 @@ input[type="number"]::-webkit-inner-spin-button {
     border: none;
     outline: none;
   }
-  .nexora-btn-primary { background: #0a0a0a; color: #ffffff; }
-  .nexora-btn-primary:hover { background: #27272a; }
-  .nexora-btn-outline { background: transparent; color: #0a0a0a; border: 1px solid #e4e4e7; }
-  .nexora-btn-outline:hover { border-color: #0a0a0a; }
+  .nexora-btn-primary { background: #10233d; color: #ffffff; }
+  .nexora-btn-primary:hover { background: #0b1626; }
+  .nexora-btn-outline { background: transparent; color: #10233d; border: 1px solid #e4e4e7; }
+  .nexora-btn-outline:hover { border-color: #10233d; }
   .nexora-btn-ghost { background: transparent; color: #52525b; border: none; }
-  .nexora-btn-ghost:hover { background: #f4f4f5; color: #0a0a0a; }
-  .nexora-btn-danger { background: #0a0a0a; color: #fff; }
+  .nexora-btn-ghost:hover { background: #f4f4f5; color: #10233d; }
+  .nexora-btn-danger { background: #10233d; color: #fff; }
   .nexora-btn-danger:hover { background: #ef4444; }
 
   .badge {

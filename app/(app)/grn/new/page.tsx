@@ -118,7 +118,7 @@ export default function NewGrnPage() {
       <div className="p-4 sm:p-8">
         <div className="nexora-card p-8 text-center max-w-md mx-auto">
           <ShieldCheck size={24} className="text-zinc-300 mx-auto mb-3" />
-          <h1 className="font-prata text-lg text-black mb-1">Access Restricted</h1>
+          <h1 className="font-prata text-lg text-ink mb-1">Access Restricted</h1>
           <p className="text-sm text-zinc-500">You don't have permission to create a GRN.</p>
         </div>
       </div>
@@ -127,10 +127,10 @@ export default function NewGrnPage() {
 
   return (
     <div className="p-4 sm:p-8 max-w-3xl">
-      <Link href="/grn" className="inline-flex items-center gap-1.5 text-sm text-zinc-500 hover:text-black mb-4">
+      <Link href="/grn" className="inline-flex items-center gap-1.5 text-sm text-zinc-500 hover:text-ink mb-4">
         <ArrowLeft size={14} /> Back to GRN
       </Link>
-      <h1 className="font-prata text-2xl text-black mb-1">New GRN</h1>
+      <h1 className="font-prata text-2xl text-ink mb-1">New GRN</h1>
       <p className="text-zinc-500 text-sm mb-8">Received items are added to Stores Stock.</p>
 
       <div className="nexora-card p-4 sm:p-6 mb-6 space-y-4">
@@ -193,7 +193,7 @@ export default function NewGrnPage() {
         <div className="nexora-card p-4 sm:p-6 mb-6">
           <div className="flex items-center justify-between mb-3">
             <p className="text-xs text-zinc-500 uppercase tracking-wider">Items ({items.length})</p>
-            <p className="text-sm font-medium text-black">
+            <p className="text-sm font-medium text-ink">
               Total Cost: Rs. {items.reduce((sum, i) => sum + i.costPrice * i.qty, 0).toLocaleString()}
             </p>
           </div>
@@ -201,7 +201,7 @@ export default function NewGrnPage() {
             {items.map((i) => (
               <div key={i.tempId} className="flex items-center justify-between gap-2 p-3 bg-zinc-50 rounded-lg">
                 <div>
-                  <p className="text-sm font-medium text-black">{i.productName}</p>
+                  <p className="text-sm font-medium text-ink">{i.productName}</p>
                   <p className="text-xs text-zinc-400">{i.sku} · Qty {i.qty} · Cost Rs. {i.costPrice.toLocaleString()}</p>
                 </div>
                 <button onClick={() => removeItem(i.tempId)} className="text-zinc-300 hover:text-red-500">

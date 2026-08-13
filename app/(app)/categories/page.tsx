@@ -85,7 +85,7 @@ export default function CategoriesPage() {
   return (
     <div className="p-4 sm:p-8">
       <div className="mb-8">
-        <h1 className="font-prata text-2xl text-black">Categories</h1>
+        <h1 className="font-prata text-2xl text-ink">Categories</h1>
         <p className="text-zinc-500 text-sm mt-1">Manage main categories and subcategories</p>
       </div>
 
@@ -93,7 +93,7 @@ export default function CategoriesPage() {
         {/* Main Categories */}
         <div className="nexora-card overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100">
-            <p className="font-prata text-base text-black">Main Categories</p>
+            <p className="font-prata text-base text-ink">Main Categories</p>
             <button onClick={() => { setEditingMain(null); setMainForm({ name: "", description: "" }); setShowMainModal(true); }}
               className="nexora-btn nexora-btn-primary text-xs py-1.5 px-3">
               <Plus size={12} /> Add
@@ -133,7 +133,7 @@ export default function CategoriesPage() {
         {/* Sub Categories */}
         <div className="nexora-card overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100">
-            <p className="font-prata text-base text-black">
+            <p className="font-prata text-base text-ink">
               {selectedMain ? `${selectedMain.name} — Subcategories` : "Subcategories"}
             </p>
             {selectedMain && (
@@ -152,10 +152,10 @@ export default function CategoriesPage() {
             )}
             {filteredSubs.map(sub => (
               <div key={sub.id} className="flex items-center justify-between px-4 py-3 hover:bg-zinc-50 transition-colors">
-                <span className="text-sm font-medium text-black">{sub.name}</span>
+                <span className="text-sm font-medium text-ink">{sub.name}</span>
                 <div className="flex gap-1">
                   <button onClick={() => { setEditingSub(sub); setSubForm({ name: sub.name, description: sub.description || "" }); setShowSubModal(true); }}
-                    className="p-1.5 rounded text-zinc-400 hover:text-black hover:bg-zinc-100 transition-colors">
+                    className="p-1.5 rounded text-zinc-400 hover:text-ink hover:bg-zinc-100 transition-colors">
                     <Edit2 size={11} />
                   </button>
                   {canDelete && (

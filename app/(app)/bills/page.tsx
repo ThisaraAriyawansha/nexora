@@ -192,12 +192,12 @@ export default function BillsPage() {
     <div className="p-4 sm:p-8">
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6">
         <div>
-          <h1 className="font-prata text-2xl text-black">Bills</h1>
+          <h1 className="font-prata text-2xl text-ink">Bills</h1>
           <p className="text-zinc-500 text-sm mt-1">{sales.length} total invoices</p>
         </div>
         <div className="sm:text-right">
           <p className="text-xs text-zinc-400 uppercase tracking-wider">Total · {filtered.length} invoices</p>
-          <p className="font-poppins font-semibold text-xl text-black">Rs. {filteredTotal.toLocaleString()}</p>
+          <p className="font-poppins font-semibold text-xl text-ink">Rs. {filteredTotal.toLocaleString()}</p>
         </div>
       </div>
 
@@ -259,13 +259,13 @@ export default function BillsPage() {
             ) : (
               paginated.map((sale) => (
                 <tr key={sale.id} className={`hover:bg-zinc-50 transition-colors ${sale.status === "cancelled" ? "opacity-50" : ""}`}>
-                  <td className="px-4 py-3 font-medium text-black">{sale.invoiceNo}</td>
+                  <td className="px-4 py-3 font-medium text-ink">{sale.invoiceNo}</td>
                   <td className="px-4 py-3 text-zinc-600">{sale.customerName || "Walk-in"}</td>
                   <td className="px-4 py-3 text-zinc-500 text-xs">{formatDate(sale.createdAt)}</td>
                   <td className="px-4 py-3">
                     <span className="badge badge-default capitalize">{sale.paymentMethod}</span>
                   </td>
-                  <td className="px-4 py-3 font-medium text-black">Rs. {sale.totalAmount?.toLocaleString()}</td>
+                  <td className="px-4 py-3 font-medium text-ink">Rs. {sale.totalAmount?.toLocaleString()}</td>
                   <td className="px-4 py-3">
                     {sale.status === "cancelled" ? (
                       <span className="badge badge-danger">Cancelled</span>
@@ -296,7 +296,7 @@ export default function BillsPage() {
             <div className="px-6 py-4 border-b border-zinc-100 sticky top-0 bg-white">
               <div className="flex items-center justify-between">
                 <h2 className="font-prata text-lg">{viewSale.invoiceNo}</h2>
-                <button onClick={closeSale} className="text-zinc-400 hover:text-black">
+                <button onClick={closeSale} className="text-zinc-400 hover:text-ink">
                   <X size={18} />
                 </button>
               </div>
@@ -353,7 +353,7 @@ export default function BillsPage() {
             {billEmailNotice && (
               <div className="mx-6 mt-4 px-4 py-2.5 rounded-lg bg-zinc-50 border border-zinc-200 text-sm text-zinc-600 flex items-center justify-between">
                 <span>{billEmailNotice}</span>
-                <button onClick={() => setBillEmailNotice("")} className="text-zinc-400 hover:text-black"><X size={14} /></button>
+                <button onClick={() => setBillEmailNotice("")} className="text-zinc-400 hover:text-ink"><X size={14} /></button>
               </div>
             )}
 
@@ -431,7 +431,7 @@ export default function BillsPage() {
                   {viewSale.items?.map((item: any, i: number) => (
                     <tr key={i}>
                       <td className="py-2.5">
-                        <p className="font-medium text-black">{item.productName}</p>
+                        <p className="font-medium text-ink">{item.productName}</p>
                         <p className="text-xs text-zinc-400">{item.sku}</p>
                       </td>
                       <td className="py-2.5 text-center">{item.qty}</td>

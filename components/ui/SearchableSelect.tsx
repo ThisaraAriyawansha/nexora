@@ -53,7 +53,7 @@ export default function SearchableSelect({
         onClick={() => setOpen((o) => !o)}
         className="nexora-input w-full flex items-center justify-between text-left gap-2"
       >
-        <span className={`truncate ${selected ? "text-black" : "text-zinc-400"}`}>
+        <span className={`truncate ${selected ? "text-ink" : "text-zinc-400"}`}>
           {selected ? selected.label : placeholder}
         </span>
         <ChevronDown size={14} className="text-zinc-400 shrink-0" />

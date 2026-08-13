@@ -9,7 +9,7 @@ export default function LoadingScreen() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-white">
       <Lottie animationData={gamingAnimation} loop className="w-56 h-56" />
-      <span className="font-milonga text-3xl text-black tracking-tight -mt-4">{shopName}</span>
+      <span className="font-milonga text-3xl text-ink tracking-tight -mt-4">{shopName}</span>
     </div>
   );
 }
