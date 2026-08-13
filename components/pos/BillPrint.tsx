@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { getShopSettings } from "@/lib/firestore";
 import type { ShopSettings } from "@/types";
+import { SALE_PAYMENT_METHOD_LABEL } from "@/types";
 
 interface BillPrintProps {
   sale: any;
@@ -61,7 +62,7 @@ export default function BillPrint({ sale }: BillPrintProps) {
               <div style={{ fontSize: "9.5pt", fontWeight: "600" }}>{sale.cashierName?.includes("@") ? "Cashier" : sale.cashierName}</div>
             </>
           )}
-          <div style={{ fontSize: "8.5pt", color: "#555", textTransform: "capitalize" }}>Payment: {sale.paymentMethod}</div>
+          <div style={{ fontSize: "8.5pt", color: "#555" }}>Payment: {SALE_PAYMENT_METHOD_LABEL[sale.paymentMethod] || sale.paymentMethod}</div>
         </div>
       </div>
 

@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
 import { getProducts, getCustomers, addCustomer, createSale, getBatches, getAvailableUnits, getMainCategories, getSubCategories, getCurrentOpenShift, openShift, closeShift } from "@/lib/firestore";
-import { Product, Customer, CartItem, MainCategory, SubCategory, Shift } from "@/types";
+import { Product, Customer, CartItem, MainCategory, SubCategory, Shift, SalePaymentMethod, SALE_PAYMENT_METHODS } from "@/types";
 import { Search, Plus, Minus, Trash2, Printer, User, X, Check, Download, Mail, Wallet, Lock } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import BillPrint from "@/components/pos/BillPrint";
@@ -26,7 +26,7 @@ export default function SalesPage() {
   const [showCustomerPicker, setShowCustomerPicker] = useState(false);
   const [showAddCustomer, setShowAddCustomer] = useState(false);
   const [discount, setDiscount] = useState(0);
-  const [paymentMethod, setPaymentMethod] = useState<"cash" | "card" | "transfer">("cash");
+  const [paymentMethod, setPaymentMethod] = useState<SalePaymentMethod>("cash");
   const [amountTendered, setAmountTendered] = useState("");
   const [note, setNote] = useState("");
   const [completedSale, setCompletedSale] = useState<any>(null);
@@ -155,6 +155,7 @@ export default function SalesPage() {
         cashSalesTotal: 0,
         cardSalesTotal: 0,
         transferSalesTotal: 0,
+        kokoPaySalesTotal: 0,
         salesCount: 0,
       });
       setShowOpenShift(false);
@@ -372,6 +373,7 @@ export default function SalesPage() {
         cashSalesTotal: prev.cashSalesTotal + (paymentMethod === "cash" ? totalAmount : 0),
         cardSalesTotal: prev.cardSalesTotal + (paymentMethod === "card" ? totalAmount : 0),
         transferSalesTotal: prev.transferSalesTotal + (paymentMethod === "transfer" ? totalAmount : 0),
+        kokoPaySalesTotal: prev.kokoPaySalesTotal + (paymentMethod === "kokopay" ? totalAmount : 0),
         salesCount: prev.salesCount + 1,
       } : prev);
       // Warranties and loyalty-point adjustments are written server-side inside
@@ -655,16 +657,16 @@ export default function SalesPage() {
           </div>
 
           {/* Payment method */}
-          <div className="grid grid-cols-3 gap-2">
-            {(["cash", "card", "transfer"] as const).map(m => (
+          <div className="grid grid-cols-4 gap-2">
+            {SALE_PAYMENT_METHODS.map(({ value, label }) => (
               <button
-                key={m}
-                onClick={() => setPaymentMethod(m)}
-                className={`py-2 text-xs font-medium rounded border transition-colors capitalize ${
-                  paymentMethod === m ? "bg-black text-white border-black" : "border-zinc-200 text-zinc-500 hover:border-black"
+                key={value}
+                onClick={() => setPaymentMethod(value)}
+                className={`py-2 text-xs font-medium rounded border transition-colors ${
+                  paymentMethod === value ? "bg-black text-white border-black" : "border-zinc-200 text-zinc-500 hover:border-black"
                 }`}
               >
-                {m}
+                {label}
               </button>
             ))}
           </div>

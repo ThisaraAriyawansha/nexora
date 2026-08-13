@@ -5,7 +5,7 @@ import {
   getShifts, getSalesByShift, reviewShift,
   getSales, getSaleItemsForSales, getSuppliers, getExpenses, addExpense, deleteExpense,
 } from "@/lib/firestore";
-import { ExpenseCategory } from "@/types";
+import { ExpenseCategory, SALE_PAYMENT_METHOD_LABEL } from "@/types";
 import { Search, Download, Wallet, X, TrendingUp, Receipt, Plus, Trash2 } from "lucide-react";
 import Pagination from "@/components/ui/Pagination";
 import { rowsToCSV, downloadCSV } from "@/lib/csv";
@@ -330,6 +330,7 @@ export default function FinancePage() {
       "Cash Sales": s.cashSalesTotal,
       "Card Sales": s.cardSalesTotal,
       "Transfer Sales": s.transferSalesTotal,
+      "KokoPay Sales": s.kokoPaySalesTotal,
       "Expected Cash": s.expectedCash,
       "Counted Cash": s.countedCash,
       Variance: s.variance,
@@ -505,7 +506,7 @@ export default function FinancePage() {
                   {paymentBreakdown.map((p) => (
                     <div key={p.method}>
                       <div className="flex justify-between text-sm mb-1">
-                        <span className="capitalize text-zinc-600">{p.method}</span>
+                        <span className="text-zinc-600">{SALE_PAYMENT_METHOD_LABEL[p.method] || p.method}</span>
                         <span className="font-medium">Rs. {p.amount.toLocaleString()}</span>
                       </div>
                       <div className="h-1.5 bg-zinc-100 rounded-full overflow-hidden">
@@ -703,7 +704,7 @@ export default function FinancePage() {
           </div>
 
           <div className="nexora-card overflow-x-auto">
-            <table className="w-full text-sm min-w-[960px]">
+            <table className="w-full text-sm min-w-[1080px]">
               <thead>
                 <tr className="border-b border-zinc-100">
                   <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase tracking-wider">Shift No.</th>
@@ -713,6 +714,7 @@ export default function FinancePage() {
                   <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase tracking-wider">Float</th>
                   <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase tracking-wider">Cash</th>
                   <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase tracking-wider">Card</th>
+                  <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase tracking-wider">KokoPay</th>
                   <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase tracking-wider">Expected</th>
                   <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase tracking-wider">Counted</th>
                   <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase tracking-wider">Variance</th>
@@ -721,9 +723,9 @@ export default function FinancePage() {
               </thead>
               <tbody className="divide-y divide-zinc-50">
                 {loading ? (
-                  <tr><td colSpan={11} className="text-center py-10 text-zinc-400">Loading…</td></tr>
+                  <tr><td colSpan={12} className="text-center py-10 text-zinc-400">Loading…</td></tr>
                 ) : filteredShifts.length === 0 ? (
-                  <tr><td colSpan={11} className="text-center py-10 text-zinc-400">No shifts found</td></tr>
+                  <tr><td colSpan={12} className="text-center py-10 text-zinc-400">No shifts found</td></tr>
                 ) : (
                   paginatedShifts.map((s) => (
                     <tr key={s.id} onClick={() => openShiftDetail(s)} className="hover:bg-zinc-50 transition-colors cursor-pointer">
@@ -734,6 +736,7 @@ export default function FinancePage() {
                       <td className="px-4 py-3">Rs. {s.openingFloat?.toLocaleString()}</td>
                       <td className="px-4 py-3">Rs. {s.cashSalesTotal?.toLocaleString()}</td>
                       <td className="px-4 py-3">Rs. {s.cardSalesTotal?.toLocaleString()}</td>
+                      <td className="px-4 py-3">Rs. {s.kokoPaySalesTotal?.toLocaleString()}</td>
                       <td className="px-4 py-3">{s.status === "closed" ? `Rs. ${s.expectedCash?.toLocaleString()}` : "—"}</td>
                       <td className="px-4 py-3">{s.status === "closed" ? `Rs. ${s.countedCash?.toLocaleString()}` : "—"}</td>
                       <td className={`px-4 py-3 font-medium ${s.status === "closed" && s.variance !== 0 ? "text-red-600" : ""}`}>
@@ -769,6 +772,7 @@ export default function FinancePage() {
                     <div className="flex justify-between"><span className="text-zinc-500">Cash sales</span><span>Rs. {viewShift.cashSalesTotal?.toLocaleString()}</span></div>
                     <div className="flex justify-between"><span className="text-zinc-500">Card sales</span><span>Rs. {viewShift.cardSalesTotal?.toLocaleString()}</span></div>
                     <div className="flex justify-between"><span className="text-zinc-500">Transfer sales</span><span>Rs. {viewShift.transferSalesTotal?.toLocaleString()}</span></div>
+                    <div className="flex justify-between"><span className="text-zinc-500">KokoPay sales</span><span>Rs. {viewShift.kokoPaySalesTotal?.toLocaleString()}</span></div>
                     {viewShift.status === "closed" && (
                       <>
                         <div className="flex justify-between border-t border-zinc-200 pt-1 mt-1"><span className="text-zinc-500">Expected cash</span><span>Rs. {viewShift.expectedCash?.toLocaleString()}</span></div>
@@ -792,7 +796,7 @@ export default function FinancePage() {
                         {shiftSales.map((sale) => (
                           <div key={sale.id} className="flex items-center justify-between px-3 py-2 text-sm">
                             <span>{sale.invoiceNo}</span>
-                            <span className="text-zinc-400 text-xs capitalize">{sale.paymentMethod}</span>
+                            <span className="text-zinc-400 text-xs">{SALE_PAYMENT_METHOD_LABEL[sale.paymentMethod] || sale.paymentMethod}</span>
                             <span className="font-medium">Rs. {sale.totalAmount?.toLocaleString()}</span>
                           </div>
                         ))}

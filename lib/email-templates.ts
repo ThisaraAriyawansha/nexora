@@ -1,3 +1,5 @@
+import { SALE_PAYMENT_METHOD_LABEL } from "@/types";
+
 // All string fields interpolated into these templates ultimately come from
 // customer/user input (names, notes, device descriptions) or admin-editable
 // settings (shop name) — escape before embedding in HTML so a value like
@@ -184,7 +186,7 @@ export function billEmailTemplate(params: {
         </tr>
         <tr>
           <td style="padding:6px 0;color:#999;font-size:12px">Payment</td>
-          <td style="padding:6px 0;font-size:13px;text-transform:capitalize">${escapeHtml(paymentMethod)}</td>
+          <td style="padding:6px 0;font-size:13px">${escapeHtml(SALE_PAYMENT_METHOD_LABEL[paymentMethod] || paymentMethod)}</td>
         </tr>
       </table>
       <table style="width:100%;border-collapse:collapse;margin:0 0 12px;border-top:1px solid #eee">

@@ -303,14 +303,15 @@ service cloud.firestore {
       allow read: if isAuth();
 
       // Opening a shift: only for yourself, starting in the canonical
-      // open/zeroed shape — cash/card/transfer totals can't be seeded as
-      // anything but zero.
+      // open/zeroed shape — cash/card/transfer/kokopay totals can't be seeded
+      // as anything but zero.
       allow create: if isAuth() &&
         request.resource.data.cashierId == request.auth.uid &&
         request.resource.data.status == 'open' &&
         request.resource.data.cashSalesTotal == 0 &&
         request.resource.data.cardSalesTotal == 0 &&
         request.resource.data.transferSalesTotal == 0 &&
+        request.resource.data.kokoPaySalesTotal == 0 &&
         request.resource.data.openingFloat >= 0;
 
       // Three disjoint update paths:
@@ -331,7 +332,8 @@ service cloud.firestore {
           request.resource.data.openingFloat == resource.data.openingFloat &&
           request.resource.data.cashSalesTotal == resource.data.cashSalesTotal &&
           request.resource.data.cardSalesTotal == resource.data.cardSalesTotal &&
-          request.resource.data.transferSalesTotal == resource.data.transferSalesTotal
+          request.resource.data.transferSalesTotal == resource.data.transferSalesTotal &&
+          request.resource.data.kokoPaySalesTotal == resource.data.kokoPaySalesTotal
         )
         || (
           hasPerm('finance.reviewShift') &&
@@ -344,7 +346,8 @@ service cloud.firestore {
           request.resource.data.variance == resource.data.variance &&
           request.resource.data.cashSalesTotal == resource.data.cashSalesTotal &&
           request.resource.data.cardSalesTotal == resource.data.cardSalesTotal &&
-          request.resource.data.transferSalesTotal == resource.data.transferSalesTotal
+          request.resource.data.transferSalesTotal == resource.data.transferSalesTotal &&
+          request.resource.data.kokoPaySalesTotal == resource.data.kokoPaySalesTotal
         )
         || (
           resource.data.cashierId == request.auth.uid &&

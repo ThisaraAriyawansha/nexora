@@ -8,7 +8,7 @@ import { initializeApp, deleteApp } from "firebase/app";
 import { getAuth, createUserWithEmailAndPassword, signOut } from "firebase/auth";
 import { db } from "./firebase";
 import { firebaseConfig } from "./firebase";
-import type { ShopSettings, UserProfile, JobStatus, StockLocation, StockMovementReason, SupplierPaymentMethod, SupplierPaymentStatus, ShiftStatus, ShiftReviewStatus, ExpenseCategory } from "@/types";
+import type { ShopSettings, UserProfile, JobStatus, StockLocation, StockMovementReason, SupplierPaymentMethod, SupplierPaymentStatus, ShiftStatus, ShiftReviewStatus, ExpenseCategory, SalePaymentMethod } from "@/types";
 import { diffFields, writeAuditLog } from "./audit";
 import { isEditableRole, getDefaultPermissions, PERMISSION_CATALOG } from "./permissions";
 
@@ -418,13 +418,23 @@ export interface SaleData {
   taxAmount: number;
   totalAmount: number;
   pointsRedeemed?: number;
-  paymentMethod: "cash" | "card" | "transfer";
+  paymentMethod: SalePaymentMethod;
   paymentStatus: "paid" | "partial" | "pending";
   amountTendered?: number;
   changeAmount?: number;
   note?: string;
   shiftId?: string | null;
   shiftNo?: string;
+}
+
+const SHIFT_TOTALS_FIELD: Record<SalePaymentMethod, string> = {
+  cash: "cashSalesTotal",
+  card: "cardSalesTotal",
+  transfer: "transferSalesTotal",
+  kokopay: "kokoPaySalesTotal",
+};
+function shiftTotalsField(method: SalePaymentMethod) {
+  return SHIFT_TOTALS_FIELD[method];
 }
 
 // Discovers which batches a product could draw from, oldest first, scoped to
@@ -604,9 +614,7 @@ export async function createSale(data: SaleData) {
     });
 
     if (shiftRef) {
-      const totalsField =
-        data.paymentMethod === "cash" ? "cashSalesTotal" : data.paymentMethod === "card" ? "cardSalesTotal" : "transferSalesTotal";
-      tx.update(shiftRef, { [totalsField]: increment(data.totalAmount), salesCount: increment(1) });
+      tx.update(shiftRef, { [shiftTotalsField(data.paymentMethod)]: increment(data.totalAmount), salesCount: increment(1) });
     }
 
     // Keep lifetime totals so dashboards can read one doc instead of scanning
@@ -852,9 +860,7 @@ export async function cancelSale(saleId: string, cancelledBy: { uid: string; nam
     // Only applies if the shift is still open — once closed, expectedCash/
     // variance are already computed and frozen, so there's nothing to correct.
     if (shiftSnap && shiftSnap.exists() && shiftSnap.data().status === "open") {
-      const totalsField =
-        sale.paymentMethod === "cash" ? "cashSalesTotal" : sale.paymentMethod === "card" ? "cardSalesTotal" : "transferSalesTotal";
-      tx.update(shiftRef!, { [totalsField]: increment(-sale.totalAmount), salesCount: increment(-1) });
+      tx.update(shiftRef!, { [shiftTotalsField(sale.paymentMethod)]: increment(-sale.totalAmount), salesCount: increment(-1) });
     }
 
     // Mirror createSale's lifetime-totals bump so a cancelled sale stops counting.
@@ -932,7 +938,7 @@ export async function adminUpdateSale(
     customerPhone?: string;
     customerEmail?: string;
     note?: string;
-    paymentMethod?: "cash" | "card" | "transfer";
+    paymentMethod?: SalePaymentMethod;
   },
   performedBy: { uid: string; name: string }
 ) {
@@ -2074,6 +2080,7 @@ export async function openShift(data: ShiftOpenData): Promise<{ shiftId: string;
       cashSalesTotal: 0,
       cardSalesTotal: 0,
       transferSalesTotal: 0,
+      kokoPaySalesTotal: 0,
       salesCount: 0,
     });
 

@@ -5,6 +5,7 @@ import { TrendingUp, Package, Users, ShoppingBag, AlertTriangle, Wallet, Receipt
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
 import AccessRestricted from "@/components/ui/AccessRestricted";
+import { SALE_PAYMENT_METHOD_LABEL } from "@/types";
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const PAYMENT_COLORS = ["#10233d", "#a1a1aa", "#e4e4e7", "#71717a"];
@@ -323,7 +324,7 @@ export default function DashboardPage() {
                   <div key={p.method} className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="w-2 h-2 rounded-full shrink-0" style={{ background: PAYMENT_COLORS[i % PAYMENT_COLORS.length] }} />
-                      <span className="text-sm text-zinc-700 capitalize truncate">{p.method}</span>
+                      <span className="text-sm text-zinc-700 truncate">{SALE_PAYMENT_METHOD_LABEL[p.method] || p.method}</span>
                     </div>
                     <span className="text-xs text-zinc-400 shrink-0">{p.pct.toFixed(0)}%</span>
                   </div>
