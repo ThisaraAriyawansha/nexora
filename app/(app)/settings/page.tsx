@@ -356,7 +356,7 @@ export default function SettingsPage() {
               <h2 className="font-prata text-base text-ink">Shop Info</h2>
             </div>
             <p className="text-xs text-zinc-400 mb-4">
-              These details are printed on every bill. "Nexora" is just the system's name — set your own shop name, phone, email and address below.
+              These details are printed on every bill. "T&N COMPUTERS" is just the system's name — set your own shop name, phone, email and address below.
             </p>
             <form onSubmit={handleSaveShop} className="space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -440,7 +440,7 @@ export default function SettingsPage() {
             <Users size={16} className="text-zinc-400" />
             <div>
               <h2 className="font-prata text-base text-ink">Team</h2>
-              <p className="text-xs text-zinc-400 mt-0.5">Users who can log in to Nexora POS</p>
+              <p className="text-xs text-zinc-400 mt-0.5">Users who can log in to T&N COMPUTERS POS</p>
             </div>
           </div>
           <div className="flex items-center gap-2 self-start sm:self-auto">

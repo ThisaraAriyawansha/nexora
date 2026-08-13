@@ -63,9 +63,9 @@ export function changeEmailTemplate(newEmail: string, link: string, shopName: st
   );
 }
 
-// Job update emails are sent on behalf of the shop running Nexora, not the
-// Nexora product itself, so they get their own shell branded with the
-// shop's own name/contact details (from ShopSettings) instead of "Nexora".
+// Job update emails are sent on behalf of the shop running T&N COMPUTERS, not
+// the T&N COMPUTERS product itself, so they get their own shell branded with
+// the shop's own name/contact details (from ShopSettings) instead of "T&N COMPUTERS".
 function shopEmailFooter(shop: { name: string; phone?: string; email?: string }, year: number) {
   // Explicit tel:/mailto: links styled to match the surrounding text — plain
   // text phone numbers/emails get auto-linked by Gmail et al. into their own
