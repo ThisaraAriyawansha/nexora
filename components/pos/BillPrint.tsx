@@ -139,6 +139,12 @@ export default function BillPrint({ sale }: BillPrintProps) {
               <span>- Rs. {sale.pointsRedeemed?.toLocaleString()}</span>
             </div>
           )}
+          {sale.kokoPayChargeAmount > 0 && (
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "9pt", padding: "1.5mm 0", color: "#555" }}>
+              <span>KokoPay Charge ({sale.kokoPayChargePercent}%)</span>
+              <span>+ Rs. {sale.kokoPayChargeAmount?.toLocaleString()}</span>
+            </div>
+          )}
           {sale.taxAmount > 0 && (
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: "9pt", padding: "1.5mm 0", color: "#555" }}>
               <span>Tax</span>

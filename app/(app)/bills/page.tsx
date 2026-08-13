@@ -498,6 +498,12 @@ export default function BillsPage() {
                     <span>- Rs. {viewSale.pointsRedeemed?.toLocaleString()}</span>
                   </div>
                 )}
+                {(viewSale.kokoPayChargeAmount ?? 0) > 0 && (
+                  <div className="flex justify-between text-sm text-zinc-500">
+                    <span>KokoPay Charge ({viewSale.kokoPayChargePercent}%)</span>
+                    <span>+ Rs. {viewSale.kokoPayChargeAmount?.toLocaleString()}</span>
+                  </div>
+                )}
                 <div className="flex justify-between font-prata text-lg border-t border-zinc-100 pt-2 mt-2">
                   <span>Total</span><span>Rs. {viewSale.totalAmount?.toLocaleString()}</span>
                 </div>

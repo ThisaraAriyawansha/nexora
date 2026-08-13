@@ -422,6 +422,8 @@ export interface SaleData {
   totalAmount: number;
   pointsRedeemed?: number;
   paymentMethod: SalePaymentMethod;
+  kokoPayChargePercent?: number;
+  kokoPayChargeAmount?: number;
   paymentStatus: "paid" | "partial" | "pending";
   amountTendered?: number;
   changeAmount?: number;
