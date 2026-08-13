@@ -82,7 +82,7 @@ export default function Sidebar({
         <div className="px-6 py-6 border-b border-zinc-800 flex items-center justify-between">
           <div className="flex-1 flex justify-center">
             <Image
-              src="/logo/83278238723.png"
+              src="/shop_logo/6767467478-removebg-preview.png"
               alt="Nexora"
               width={200}
               height={80}

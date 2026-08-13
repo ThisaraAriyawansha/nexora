@@ -154,7 +154,7 @@ export default function LoginPage() {
       {/* Left branding panel */}
       <div className="hidden lg:flex w-1/2 bg-black flex-col items-center justify-center p-12 relative">
         <Image
-          src="/logo/674647452.png"
+          src="/shop_logo/6767467478-removebg-preview.png"
           alt="Nexora"
           width={360}
           height={360}
@@ -173,7 +173,7 @@ export default function LoginPage() {
           {/* Mobile logo */}
           <div className="lg:hidden mb-10 flex justify-center">
             <Image
-              src="/logo/5326326732673527.png"
+              src="/shop_logo/6767467478-removebg-preview.png"
               alt="Nexora"
               width={280}
               height={280}
