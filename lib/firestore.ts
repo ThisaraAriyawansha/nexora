@@ -413,6 +413,9 @@ export interface SaleData {
   cashierId: string;
   cashierName: string;
   items: SaleItem[];
+  jobId?: string | null;
+  jobNo?: string;
+  services?: JobServiceItem[];
   subtotal: number;
   discountAmount: number;
   taxAmount: number;

@@ -431,6 +431,12 @@ export default function BillsPage() {
                   <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Payment</p>
                   <p className="text-sm font-medium">{SALE_PAYMENT_METHOD_LABEL[viewSale.paymentMethod] || viewSale.paymentMethod}</p>
                 </div>
+                {(viewSale as any).jobNo && (
+                  <div className="min-w-0">
+                    <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Job</p>
+                    <p className="text-sm font-medium">{(viewSale as any).jobNo}</p>
+                  </div>
+                )}
               </div>
 
               {/* Items */}
@@ -454,6 +460,22 @@ export default function BillsPage() {
                       <td className="py-2.5 text-center">{item.qty}</td>
                       <td className="py-2.5 text-right">Rs. {item.unitPrice?.toLocaleString()}</td>
                       <td className="py-2.5 text-right font-medium">Rs. {item.lineTotal?.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                  {(viewSale as any).services?.map((s: any, i: number) => (
+                    <tr key={`svc-${i}`}>
+                      <td className="py-2.5">
+                        <p className="font-medium text-ink">{s.name}</p>
+                        <p className="text-xs text-zinc-400">
+                          Service{(viewSale as any).jobNo ? ` · ${(viewSale as any).jobNo}` : ""}
+                          {s.chargeType === "free" && s.freeReason ? ` · Free — ${s.freeReason}` : ""}
+                        </p>
+                      </td>
+                      <td className="py-2.5 text-center">1</td>
+                      <td className="py-2.5 text-right">{s.chargeType === "free" ? "—" : `Rs. ${Number(s.price).toLocaleString()}`}</td>
+                      <td className={`py-2.5 text-right font-medium ${s.chargeType === "free" ? "text-green-600" : ""}`}>
+                        {s.chargeType === "free" ? "Free" : `Rs. ${Number(s.price).toLocaleString()}`}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

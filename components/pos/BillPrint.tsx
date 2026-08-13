@@ -54,6 +54,7 @@ export default function BillPrint({ sale }: BillPrintProps) {
           <div style={{ fontSize: "9.5pt", fontWeight: "600" }}>{sale.customerName || "Walk-in Customer"}</div>
           {sale.customerPhone && <div style={{ fontSize: "8.5pt", color: "#555" }}>{sale.customerPhone}</div>}
           {sale.customerEmail && <div style={{ fontSize: "8.5pt", color: "#555" }}>{sale.customerEmail}</div>}
+          {sale.jobNo && <div style={{ fontSize: "8.5pt", color: "#555" }}>Job: {sale.jobNo}</div>}
         </div>
         <div style={{ textAlign: "right" }}>
           {sale.cashierName && (
@@ -97,6 +98,23 @@ export default function BillPrint({ sale }: BillPrintProps) {
                 {item.discount > 0 ? `Rs. ${item.discount.toLocaleString()}` : "—"}
               </td>
               <td style={{ padding: "1.2mm 2mm", fontSize: "10pt", textAlign: "right", fontWeight: "600" }}>Rs. {item.lineTotal?.toLocaleString()}</td>
+            </tr>
+          ))}
+          {sale.services?.map((s: any, i: number) => (
+            <tr key={`svc-${i}`} style={{ breakInside: "avoid", pageBreakInside: "avoid" }}>
+              <td style={{ padding: "1.2mm 2mm", fontSize: "9pt", color: "#555" }}>{(sale.items?.length || 0) + i + 1}</td>
+              <td style={{ padding: "1.2mm 2mm", fontSize: "10pt", lineHeight: 1.35 }}>
+                <div style={{ fontWeight: "500" }}>{s.name} <span style={{ fontWeight: "400", color: "#888" }}>(Service{sale.jobNo ? ` · ${sale.jobNo}` : ""})</span></div>
+                {s.chargeType === "free" && s.freeReason && (
+                  <div style={{ fontSize: "7.5pt", color: "#888" }}>Free — {s.freeReason}</div>
+                )}
+              </td>
+              <td style={{ padding: "1.2mm 2mm", fontSize: "10pt", textAlign: "center" }}>1</td>
+              <td style={{ padding: "1.2mm 2mm", fontSize: "10pt", textAlign: "right" }}>{s.chargeType === "free" ? "—" : `Rs. ${Number(s.price).toLocaleString()}`}</td>
+              <td style={{ padding: "1.2mm 2mm", fontSize: "10pt", textAlign: "right", color: "#aaa" }}>—</td>
+              <td style={{ padding: "1.2mm 2mm", fontSize: "10pt", textAlign: "right", fontWeight: "600" }}>
+                {s.chargeType === "free" ? "Free" : `Rs. ${Number(s.price).toLocaleString()}`}
+              </td>
             </tr>
           ))}
         </tbody>
