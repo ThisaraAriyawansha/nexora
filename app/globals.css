@@ -33,7 +33,7 @@ body {
 
 /* T&N COMPUTERS Typography */
 .font-milonga { font-family: var(--font-milonga); }
-.font-prata   { font-family: var(--font-prata); }
+.font-prata   { font-family: var(--font-prata); font-weight: 700; }
 .font-poppins { font-family: var(--font-poppins); }
 
 /* Scrollbar */
