@@ -1,5 +1,5 @@
 import {
-  collection, collectionGroup, doc, addDoc, updateDoc, deleteDoc, setDoc,
+  collection, doc, addDoc, updateDoc, deleteDoc, setDoc,
   getDocs, getDoc, query, where, orderBy, limit,
   serverTimestamp, FieldValue, increment,
   runTransaction, Timestamp, writeBatch, getCountFromServer,
@@ -609,6 +609,13 @@ export async function createSale(data: SaleData) {
       tx.update(shiftRef, { [totalsField]: increment(data.totalAmount), salesCount: increment(1) });
     }
 
+    // Keep lifetime totals so dashboards can read one doc instead of scanning
+    // every sale ever made.
+    tx.set(doc(db, "counters", "salesStats"), {
+      totalSalesCount: increment(1),
+      totalRevenue: increment(data.totalAmount),
+    }, { merge: true });
+
     // Non-serialized items don't otherwise record which batch(es) FIFO drew
     // from, so persist that breakdown here — cancelSale needs it to restore
     // the exact batches instead of guessing from the cashier-picked batchId.
@@ -735,9 +742,22 @@ export async function getSales(opts?: { fromDate?: Date; toDate?: Date }) {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 
-export async function getAllSaleItems() {
-  const snap = await getDocs(collectionGroup(db, "saleItems"));
-  return snap.docs.map((d) => ({ ...d.data(), saleId: d.ref.parent.parent?.id }));
+// Fetches saleItems only for the given sales, instead of scanning every
+// saleItems doc ever recorded (collectionGroup(db, "saleItems")) — callers
+// already know which sales they care about (a date range, an active-only
+// filter, etc.), so this keeps the read cost proportional to that selection
+// instead of growing forever with total lifetime sales history.
+export async function getSaleItemsForSales(saleIds: string[]) {
+  const snaps = await Promise.all(saleIds.map((id) => getDocs(collection(db, "sales", id, "saleItems"))));
+  return snaps.flatMap((snap, i) => snap.docs.map((d) => ({ ...d.data(), saleId: saleIds[i] })));
+}
+
+// Running lifetime totals, kept in sync by createSale/cancelSale so screens
+// needing an all-time count/revenue figure can read one doc instead of
+// scanning the whole sales history.
+export async function getSalesStats() {
+  const snap = await getDoc(doc(db, "counters", "salesStats"));
+  return snap.exists() ? (snap.data() as { totalSalesCount: number; totalRevenue: number }) : { totalSalesCount: 0, totalRevenue: 0 };
 }
 
 export async function getSale(id: string) {
@@ -836,6 +856,12 @@ export async function cancelSale(saleId: string, cancelledBy: { uid: string; nam
         sale.paymentMethod === "cash" ? "cashSalesTotal" : sale.paymentMethod === "card" ? "cardSalesTotal" : "transferSalesTotal";
       tx.update(shiftRef!, { [totalsField]: increment(-sale.totalAmount), salesCount: increment(-1) });
     }
+
+    // Mirror createSale's lifetime-totals bump so a cancelled sale stops counting.
+    tx.set(doc(db, "counters", "salesStats"), {
+      totalSalesCount: increment(-1),
+      totalRevenue: increment(-sale.totalAmount),
+    }, { merge: true });
 
     for (const item of items) {
       // Sales only ever draw from Showroom Stock, so a cancellation always

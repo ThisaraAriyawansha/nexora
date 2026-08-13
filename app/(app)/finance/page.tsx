@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import {
   getShifts, getSalesByShift, reviewShift,
-  getSales, getAllSaleItems, getSuppliers, getExpenses, addExpense, deleteExpense,
+  getSales, getSaleItemsForSales, getSuppliers, getExpenses, addExpense, deleteExpense,
 } from "@/lib/firestore";
 import { ExpenseCategory } from "@/types";
 import { Search, Download, Wallet, X, TrendingUp, Receipt, Plus, Trash2 } from "lucide-react";
@@ -76,14 +76,13 @@ export default function FinancePage() {
     const to = ovToDate ? new Date(`${ovToDate}T23:59:59.999`) : undefined;
     Promise.all([
       getSales({ fromDate: from, toDate: to }),
-      getAllSaleItems(),
       getExpenses({ fromDate: from, toDate: to }),
       getSuppliers(),
-    ]).then(([sales, allItems, exp, suppliers]) => {
+    ]).then(async ([sales, exp, suppliers]) => {
       const activeSales = (sales as any[]).filter((s) => s.status !== "cancelled");
-      const saleIds = new Set(activeSales.map((s) => s.id));
+      const items = await getSaleItemsForSales(activeSales.map((s) => s.id));
       setOvSales(activeSales);
-      setOvSaleItems((allItems as any[]).filter((it) => saleIds.has(it.saleId)));
+      setOvSaleItems(items);
       setOvExpenses(exp as any[]);
       setOvSuppliers(suppliers as any[]);
       setOvLoading(false);
