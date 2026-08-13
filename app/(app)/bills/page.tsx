@@ -9,7 +9,8 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { useAuth } from "@/hooks/useAuth";
 import { downloadElementAsPdf, getElementPdfBase64 } from "@/lib/pdf";
 import AccessRestricted from "@/components/ui/AccessRestricted";
-import type { Sale } from "@/types";
+import type { Sale, SalePaymentMethod } from "@/types";
+import { SALE_PAYMENT_METHODS, SALE_PAYMENT_METHOD_LABEL } from "@/types";
 
 const PAGE_SIZE = 10;
 
@@ -51,7 +52,7 @@ export default function BillsPage() {
   const [billEmailNotice, setBillEmailNotice] = useState("");
 
   const [editingBill, setEditingBill] = useState(false);
-  const [billEditForm, setBillEditForm] = useState({ customerName: "", customerPhone: "", customerEmail: "", note: "", paymentMethod: "cash" as "cash" | "card" | "transfer" });
+  const [billEditForm, setBillEditForm] = useState({ customerName: "", customerPhone: "", customerEmail: "", note: "", paymentMethod: "cash" as SalePaymentMethod });
   const [savingBillEdit, setSavingBillEdit] = useState(false);
 
   const handleDownloadBill = async () => {
@@ -281,7 +282,7 @@ export default function BillsPage() {
                   <td className="px-4 py-3 text-zinc-600">{sale.customerName || "Walk-in"}</td>
                   <td className="px-4 py-3 text-zinc-500 text-xs">{formatDate(sale.createdAt)}</td>
                   <td className="px-4 py-3">
-                    <span className="badge badge-default capitalize">{sale.paymentMethod}</span>
+                    <span className="badge badge-default">{SALE_PAYMENT_METHOD_LABEL[sale.paymentMethod] || sale.paymentMethod}</span>
                   </td>
                   <td className="px-4 py-3 font-medium text-ink">Rs. {sale.totalAmount?.toLocaleString()}</td>
                   <td className="px-4 py-3">
@@ -352,10 +353,8 @@ export default function BillsPage() {
                   <input className="nexora-input text-sm" placeholder="Customer name" value={billEditForm.customerName} onChange={(e) => setBillEditForm({ ...billEditForm, customerName: e.target.value })} />
                   <input className="nexora-input text-sm" placeholder="Customer phone" value={billEditForm.customerPhone} onChange={(e) => setBillEditForm({ ...billEditForm, customerPhone: e.target.value })} />
                   <input className="nexora-input text-sm" placeholder="Customer email" value={billEditForm.customerEmail} onChange={(e) => setBillEditForm({ ...billEditForm, customerEmail: e.target.value })} />
-                  <select className="nexora-input text-sm" value={billEditForm.paymentMethod} onChange={(e) => setBillEditForm({ ...billEditForm, paymentMethod: e.target.value as any })}>
-                    <option value="cash">Cash</option>
-                    <option value="card">Card</option>
-                    <option value="transfer">Transfer</option>
+                  <select className="nexora-input text-sm" value={billEditForm.paymentMethod} onChange={(e) => setBillEditForm({ ...billEditForm, paymentMethod: e.target.value as SalePaymentMethod })}>
+                    {SALE_PAYMENT_METHODS.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
                   </select>
                 </div>
                 <textarea className="nexora-input text-sm w-full" rows={2} placeholder="Note" value={billEditForm.note} onChange={(e) => setBillEditForm({ ...billEditForm, note: e.target.value })} />
@@ -430,7 +429,7 @@ export default function BillsPage() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Payment</p>
-                  <p className="text-sm font-medium capitalize">{viewSale.paymentMethod}</p>
+                  <p className="text-sm font-medium">{SALE_PAYMENT_METHOD_LABEL[viewSale.paymentMethod] || viewSale.paymentMethod}</p>
                 </div>
               </div>
 

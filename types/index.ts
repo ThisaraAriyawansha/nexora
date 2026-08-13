@@ -150,6 +150,19 @@ export interface SaleItem {
 
 export type SaleStatus = "cancelled";
 
+export type SalePaymentMethod = "cash" | "card" | "transfer" | "kokopay";
+
+export const SALE_PAYMENT_METHODS: { value: SalePaymentMethod; label: string }[] = [
+  { value: "cash", label: "Cash" },
+  { value: "card", label: "Card" },
+  { value: "transfer", label: "Transfer" },
+  { value: "kokopay", label: "KokoPay" },
+];
+
+export const SALE_PAYMENT_METHOD_LABEL: Record<string, string> = Object.fromEntries(
+  SALE_PAYMENT_METHODS.map((m) => [m.value, m.label])
+);
+
 export interface Sale {
   id: string;
   invoiceNo: string;
@@ -164,7 +177,7 @@ export interface Sale {
   discountAmount: number;
   taxAmount: number;
   totalAmount: number;
-  paymentMethod: "cash" | "card" | "transfer";
+  paymentMethod: SalePaymentMethod;
   paymentStatus: "paid" | "partial" | "pending";
   amountTendered?: number;
   changeAmount?: number;
@@ -197,6 +210,7 @@ export interface Shift {
   cashSalesTotal: number;
   cardSalesTotal: number;
   transferSalesTotal: number;
+  kokoPaySalesTotal: number;
   salesCount: number;
   closedAt?: any;
   expectedCash?: number;
