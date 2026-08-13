@@ -92,7 +92,7 @@ export default function Sidebar({
           </div>
           <button
             onClick={onClose}
-            className="text-zinc-500 hover:text-white lg:hidden"
+            className="text-white/60 hover:text-white lg:hidden"
             aria-label="Close menu"
           >
             <X size={20} />
@@ -112,7 +112,7 @@ export default function Sidebar({
                 className={`flex items-center gap-3 px-3 py-2.5 rounded text-sm font-poppins transition-colors ${
                   active
                     ? "bg-white text-ink font-medium"
-                    : "text-zinc-400 hover:text-white hover:bg-white/10"
+                    : "text-white/70 hover:text-white hover:bg-white/10"
                 }`}
               >
                 <Icon size={15} />
@@ -138,20 +138,20 @@ export default function Sidebar({
               <p className="text-white text-xs font-medium truncate">
                 {user?.displayName || user?.email}
               </p>
-              <p className="text-zinc-400 text-xs">{userRole ?? "Admin"} · View profile</p>
+              <p className="text-white/60 text-xs">{userRole ?? "Admin"} · View profile</p>
             </div>
           </Link>
           <button
             onClick={handleLogout}
-            className="flex items-center gap-3 w-full px-3 py-2.5 rounded text-sm text-zinc-400 hover:text-white hover:bg-white/10 transition-colors font-poppins"
+            className="flex items-center gap-3 w-full px-3 py-2.5 rounded text-sm text-white/70 hover:text-white hover:bg-white/10 transition-colors font-poppins"
           >
             <LogOut size={15} />
             Sign out
           </button>
 
-          <div className="text-zinc-600 text-[10px] font-poppins text-center mt-3 space-y-0.5">
+          <div className="text-white/40 text-[10px] font-poppins text-center mt-3 space-y-0.5">
             <p>© {year} {shopName}</p>
-            <p className="text-zinc-700">Design &amp; Developed by plexCode</p>
+            <p className="text-white/50">Design &amp; Developed by plexCode</p>
           </div>
         </div>
       </aside>
