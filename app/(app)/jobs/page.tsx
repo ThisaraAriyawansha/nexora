@@ -3,7 +3,8 @@ import { useEffect, useState, useRef } from "react";
 import {
   getCustomers, getTechnicians, getJobs, getJob, createJob, updateJobStatus, getAllJobsWithHistory, adminUpdateJob,
 } from "@/lib/firestore";
-import type { Customer, JobStatus, UserProfile } from "@/types";
+import type { Customer, JobStatus, JobServiceItem, UserProfile } from "@/types";
+import { jobServicesTotal } from "@/types";
 import {
   Search, Printer, Eye, X, Plus, Wrench, Download, FileDown, Pencil,
 } from "lucide-react";
@@ -33,6 +34,7 @@ const STATUS_LABEL: Record<JobStatus, string> = {
   pending: "Job Pending",
   ongoing: "Ongoing Job",
   done: "Job Done",
+  delivered: "Delivered",
   unrepairable: "Can't Repair",
 };
 
@@ -40,6 +42,7 @@ const STATUS_BADGE: Record<JobStatus, string> = {
   pending: "badge-warning",
   ongoing: "badge-default",
   done: "badge-success",
+  delivered: "badge-info",
   unrepairable: "badge-danger",
 };
 
@@ -47,6 +50,7 @@ const STATUS_DOT: Record<JobStatus, string> = {
   pending: "bg-amber-400",
   ongoing: "bg-zinc-400",
   done: "bg-green-500",
+  delivered: "bg-blue-500",
   unrepairable: "bg-red-500",
 };
 
@@ -72,10 +76,101 @@ function emptyForm() {
     specialNotes: "",
     assignedTechnicianId: null as string | null,
     assignedTechnicianName: "",
+    services: [] as JobServiceItem[],
     estimatedCost: 0,
     advancePaid: 0,
     expectedDeliveryDate: "",
   };
+}
+
+// Shared editor for the Services & Charges line items — used in both the
+// New Job and Edit Job forms, which each hold their own form state.
+function ServiceLineItems({
+  services,
+  setForm,
+}: {
+  services: JobServiceItem[];
+  setForm: React.Dispatch<React.SetStateAction<any>>;
+}) {
+  const total = jobServicesTotal(services);
+
+  const addRow = () =>
+    setForm((f: any) => ({
+      ...f,
+      services: [...(f.services || []), { id: crypto.randomUUID(), name: "", price: 0, chargeType: "paid", freeReason: "" }],
+    }));
+
+  const updateRow = (id: string, patch: Partial<JobServiceItem>) =>
+    setForm((f: any) => ({
+      ...f,
+      services: (f.services || []).map((s: JobServiceItem) => (s.id === id ? { ...s, ...patch } : s)),
+    }));
+
+  const removeRow = (id: string) =>
+    setForm((f: any) => ({ ...f, services: (f.services || []).filter((s: JobServiceItem) => s.id !== id) }));
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <label className="text-xs text-zinc-500 uppercase tracking-wider">Services & Charges</label>
+        <button type="button" onClick={addRow} className="nexora-btn nexora-btn-ghost py-1 px-2 text-xs">
+          <Plus size={12} /> Add Service
+        </button>
+      </div>
+      {services.length === 0 ? (
+        <p className="text-xs text-zinc-400">No services added yet — e.g. Replace SSD, Install OS.</p>
+      ) : (
+        <div className="space-y-2">
+          {services.map((s) => (
+            <div key={s.id} className="flex flex-wrap items-center gap-2 bg-zinc-50 border border-zinc-100 rounded-lg p-2">
+              <input
+                className="nexora-input flex-1 min-w-[140px]"
+                placeholder="Service, e.g. Replace SSD"
+                value={s.name}
+                onChange={(e) => updateRow(s.id, { name: e.target.value })}
+              />
+              <input
+                type="number"
+                min={0}
+                className="nexora-input w-24"
+                placeholder="Price"
+                value={s.price || ""}
+                onChange={(e) => updateRow(s.id, { price: Number(e.target.value) || 0 })}
+              />
+              <select
+                className="nexora-input w-auto"
+                value={s.chargeType}
+                onChange={(e) => {
+                  const chargeType = e.target.value as JobServiceItem["chargeType"];
+                  updateRow(s.id, { chargeType, freeReason: chargeType === "paid" ? "" : s.freeReason });
+                }}
+              >
+                <option value="paid">Paid</option>
+                <option value="free">Free</option>
+              </select>
+              {s.chargeType === "free" && (
+                <input
+                  className="nexora-input flex-1 min-w-[120px]"
+                  placeholder="Reason (Warranty, Loyalty, Goodwill…)"
+                  value={s.freeReason || ""}
+                  onChange={(e) => updateRow(s.id, { freeReason: e.target.value })}
+                />
+              )}
+              <button type="button" onClick={() => removeRow(s.id)} className="text-zinc-400 hover:text-red-600 shrink-0">
+                <X size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {services.length > 0 && (
+        <div className="flex justify-between text-sm mt-2 pt-2 border-t border-zinc-100">
+          <span className="text-zinc-500">Services Total (paid only)</span>
+          <span className="font-medium">Rs. {total.toLocaleString()}</span>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function toggleInList(list: string[], value: string) {
@@ -255,6 +350,7 @@ export default function JobsPage() {
         receivedByName: userDisplayName || user?.email || "Staff",
         assignedTechnicianId: form.assignedTechnicianId,
         assignedTechnicianName: form.assignedTechnicianName,
+        services: form.services,
         estimatedCost: Number(form.estimatedCost) || 0,
         advancePaid: Number(form.advancePaid) || 0,
         expectedDeliveryDate: form.expectedDeliveryDate ? new Date(`${form.expectedDeliveryDate}T00:00:00`) : null,
@@ -315,6 +411,7 @@ export default function JobsPage() {
       specialNotes: viewJob.specialNotes || "",
       assignedTechnicianId: viewJob.assignedTechnicianId ?? null,
       assignedTechnicianName: viewJob.assignedTechnicianName || "",
+      services: viewJob.services || [],
       estimatedCost: viewJob.estimatedCost || 0,
       advancePaid: viewJob.advancePaid || 0,
       expectedDeliveryDate: toDateInputValue(viewJob.expectedDeliveryDate),
@@ -350,6 +447,7 @@ export default function JobsPage() {
           specialNotes: editJobForm.specialNotes,
           assignedTechnicianId: editJobForm.assignedTechnicianId,
           assignedTechnicianName: editJobForm.assignedTechnicianName,
+          services: editJobForm.services,
           estimatedCost: Number(editJobForm.estimatedCost) || 0,
           advancePaid: Number(editJobForm.advancePaid) || 0,
           expectedDeliveryDate: editJobForm.expectedDeliveryDate ? new Date(`${editJobForm.expectedDeliveryDate}T00:00:00`) : null,
@@ -512,6 +610,7 @@ export default function JobsPage() {
           <option value="pending">Job Pending</option>
           <option value="ongoing">Ongoing Job</option>
           <option value="done">Job Done</option>
+          <option value="delivered">Delivered</option>
           <option value="unrepairable">Can't Repair</option>
         </select>
         <input
@@ -741,6 +840,8 @@ export default function JobsPage() {
                 <textarea className="nexora-input" rows={2} value={form.specialNotes} onChange={(e) => setForm((f) => ({ ...f, specialNotes: e.target.value }))} />
               </div>
 
+              <ServiceLineItems services={form.services} setForm={setForm} />
+
               {/* Service details */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
@@ -877,6 +978,32 @@ export default function JobsPage() {
                 </div>
               </div>
 
+              {/* Services & Charges (read-only, edited via Edit Job) */}
+              {viewJob.services && viewJob.services.length > 0 && (
+                <div className="border-t border-zinc-100 pt-4">
+                  <p className="text-xs text-zinc-500 uppercase tracking-wider mb-2">Services & Charges</p>
+                  <div className="space-y-1.5">
+                    {viewJob.services.map((s: JobServiceItem) => (
+                      <div key={s.id} className="flex items-center justify-between text-sm gap-3">
+                        <span className="min-w-0 truncate">
+                          {s.name}
+                          {s.chargeType === "free" && s.freeReason ? (
+                            <span className="text-zinc-400"> — {s.freeReason}</span>
+                          ) : null}
+                        </span>
+                        <span className={`shrink-0 font-medium ${s.chargeType === "free" ? "text-green-600" : ""}`}>
+                          {s.chargeType === "free" ? "Free" : `Rs. ${Number(s.price).toLocaleString()}`}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex justify-between text-sm mt-2 pt-2 border-t border-zinc-100">
+                    <span className="text-zinc-500">Services Total</span>
+                    <span className="font-medium">Rs. {jobServicesTotal(viewJob.services).toLocaleString()}</span>
+                  </div>
+                </div>
+              )}
+
               {/* Status update form */}
               <div className="border-t border-zinc-100 pt-4">
                 <p className="text-xs text-zinc-500 uppercase tracking-wider mb-2">Update Job Status</p>
@@ -889,6 +1016,7 @@ export default function JobsPage() {
                     <option value="pending">Job Pending</option>
                     <option value="ongoing">Ongoing Job</option>
                     <option value="done">Job Done</option>
+                    <option value="delivered">Delivered</option>
                     <option value="unrepairable">Can't Repair</option>
                   </select>
                   <input
@@ -900,6 +1028,15 @@ export default function JobsPage() {
                     onChange={(e) => setStatusCost(e.target.value)}
                   />
                 </div>
+                {viewJob.services && viewJob.services.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setStatusCost(String(jobServicesTotal(viewJob.services)))}
+                    className="text-xs text-zinc-500 underline mt-1"
+                  >
+                    Use services total (Rs. {jobServicesTotal(viewJob.services).toLocaleString()})
+                  </button>
+                )}
                 <textarea
                   className="nexora-input mt-2"
                   rows={2}
@@ -1071,6 +1208,8 @@ export default function JobsPage() {
                 <label className="text-xs text-zinc-500 uppercase tracking-wider mb-1 block">Special Notes</label>
                 <textarea className="nexora-input" rows={2} value={editJobForm.specialNotes} onChange={(e) => setEditJobForm((f) => ({ ...f, specialNotes: e.target.value }))} />
               </div>
+
+              <ServiceLineItems services={editJobForm.services} setForm={setEditJobForm} />
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>

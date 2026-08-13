@@ -380,7 +380,25 @@ export interface CartItem extends SaleItem {
   tempId: string;
 }
 
-export type JobStatus = "pending" | "ongoing" | "done" | "unrepairable";
+export type JobServiceChargeType = "paid" | "free";
+
+// A single billable line on a job — e.g. "Replace SSD" (paid) or
+// "Install OS" (free, with a reason like Warranty/Loyalty/Goodwill).
+export interface JobServiceItem {
+  id: string;
+  name: string;
+  price: number;
+  chargeType: JobServiceChargeType;
+  freeReason?: string;
+}
+
+export function jobServicesTotal(services?: JobServiceItem[] | null): number {
+  return (services || [])
+    .filter((s) => s.chargeType === "paid")
+    .reduce((sum, s) => sum + (Number(s.price) || 0), 0);
+}
+
+export type JobStatus = "pending" | "ongoing" | "done" | "delivered" | "unrepairable";
 
 export interface JobStatusEntry {
   id: string;
@@ -417,6 +435,7 @@ export interface Job {
   receivedByName: string;
   assignedTechnicianId?: string | null;
   assignedTechnicianName?: string;
+  services?: JobServiceItem[];
   estimatedCost: number;
   advancePaid: number;
   expectedDeliveryDate?: any;

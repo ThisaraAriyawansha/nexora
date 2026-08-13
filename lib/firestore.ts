@@ -8,7 +8,7 @@ import { initializeApp, deleteApp } from "firebase/app";
 import { getAuth, createUserWithEmailAndPassword, signOut } from "firebase/auth";
 import { db } from "./firebase";
 import { firebaseConfig } from "./firebase";
-import type { ShopSettings, UserProfile, JobStatus, StockLocation, StockMovementReason, SupplierPaymentMethod, SupplierPaymentStatus, ShiftStatus, ShiftReviewStatus, ExpenseCategory, SalePaymentMethod } from "@/types";
+import type { ShopSettings, UserProfile, JobStatus, JobServiceItem, StockLocation, StockMovementReason, SupplierPaymentMethod, SupplierPaymentStatus, ShiftStatus, ShiftReviewStatus, ExpenseCategory, SalePaymentMethod } from "@/types";
 import { diffFields, writeAuditLog } from "./audit";
 import { isEditableRole, getDefaultPermissions, PERMISSION_CATALOG } from "./permissions";
 
@@ -1065,6 +1065,7 @@ export interface JobData {
   receivedByName: string;
   assignedTechnicianId?: string | null;
   assignedTechnicianName?: string;
+  services?: JobServiceItem[];
   estimatedCost: number;
   advancePaid: number;
   expectedDeliveryDate?: Date | null;
@@ -1147,7 +1148,7 @@ export async function updateJobStatus(
 
     const patch: Record<string, any> = { status: change.status, updatedAt: serverTimestamp() };
     if (change.repairCost !== undefined) patch.repairCost = change.repairCost;
-    if (change.status === "done") patch.dateReturned = serverTimestamp();
+    if (change.status === "delivered") patch.dateReturned = serverTimestamp();
     tx.update(jobRef, patch);
 
     const historyRef = doc(collection(db, "jobs", jobId, "statusHistory"));
@@ -1172,7 +1173,7 @@ const JOB_EDITABLE_FIELDS = [
   "customerName", "customerCompany", "customerAddress", "customerCity", "customerPhone", "customerEmail",
   "deviceType", "deviceTypeOther", "brand", "model", "serialNo", "color",
   "faultDescription", "accessories", "accessoriesOther", "physicalCondition", "specialNotes",
-  "assignedTechnicianId", "assignedTechnicianName",
+  "assignedTechnicianId", "assignedTechnicianName", "services",
   "estimatedCost", "advancePaid", "expectedDeliveryDate",
 ] as const;
 
