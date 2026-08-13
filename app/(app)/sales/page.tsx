@@ -27,6 +27,9 @@ export default function SalesPage() {
   const [showAddCustomer, setShowAddCustomer] = useState(false);
   const [discount, setDiscount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState<SalePaymentMethod>("cash");
+  const [kokoPayPercent, setKokoPayPercent] = useState(0);
+  const [showKokoPayModal, setShowKokoPayModal] = useState(false);
+  const [kokoPayPercentInput, setKokoPayPercentInput] = useState("");
   const [amountTendered, setAmountTendered] = useState("");
   const [note, setNote] = useState("");
   const [completedSale, setCompletedSale] = useState<any>(null);
@@ -365,7 +368,15 @@ export default function SalesPage() {
 
   const jobServicesAmount = jobServicesTotal(attachedJob?.services);
   const subtotal = cart.reduce((s, i) => s + i.lineTotal, 0) + jobServicesAmount;
-  const totalAmount = Math.max(0, subtotal - discount - pointsToRedeem);
+  const preChargeTotal = Math.max(0, subtotal - discount - pointsToRedeem);
+  // KokoPay charges the customer a service fee on top of the bill — entered
+  // as a percentage at payment-method selection, applied to the discounted/
+  // points-adjusted total, and kept on the sale as its own fields so the fee
+  // is never silently baked into totalAmount.
+  const kokoPayChargeAmount = paymentMethod === "kokopay" && kokoPayPercent > 0
+    ? Math.round(preChargeTotal * kokoPayPercent) / 100
+    : 0;
+  const totalAmount = preChargeTotal + kokoPayChargeAmount;
   const change = Number(amountTendered) - totalAmount;
 
   const handleCheckout = async () => {
@@ -391,6 +402,8 @@ export default function SalesPage() {
         totalAmount,
         pointsRedeemed: pointsToRedeem || 0,
         paymentMethod,
+        kokoPayChargePercent: paymentMethod === "kokopay" ? kokoPayPercent : undefined,
+        kokoPayChargeAmount: paymentMethod === "kokopay" ? kokoPayChargeAmount : undefined,
         paymentStatus: "paid",
         amountTendered: Number(amountTendered) || totalAmount,
         changeAmount: Math.max(0, change),
@@ -425,7 +438,7 @@ export default function SalesPage() {
       } : prev);
       // Warranties and loyalty-point adjustments are written server-side inside
       // createSale's own transaction, so they can't drift from the sale itself.
-      setCompletedSale({ ...result, items: cart, jobNo: attachedJob?.jobNo, services: attachedJob?.services, subtotal, discountAmount: discount, pointsRedeemed: pointsToRedeem, totalAmount, customerName: selectedCustomer?.name || attachedJob?.customerName || "Walk-in Customer", customerPhone: selectedCustomer?.phone || attachedJob?.customerPhone, customerEmail: selectedCustomer?.email || attachedJob?.customerEmail, cashierName: userDisplayName || "Cashier", paymentMethod, amountTendered: Number(amountTendered), changeAmount: Math.max(0, change) });
+      setCompletedSale({ ...result, items: cart, jobNo: attachedJob?.jobNo, services: attachedJob?.services, subtotal, discountAmount: discount, pointsRedeemed: pointsToRedeem, totalAmount, customerName: selectedCustomer?.name || attachedJob?.customerName || "Walk-in Customer", customerPhone: selectedCustomer?.phone || attachedJob?.customerPhone, customerEmail: selectedCustomer?.email || attachedJob?.customerEmail, cashierName: userDisplayName || "Cashier", paymentMethod, kokoPayChargePercent: paymentMethod === "kokopay" ? kokoPayPercent : undefined, kokoPayChargeAmount: paymentMethod === "kokopay" ? kokoPayChargeAmount : undefined, amountTendered: Number(amountTendered), changeAmount: Math.max(0, change) });
       setBillEmailNotice("");
 
       // Fire-and-forget: don't hold up the checkout flow on the alert email.
@@ -744,7 +757,15 @@ export default function SalesPage() {
             {SALE_PAYMENT_METHODS.map(({ value, label }) => (
               <button
                 key={value}
-                onClick={() => setPaymentMethod(value)}
+                onClick={() => {
+                  if (value === "kokopay") {
+                    setKokoPayPercentInput(kokoPayPercent > 0 ? String(kokoPayPercent) : "");
+                    setShowKokoPayModal(true);
+                  } else {
+                    setPaymentMethod(value);
+                    setKokoPayPercent(0);
+                  }
+                }}
                 className={`py-2 text-xs font-medium rounded border transition-colors ${
                   paymentMethod === value ? "bg-black text-white border-black" : "border-zinc-200 text-zinc-500 hover:border-black"
                 }`}
@@ -753,6 +774,19 @@ export default function SalesPage() {
               </button>
             ))}
           </div>
+
+          {paymentMethod === "kokopay" && (
+            <div className="flex items-center justify-between text-xs bg-zinc-50 rounded px-3 py-2">
+              <span className="text-zinc-500">KokoPay fee: {kokoPayPercent}% (Rs. {kokoPayChargeAmount.toLocaleString()})</span>
+              <button
+                type="button"
+                onClick={() => { setKokoPayPercentInput(kokoPayPercent > 0 ? String(kokoPayPercent) : ""); setShowKokoPayModal(true); }}
+                className="underline text-zinc-500 hover:text-black"
+              >
+                Edit %
+              </button>
+            </div>
+          )}
 
           {paymentMethod === "cash" && (
             <div>
@@ -1022,6 +1056,49 @@ export default function SalesPage() {
                 className="nexora-btn nexora-btn-primary w-full justify-center"
               >
                 {openingShift ? "Opening…" : "Open Shift"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* KokoPay charge modal */}
+      {showKokoPayModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-sm mx-4">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100">
+              <h2 className="font-prata text-base">KokoPay Charge</h2>
+              <button onClick={() => setShowKokoPayModal(false)}><X size={16} className="text-zinc-400" /></button>
+            </div>
+            <div className="p-4 space-y-3">
+              <div>
+                <label className="text-xs text-zinc-500 mb-1 block">Charge percentage (%)</label>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  autoFocus
+                  className="nexora-input"
+                  placeholder="0"
+                  value={kokoPayPercentInput}
+                  onChange={e => setKokoPayPercentInput(e.target.value)}
+                />
+                {kokoPayPercentInput !== "" && Number(kokoPayPercentInput) >= 0 && (
+                  <p className="text-xs text-zinc-400 mt-1.5">
+                    Adds Rs. {(Math.round(preChargeTotal * Number(kokoPayPercentInput)) / 100).toLocaleString()} — new total Rs. {(preChargeTotal + Math.round(preChargeTotal * Number(kokoPayPercentInput)) / 100).toLocaleString()}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={() => {
+                  const pct = Math.max(0, Number(kokoPayPercentInput) || 0);
+                  setKokoPayPercent(pct);
+                  setPaymentMethod("kokopay");
+                  setShowKokoPayModal(false);
+                }}
+                className="nexora-btn nexora-btn-primary w-full justify-center"
+              >
+                Apply
               </button>
             </div>
           </div>

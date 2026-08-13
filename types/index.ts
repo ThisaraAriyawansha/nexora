@@ -183,6 +183,12 @@ export interface Sale {
   taxAmount: number;
   totalAmount: number;
   paymentMethod: SalePaymentMethod;
+  // Set only when paymentMethod is "kokopay" — the merchant fee percentage
+  // entered at checkout and the resulting Rs. amount, kept alongside
+  // totalAmount (which already includes the charge) rather than folded into
+  // it silently.
+  kokoPayChargePercent?: number;
+  kokoPayChargeAmount?: number;
   paymentStatus: "paid" | "partial" | "pending";
   amountTendered?: number;
   changeAmount?: number;
