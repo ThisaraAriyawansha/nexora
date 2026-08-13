@@ -173,6 +173,11 @@ export interface Sale {
   cashierId: string;
   cashierName: string;
   items: SaleItem[];
+  // Set when this sale bills a completed repair job — the job's paid/free
+  // service lines, billed alongside any products in the same cart.
+  jobId?: string | null;
+  jobNo?: string;
+  services?: JobServiceItem[];
   subtotal: number;
   discountAmount: number;
   taxAmount: number;

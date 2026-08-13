@@ -1,8 +1,8 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
-import { getProducts, getCustomers, addCustomer, createSale, getBatches, getAvailableUnits, getMainCategories, getSubCategories, getCurrentOpenShift, openShift, closeShift } from "@/lib/firestore";
-import { Product, Customer, CartItem, MainCategory, SubCategory, Shift, SalePaymentMethod, SALE_PAYMENT_METHODS } from "@/types";
-import { Search, Plus, Minus, Trash2, Printer, User, X, Check, Download, Mail, Wallet, Lock } from "lucide-react";
+import { getProducts, getCustomers, addCustomer, createSale, getBatches, getAvailableUnits, getMainCategories, getSubCategories, getCurrentOpenShift, openShift, closeShift, getJobs, updateJobStatus } from "@/lib/firestore";
+import { Product, Customer, CartItem, MainCategory, SubCategory, Shift, SalePaymentMethod, SALE_PAYMENT_METHODS, jobServicesTotal } from "@/types";
+import { Search, Plus, Minus, Trash2, Printer, User, X, Check, Download, Mail, Wallet, Lock, Wrench } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import BillPrint from "@/components/pos/BillPrint";
 import { useReactToPrint } from "react-to-print";
@@ -42,6 +42,13 @@ export default function SalesPage() {
   const [availableUnits, setAvailableUnits] = useState<{ id: string; serialNumber: string; batchId: string; costPrice: number; sellingPrice?: number | null }[]>([]);
   const [selectedUnitIds, setSelectedUnitIds] = useState<string[]>([]);
   const [loadingUnits, setLoadingUnits] = useState(false);
+
+  // Jobs ready to be billed & handed back — only "done" (repaired, not yet
+  // delivered) jobs show up here, so a job can't be attached/billed twice.
+  const [billableJobs, setBillableJobs] = useState<any[]>([]);
+  const [attachedJob, setAttachedJob] = useState<any | null>(null);
+  const [showJobPicker, setShowJobPicker] = useState(false);
+  const [jobSearch, setJobSearch] = useState("");
 
   const [downloadingBill, setDownloadingBill] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
@@ -106,13 +113,14 @@ export default function SalesPage() {
 
   useEffect(() => {
     async function load() {
-      const [p, c, mc, sc] = await Promise.all([getProducts(), getCustomers(), getMainCategories(), getSubCategories()]);
+      const [p, c, mc, sc, j] = await Promise.all([getProducts(), getCustomers(), getMainCategories(), getSubCategories(), getJobs()]);
       // POS only sells from Showroom Stock — items with stock only in Stores
       // must be Transferred to Showroom first.
       setProducts(p.filter((p: any) => p.active && p.showroomStock > 0) as Product[]);
       setCustomers(c as Customer[]);
       setMainCats(mc as MainCategory[]);
       setSubCats(sc as SubCategory[]);
+      setBillableJobs((j as any[]).filter((job) => job.status === "done"));
     }
     load();
   }, []);
@@ -207,6 +215,26 @@ export default function SalesPage() {
   const filteredCustomers = customers.filter(c =>
     c.name.toLowerCase().includes(customerSearch.toLowerCase()) || c.phone?.includes(customerSearch)
   );
+
+  const filteredJobs = jobSearch
+    ? billableJobs.filter(j =>
+        j.jobNo?.toLowerCase().includes(jobSearch.toLowerCase()) ||
+        j.customerName?.toLowerCase().includes(jobSearch.toLowerCase()) ||
+        j.customerPhone?.includes(jobSearch)
+      ).slice(0, 20)
+    : billableJobs.slice(0, 20);
+
+  const selectJob = (job: any) => {
+    setAttachedJob(job);
+    // If this job's customer already has a loyalty account, select it too —
+    // otherwise the job's own name/phone/email are used at checkout.
+    const match = job.customerPhone ? customers.find(c => c.phone === job.customerPhone) : null;
+    if (match) setSelectedCustomer(match);
+    setShowJobPicker(false);
+    setJobSearch("");
+  };
+
+  const detachJob = () => setAttachedJob(null);
 
   const openBatchPicker = async (product: Product) => {
     if (product.trackSerial) {
@@ -335,12 +363,13 @@ export default function SalesPage() {
 
   const removeItem = (tempId: string) => setCart(cart.filter(i => i.tempId !== tempId));
 
-  const subtotal = cart.reduce((s, i) => s + i.lineTotal, 0);
+  const jobServicesAmount = jobServicesTotal(attachedJob?.services);
+  const subtotal = cart.reduce((s, i) => s + i.lineTotal, 0) + jobServicesAmount;
   const totalAmount = Math.max(0, subtotal - discount - pointsToRedeem);
   const change = Number(amountTendered) - totalAmount;
 
   const handleCheckout = async () => {
-    if (cart.length === 0) return;
+    if (cart.length === 0 && !attachedJob) return;
     if (!currentShift) {
       alert("No open shift — open a shift before selling.");
       return;
@@ -349,12 +378,13 @@ export default function SalesPage() {
     try {
       const result = await createSale({
         customerId: selectedCustomer?.id || null,
-        customerName: selectedCustomer?.name || "Walk-in Customer",
-        customerPhone: selectedCustomer?.phone || undefined,
-        customerEmail: selectedCustomer?.email || undefined,
+        customerName: selectedCustomer?.name || attachedJob?.customerName || "Walk-in Customer",
+        customerPhone: selectedCustomer?.phone || attachedJob?.customerPhone || undefined,
+        customerEmail: selectedCustomer?.email || attachedJob?.customerEmail || undefined,
         cashierId: user!.uid,
         cashierName: userDisplayName || "Cashier",
         items: cart,
+        ...(attachedJob ? { jobId: attachedJob.id, jobNo: attachedJob.jobNo, services: attachedJob.services || [] } : {}),
         subtotal,
         discountAmount: discount,
         taxAmount: 0,
@@ -368,6 +398,23 @@ export default function SalesPage() {
         shiftId: currentShift.id,
         shiftNo: currentShift.shiftNo,
       });
+
+      // Paying the bill is what actually hands the device back — flip the
+      // job to Delivered so it drops out of the billable-jobs list and can't
+      // be billed twice. Kept best-effort: the sale itself already
+      // succeeded, so a hiccup here shouldn't look like a failed checkout.
+      if (attachedJob) {
+        try {
+          await updateJobStatus(
+            attachedJob.id,
+            { status: "delivered", note: `Delivered & billed via POS — Invoice ${result.invoiceNo}` },
+            { uid: user!.uid, name: userDisplayName || user?.email || "Cashier" }
+          );
+          setBillableJobs(prev => prev.filter(j => j.id !== attachedJob.id));
+        } catch (err) {
+          console.error("Failed to mark job as delivered:", err);
+        }
+      }
       setCurrentShift(prev => prev ? {
         ...prev,
         cashSalesTotal: prev.cashSalesTotal + (paymentMethod === "cash" ? totalAmount : 0),
@@ -378,7 +425,7 @@ export default function SalesPage() {
       } : prev);
       // Warranties and loyalty-point adjustments are written server-side inside
       // createSale's own transaction, so they can't drift from the sale itself.
-      setCompletedSale({ ...result, items: cart, subtotal, discountAmount: discount, pointsRedeemed: pointsToRedeem, totalAmount, customerName: selectedCustomer?.name || "Walk-in Customer", customerPhone: selectedCustomer?.phone, customerEmail: selectedCustomer?.email, cashierName: userDisplayName || "Cashier", paymentMethod, amountTendered: Number(amountTendered), changeAmount: Math.max(0, change) });
+      setCompletedSale({ ...result, items: cart, jobNo: attachedJob?.jobNo, services: attachedJob?.services, subtotal, discountAmount: discount, pointsRedeemed: pointsToRedeem, totalAmount, customerName: selectedCustomer?.name || attachedJob?.customerName || "Walk-in Customer", customerPhone: selectedCustomer?.phone || attachedJob?.customerPhone, customerEmail: selectedCustomer?.email || attachedJob?.customerEmail, cashierName: userDisplayName || "Cashier", paymentMethod, amountTendered: Number(amountTendered), changeAmount: Math.max(0, change) });
       setBillEmailNotice("");
 
       // Fire-and-forget: don't hold up the checkout flow on the alert email.
@@ -404,6 +451,7 @@ export default function SalesPage() {
       setDiscount(0);
       setPointsToRedeem(0);
       setSelectedCustomer(null);
+      setAttachedJob(null);
       setAmountTendered("");
       setNote("");
     } catch (err: any) {
@@ -442,7 +490,14 @@ export default function SalesPage() {
         <div className="px-4 sm:px-6 py-4 border-b border-zinc-100">
           <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
             <h1 className="font-prata text-xl text-ink">New Sale</h1>
-            {!shiftLoading && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={() => setShowJobPicker(true)}
+                className="nexora-btn nexora-btn-outline text-xs py-1.5"
+              >
+                <Wrench size={13} /> Find Job to Bill
+              </button>
+              {!shiftLoading && (
               currentShift ? (
                 <button
                   onClick={() => setShowCloseShift(true)}
@@ -464,7 +519,8 @@ export default function SalesPage() {
                   No open shift — tap to open
                 </button>
               )
-            )}
+              )}
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative flex-1 min-w-[200px]">
@@ -551,11 +607,38 @@ export default function SalesPage() {
           )}
         </div>
 
+        {/* Attached job (services being billed alongside any products below) */}
+        {attachedJob && (
+          <div className="px-4 py-3 border-b border-zinc-100 bg-zinc-50">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="flex items-center gap-1.5 text-sm font-medium text-ink">
+                <Wrench size={13} className="text-zinc-400" /> {attachedJob.jobNo}
+              </span>
+              <button onClick={detachJob}><X size={13} className="text-zinc-400" /></button>
+            </div>
+            <p className="text-xs text-zinc-500 mb-2">{attachedJob.customerName} · {attachedJob.deviceType === "Other" ? attachedJob.deviceTypeOther : attachedJob.deviceType}</p>
+            {(attachedJob.services || []).length === 0 ? (
+              <p className="text-xs text-zinc-400">No services recorded on this job.</p>
+            ) : (
+              <div className="space-y-1">
+                {(attachedJob.services || []).map((s: any) => (
+                  <div key={s.id} className="flex items-center justify-between text-xs">
+                    <span className="text-zinc-600">{s.name}{s.chargeType === "free" && s.freeReason ? ` — ${s.freeReason}` : ""}</span>
+                    <span className={`font-medium ${s.chargeType === "free" ? "text-green-600" : "text-ink"}`}>
+                      {s.chargeType === "free" ? "Free" : `Rs. ${Number(s.price).toLocaleString()}`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Cart items */}
         <div className="lg:flex-1 lg:overflow-y-auto">
           {cart.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-zinc-300">
-              <p className="text-sm">Cart is empty</p>
+            <div className="flex flex-col items-center justify-center h-full text-zinc-300 py-6">
+              <p className="text-sm">{attachedJob ? "No products added" : "Cart is empty"}</p>
               <p className="text-xs mt-1">Tap a product to add</p>
             </div>
           ) : (
@@ -703,7 +786,7 @@ export default function SalesPage() {
           )}
           <button
             onClick={handleCheckout}
-            disabled={cart.length === 0 || processing || !currentShift}
+            disabled={(cart.length === 0 && !attachedJob) || processing || !currentShift}
             className="nexora-btn nexora-btn-primary w-full justify-center py-3 text-base"
           >
             {processing ? "Processing…" : `Checkout — Rs. ${totalAmount.toLocaleString()}`}
@@ -800,6 +883,46 @@ export default function SalesPage() {
               >
                 Add {selectedUnitIds.length || ""} to Cart
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Job picker modal — finds a completed repair job by Job No, customer
+          name or mobile number, ready to bill and mark Delivered */}
+      {showJobPicker && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-sm mx-4">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100">
+              <h2 className="font-prata text-base">Find Job to Bill</h2>
+              <button onClick={() => setShowJobPicker(false)}><X size={16} className="text-zinc-400" /></button>
+            </div>
+            <div className="p-3">
+              <input
+                className="nexora-input mb-2"
+                autoFocus
+                placeholder="Job no., customer name or mobile…"
+                value={jobSearch}
+                onChange={e => setJobSearch(e.target.value)}
+              />
+              <div className="max-h-64 overflow-y-auto divide-y divide-zinc-50">
+                {filteredJobs.length === 0 ? (
+                  <p className="text-xs text-zinc-400 text-center py-4">
+                    {jobSearch ? "No matching completed jobs" : "No jobs are ready for billing yet — a job must be marked \"Job Done\" first."}
+                  </p>
+                ) : (
+                  filteredJobs.map(j => (
+                    <button key={j.id} onClick={() => selectJob(j)}
+                      className="w-full text-left px-3 py-2.5 hover:bg-zinc-50 transition-colors flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium">{j.jobNo} · {j.customerName}</p>
+                        <p className="text-xs text-zinc-400 truncate">{j.customerPhone} · {j.deviceType === "Other" ? j.deviceTypeOther : j.deviceType}</p>
+                      </div>
+                      <span className="text-xs font-medium shrink-0">Rs. {jobServicesTotal(j.services).toLocaleString()}</span>
+                    </button>
+                  ))
+                )}
+              </div>
             </div>
           </div>
         </div>
