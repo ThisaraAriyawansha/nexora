@@ -209,6 +209,7 @@ export default function JobPrint({ job }: JobPrintProps) {
         <div style={{ borderTop: "1pt solid #e4e4e7", paddingTop: "3mm", display: "flex", justifyContent: "space-between", alignItems: "flex-end", breakInside: "avoid", pageBreakInside: "avoid" }}>
           <div style={{ textAlign: "left" }}>
             <div style={{ fontFamily: "'Poppins', sans-serif", fontSize: "10pt", fontWeight: 600, color: "#000" }}>{shop.name}</div>
+            <div style={{ fontSize: "7pt", color: "#888", marginTop: "1px" }}>We Build With Care. Expert Repairs.</div>
             <div style={{ fontSize: "7pt", color: "#888", marginTop: "1px" }}>Thank you for trusting us with your repair!</div>
           </div>
           <div style={{ textAlign: "right" }}>
