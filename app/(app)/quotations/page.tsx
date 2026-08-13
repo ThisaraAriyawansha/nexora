@@ -269,13 +269,13 @@ export default function QuotationsPage() {
     <div className="p-4 sm:p-8">
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6">
         <div>
-          <h1 className="font-prata text-2xl text-black">Quotations</h1>
+          <h1 className="font-prata text-2xl text-ink">Quotations</h1>
           <p className="text-zinc-500 text-sm mt-1">{quotations.length} total quotations</p>
         </div>
         <div className="flex items-center gap-4">
           <div className="sm:text-right">
             <p className="text-xs text-zinc-400 uppercase tracking-wider">Total · {filtered.length} quotations</p>
-            <p className="font-poppins font-semibold text-xl text-black">Rs. {filteredTotal.toLocaleString()}</p>
+            <p className="font-poppins font-semibold text-xl text-ink">Rs. {filteredTotal.toLocaleString()}</p>
           </div>
           <button onClick={openCreate} className="nexora-btn nexora-btn-primary text-sm">
             <Plus size={14} /> New Quotation
@@ -354,11 +354,11 @@ export default function QuotationsPage() {
             ) : (
               paginated.map((q) => (
                 <tr key={q.id} className="hover:bg-zinc-50 transition-colors">
-                  <td className="px-4 py-3 font-medium text-black">{q.quotationNo}</td>
+                  <td className="px-4 py-3 font-medium text-ink">{q.quotationNo}</td>
                   <td className="px-4 py-3 text-zinc-600">{q.customerName || "Walk-in"}</td>
                   <td className="px-4 py-3 text-zinc-500 text-xs">{formatDate(q.createdAt)}</td>
                   <td className="px-4 py-3 text-zinc-500 text-xs">{formatDate(q.validUntil)}</td>
-                  <td className="px-4 py-3 font-medium text-black">Rs. {q.totalAmount?.toLocaleString()}</td>
+                  <td className="px-4 py-3 font-medium text-ink">Rs. {q.totalAmount?.toLocaleString()}</td>
                   <td className="px-4 py-3">{statusBadge(q.status)}</td>
                   <td className="px-4 py-3">
                     <button onClick={() => openQuotation(q.id)} className="nexora-btn nexora-btn-ghost py-1 px-2 text-xs">
@@ -380,7 +380,7 @@ export default function QuotationsPage() {
           <div className="bg-white rounded-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
             <div className="px-6 py-4 border-b border-zinc-100 sticky top-0 z-20 bg-white flex items-center justify-between">
               <h2 className="font-prata text-lg flex items-center gap-2"><FileText size={16} /> New Quotation</h2>
-              <button onClick={() => setShowCreate(false)} className="text-zinc-400 hover:text-black">
+              <button onClick={() => setShowCreate(false)} className="text-zinc-400 hover:text-ink">
                 <X size={18} />
               </button>
             </div>
@@ -563,7 +563,7 @@ export default function QuotationsPage() {
             <div className="px-6 py-4 border-b border-zinc-100 sticky top-0 z-20 bg-white">
               <div className="flex items-center justify-between">
                 <h2 className="font-prata text-lg">{viewQuotation.quotationNo}</h2>
-                <button onClick={closeQuotation} className="text-zinc-400 hover:text-black">
+                <button onClick={closeQuotation} className="text-zinc-400 hover:text-ink">
                   <X size={18} />
                 </button>
               </div>
@@ -643,7 +643,7 @@ export default function QuotationsPage() {
                     {viewQuotation.items?.map((item: any, i: number) => (
                       <tr key={i}>
                         <td className="py-2.5">
-                          <p className="font-medium text-black">{item.productName}</p>
+                          <p className="font-medium text-ink">{item.productName}</p>
                           {item.sku && <p className="text-xs text-zinc-400">{item.sku}</p>}
                         </td>
                         <td className="py-2.5 text-center">{item.qty}</td>

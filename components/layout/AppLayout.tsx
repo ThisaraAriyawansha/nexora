@@ -16,7 +16,7 @@ function HeaderClock() {
   }, []);
 
   return (
-    <div className="text-white lg:text-black text-xs font-poppins tabular-nums">
+    <div className="text-white lg:text-ink text-xs font-poppins tabular-nums">
       {now
         ? `${now.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric", year: "numeric" })} · ${now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
         : " "}

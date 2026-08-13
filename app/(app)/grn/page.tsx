@@ -123,7 +123,7 @@ export default function GrnPage() {
     <div className="p-4 sm:p-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
-          <h1 className="font-prata text-2xl text-black">GRN — Goods Received</h1>
+          <h1 className="font-prata text-2xl text-ink">GRN — Goods Received</h1>
           <p className="text-zinc-500 text-sm mt-1">{grns.length} notes recorded</p>
         </div>
         <div className="flex items-center gap-2 self-start sm:self-auto">
@@ -182,10 +182,10 @@ export default function GrnPage() {
             ) : (
               paginated.map((g) => (
                 <tr key={g.id} className="hover:bg-zinc-50 transition-colors">
-                  <td className="px-4 py-3 font-medium text-black">{g.grnNo}</td>
+                  <td className="px-4 py-3 font-medium text-ink">{g.grnNo}</td>
                   <td className="px-4 py-3 text-zinc-600">{g.supplierName || "—"}</td>
                   <td className="px-4 py-3 text-zinc-600">{g.receivedByName}</td>
-                  <td className="px-4 py-3 font-medium text-black">Rs. {g.totalCost?.toLocaleString() ?? "—"}</td>
+                  <td className="px-4 py-3 font-medium text-ink">Rs. {g.totalCost?.toLocaleString() ?? "—"}</td>
                   <td className="px-4 py-3 text-zinc-500 text-xs">{formatDate(g.createdAt)}</td>
                   <td className="px-4 py-3">
                     <button onClick={() => openGrn(g.id)} className="nexora-btn nexora-btn-ghost py-1 px-2 text-xs">
@@ -215,7 +215,7 @@ export default function GrnPage() {
                     <Pencil size={12} /> Edit
                   </button>
                 )}
-                <button onClick={() => setViewGrn(null)} className="text-zinc-400 hover:text-black">
+                <button onClick={() => setViewGrn(null)} className="text-zinc-400 hover:text-ink">
                   <X size={18} />
                 </button>
               </div>
@@ -241,7 +241,7 @@ export default function GrnPage() {
                     <div className="space-y-2">
                       {(viewGrn.items || []).map((item: any, i: number) => (
                         <div key={item.id} className="grid grid-cols-3 gap-2 items-center">
-                          <span className="text-sm text-black truncate">{item.productName} <span className="text-xs text-zinc-400">· Qty {item.qty}</span></span>
+                          <span className="text-sm text-ink truncate">{item.productName} <span className="text-xs text-zinc-400">· Qty {item.qty}</span></span>
                           <input
                             type="number"
                             className="nexora-input text-sm"
@@ -307,7 +307,7 @@ export default function GrnPage() {
                     {viewGrn.items?.map((item: any) => (
                       <tr key={item.id}>
                         <td className="py-2.5">
-                          <p className="font-medium text-black">{item.productName}</p>
+                          <p className="font-medium text-ink">{item.productName}</p>
                           <p className="text-xs text-zinc-400">{item.sku}</p>
                           {item.serials?.length > 0 && (
                             <p className="text-xs text-zinc-400 font-mono mt-0.5">{item.serials.join(", ")}</p>

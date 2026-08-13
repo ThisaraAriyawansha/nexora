@@ -112,7 +112,7 @@ export default function StockMovementsPage() {
     <div className="p-4 sm:p-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
-          <h1 className="font-prata text-2xl text-black">Stock Movements</h1>
+          <h1 className="font-prata text-2xl text-ink">Stock Movements</h1>
           <p className="text-zinc-500 text-sm mt-1">{filtered.length} of {movements.length} movements</p>
         </div>
         <button
@@ -189,7 +189,7 @@ export default function StockMovementsPage() {
                       <span className={`badge ${TYPE_BADGE[m.type] || "badge-default"} capitalize`}>{m.type}</span>
                     </td>
                     <td className="px-4 py-3">
-                      <p className="font-medium text-black">{product?.name || "—"}</p>
+                      <p className="font-medium text-ink">{product?.name || "—"}</p>
                       <p className="text-xs text-zinc-400">{product?.sku}</p>
                     </td>
                     <td className="px-4 py-3 text-center font-medium">{m.qty > 0 ? `+${m.qty}` : m.qty}</td>

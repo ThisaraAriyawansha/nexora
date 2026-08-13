@@ -479,7 +479,7 @@ export default function JobsPage() {
     <div className="p-4 sm:p-8">
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6">
         <div>
-          <h1 className="font-prata text-2xl text-black">Jobs</h1>
+          <h1 className="font-prata text-2xl text-ink">Jobs</h1>
           <p className="text-zinc-500 text-sm mt-1">{jobs.length} total job notes</p>
         </div>
         <div className="flex items-center gap-2">
@@ -562,11 +562,11 @@ export default function JobsPage() {
             ) : (
               paginated.map((job) => (
                 <tr key={job.id} className="hover:bg-zinc-50 transition-colors">
-                  <td className="px-4 py-3 font-medium text-black">{job.jobNo}</td>
+                  <td className="px-4 py-3 font-medium text-ink">{job.jobNo}</td>
                   <td className="px-4 py-3 text-zinc-600">{job.customerName}</td>
                   <td className="px-4 py-3 text-zinc-600">{job.deviceType === "Other" ? job.deviceTypeOther : job.deviceType}</td>
                   <td className="px-4 py-3 text-zinc-500 text-xs">{formatDate(job.createdAt)}</td>
-                  <td className="px-4 py-3 font-medium text-black">Rs. {job.estimatedCost?.toLocaleString()}</td>
+                  <td className="px-4 py-3 font-medium text-ink">Rs. {job.estimatedCost?.toLocaleString()}</td>
                   <td className="px-4 py-3">
                     <span className={`badge ${STATUS_BADGE[job.status as JobStatus] ?? "badge-default"}`}>
                       {STATUS_LABEL[job.status as JobStatus] ?? job.status}
@@ -592,7 +592,7 @@ export default function JobsPage() {
           <div className="bg-white rounded-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
             <div className="px-6 py-4 border-b border-zinc-100 sticky top-0 z-20 bg-white flex items-center justify-between">
               <h2 className="font-prata text-lg flex items-center gap-2"><Wrench size={16} /> New Job Note</h2>
-              <button onClick={() => setShowCreate(false)} className="text-zinc-400 hover:text-black">
+              <button onClick={() => setShowCreate(false)} className="text-zinc-400 hover:text-ink">
                 <X size={18} />
               </button>
             </div>
@@ -803,7 +803,7 @@ export default function JobsPage() {
             <div className="px-6 py-4 border-b border-zinc-100 sticky top-0 z-20 bg-white">
               <div className="flex items-center justify-between">
                 <h2 className="font-prata text-lg">{viewJob.jobNo}</h2>
-                <button onClick={closeJob} className="text-zinc-400 hover:text-black">
+                <button onClick={closeJob} className="text-zinc-400 hover:text-ink">
                   <X size={18} />
                 </button>
               </div>
@@ -825,7 +825,7 @@ export default function JobsPage() {
             {emailNotice && (
               <div className="mx-6 mt-4 px-4 py-2.5 rounded-lg bg-zinc-50 border border-zinc-200 text-sm text-zinc-600 flex items-center justify-between">
                 <span>{emailNotice}</span>
-                <button onClick={() => setEmailNotice("")} className="text-zinc-400 hover:text-black"><X size={14} /></button>
+                <button onClick={() => setEmailNotice("")} className="text-zinc-400 hover:text-ink"><X size={14} /></button>
               </div>
             )}
 
@@ -931,7 +931,7 @@ export default function JobsPage() {
                         </div>
                         <div className={`min-w-0 flex-1 ${isLast ? "" : "pb-4"}`}>
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-medium text-black">{STATUS_LABEL[entry.status as JobStatus] ?? entry.status}</span>
+                            <span className="text-sm font-medium text-ink">{STATUS_LABEL[entry.status as JobStatus] ?? entry.status}</span>
                             <span className="text-xs text-zinc-400">{formatDate(entry.createdAt)}</span>
                           </div>
                           {entry.note && <p className="text-sm text-zinc-600 mt-0.5">{entry.note}</p>}
@@ -956,7 +956,7 @@ export default function JobsPage() {
           <div className="bg-white rounded-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
             <div className="px-6 py-4 border-b border-zinc-100 sticky top-0 z-20 bg-white flex items-center justify-between">
               <h2 className="font-prata text-lg flex items-center gap-2"><Pencil size={16} /> Edit Job — {viewJob?.jobNo}</h2>
-              <button onClick={() => setEditingJob(false)} className="text-zinc-400 hover:text-black">
+              <button onClick={() => setEditingJob(false)} className="text-zinc-400 hover:text-ink">
                 <X size={18} />
               </button>
             </div>

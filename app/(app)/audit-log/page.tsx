@@ -81,7 +81,7 @@ export default function AuditLogPage() {
       <div className="p-4 sm:p-8">
         <div className="nexora-card p-8 text-center max-w-md mx-auto">
           <ShieldCheck size={24} className="text-zinc-300 mx-auto mb-3" />
-          <h1 className="font-prata text-lg text-black mb-1">Access Restricted</h1>
+          <h1 className="font-prata text-lg text-ink mb-1">Access Restricted</h1>
           <p className="text-sm text-zinc-500">Only Super Admin and Admin can view the audit log.</p>
         </div>
       </div>
@@ -92,7 +92,7 @@ export default function AuditLogPage() {
     <div className="p-4 sm:p-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
-          <h1 className="font-prata text-2xl text-black">Audit Log</h1>
+          <h1 className="font-prata text-2xl text-ink">Audit Log</h1>
           <p className="text-zinc-500 text-sm mt-1">{filtered.length} of {entries.length} edits</p>
         </div>
         <button
@@ -154,7 +154,7 @@ export default function AuditLogPage() {
                   <td className="px-4 py-3 text-zinc-600">{e.performedByName}</td>
                   <td className="px-4 py-3">
                     <span className="badge badge-default">{COLLECTION_LABELS[e.collectionName] || e.collectionName}</span>
-                    <span className="ml-2 font-medium text-black">{e.label}</span>
+                    <span className="ml-2 font-medium text-ink">{e.label}</span>
                   </td>
                   <td className="px-4 py-3 text-zinc-500 text-xs">{e.changes?.map((c: any) => c.field).join(", ")}</td>
                   <td className="px-4 py-3">
@@ -179,7 +179,7 @@ export default function AuditLogPage() {
                 <h2 className="font-prata text-lg">{COLLECTION_LABELS[viewEntry.collectionName] || viewEntry.collectionName} · {viewEntry.label}</h2>
                 <p className="text-xs text-zinc-400 mt-0.5">{viewEntry.performedByName} · {formatDate(viewEntry.createdAt)}</p>
               </div>
-              <button onClick={() => setViewEntry(null)} className="text-zinc-400 hover:text-black">
+              <button onClick={() => setViewEntry(null)} className="text-zinc-400 hover:text-ink">
                 <X size={18} />
               </button>
             </div>

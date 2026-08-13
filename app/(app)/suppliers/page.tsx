@@ -270,7 +270,7 @@ export default function SuppliersPage() {
     <div className="p-4 sm:p-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
-          <h1 className="font-prata text-2xl text-black">Suppliers</h1>
+          <h1 className="font-prata text-2xl text-ink">Suppliers</h1>
           <p className="text-zinc-500 text-sm mt-1">{suppliers.length} suppliers</p>
         </div>
         <div className="flex items-center gap-2 self-start sm:self-auto">
@@ -313,7 +313,7 @@ export default function SuppliersPage() {
                 <tbody className="divide-y divide-zinc-50">
                   {paymentReminders.map((s) => (
                     <tr key={s.id} onClick={() => openSupplier(s)} className="hover:bg-zinc-50 transition-colors cursor-pointer">
-                      <td className="px-4 py-2.5 font-medium text-black">{s.name}</td>
+                      <td className="px-4 py-2.5 font-medium text-ink">{s.name}</td>
                       <td className="px-4 py-2.5">Rs. {s.balance?.toLocaleString() ?? 0}</td>
                       <td className="px-4 py-2.5 text-zinc-500 text-xs">{s.lastPaymentAt ? formatDate(s.lastPaymentAt) : "Never paid"}</td>
                       <td className="px-4 py-2.5 text-zinc-500 text-xs">{s.daysSince != null ? `${s.daysSince} day${s.daysSince === 1 ? "" : "s"}` : "—"}</td>
@@ -352,7 +352,7 @@ export default function SuppliersPage() {
             ) : (
               paginated.map((s) => (
                 <tr key={s.id} className="hover:bg-zinc-50 transition-colors">
-                  <td className="px-4 py-3 font-medium text-black">{s.name}</td>
+                  <td className="px-4 py-3 font-medium text-ink">{s.name}</td>
                   <td className="px-4 py-3 text-zinc-600">{s.phone}</td>
                   <td className="px-4 py-3">Rs. {s.totalPayable?.toLocaleString() ?? 0}</td>
                   <td className="px-4 py-3">Rs. {s.amountPaid?.toLocaleString() ?? 0}</td>
@@ -425,7 +425,7 @@ export default function SuppliersPage() {
                 <Truck size={16} className="text-zinc-400" />
                 <h2 className="font-prata text-lg">{viewSupplier.name}</h2>
               </div>
-              <button onClick={() => setViewSupplier(null)} className="text-zinc-400 hover:text-black"><X size={18} /></button>
+              <button onClick={() => setViewSupplier(null)} className="text-zinc-400 hover:text-ink"><X size={18} /></button>
             </div>
 
             <div className="px-6 py-4">
@@ -483,7 +483,7 @@ export default function SuppliersPage() {
               {statementNotice && (
                 <div className="mb-4 px-4 py-2.5 rounded-lg bg-zinc-50 border border-zinc-200 text-sm text-zinc-600 flex items-center justify-between">
                   <span>{statementNotice}</span>
-                  <button onClick={() => setStatementNotice("")} className="text-zinc-400 hover:text-black"><X size={14} /></button>
+                  <button onClick={() => setStatementNotice("")} className="text-zinc-400 hover:text-ink"><X size={14} /></button>
                 </div>
               )}
 
@@ -565,14 +565,14 @@ export default function SuppliersPage() {
                           </tr>
                         ) : (
                           <tr key={p.id}>
-                            <td className="py-2.5 font-medium text-black">{p.paymentNo}</td>
+                            <td className="py-2.5 font-medium text-ink">{p.paymentNo}</td>
                             <td className="py-2.5 text-zinc-500 text-xs">{formatDate(p.createdAt)}</td>
                             <td className="py-2.5 text-right">Rs. {p.amount?.toLocaleString()}</td>
                             <td className="py-2.5">{METHOD_LABEL[p.method] || p.method}</td>
                             <td className="py-2.5 text-right">Rs. {p.balanceAfter?.toLocaleString()}</td>
                             <td className="py-2.5 text-right">
                               {canEditPayment && (
-                                <button onClick={() => openEditPayment(p)} className="text-zinc-400 hover:text-black"><Pencil size={13} /></button>
+                                <button onClick={() => openEditPayment(p)} className="text-zinc-400 hover:text-ink"><Pencil size={13} /></button>
                               )}
                             </td>
                           </tr>

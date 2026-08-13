@@ -146,7 +146,7 @@ export default function NewStockOutPage() {
       <div className="p-4 sm:p-8">
         <div className="nexora-card p-8 text-center max-w-md mx-auto">
           <ShieldCheck size={24} className="text-zinc-300 mx-auto mb-3" />
-          <h1 className="font-prata text-lg text-black mb-1">Access Restricted</h1>
+          <h1 className="font-prata text-lg text-ink mb-1">Access Restricted</h1>
           <p className="text-sm text-zinc-500">You don't have permission to create a stock out record.</p>
         </div>
       </div>
@@ -155,10 +155,10 @@ export default function NewStockOutPage() {
 
   return (
     <div className="p-4 sm:p-8 max-w-3xl">
-      <Link href="/stock-out" className="inline-flex items-center gap-1.5 text-sm text-zinc-500 hover:text-black mb-4">
+      <Link href="/stock-out" className="inline-flex items-center gap-1.5 text-sm text-zinc-500 hover:text-ink mb-4">
         <ArrowLeft size={14} /> Back to Stock Out
       </Link>
-      <h1 className="font-prata text-2xl text-black mb-1">New Stock Out</h1>
+      <h1 className="font-prata text-2xl text-ink mb-1">New Stock Out</h1>
       <p className="text-zinc-500 text-sm mb-8">Issue stock out for a repair job, an off-POS sale, or another reason.</p>
 
       <div className="nexora-card p-4 sm:p-6 mb-6 space-y-4">
@@ -260,7 +260,7 @@ export default function NewStockOutPage() {
             {items.map((i) => (
               <div key={i.tempId} className="flex items-center justify-between gap-2 p-3 bg-zinc-50 rounded-lg">
                 <div>
-                  <p className="text-sm font-medium text-black">{i.productName}</p>
+                  <p className="text-sm font-medium text-ink">{i.productName}</p>
                   <p className="text-xs text-zinc-400">
                     {i.sku} · Qty {i.qty}
                     {i.serialNumbers && <> · {i.serialNumbers.join(", ")}</>}

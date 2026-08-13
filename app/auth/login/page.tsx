@@ -154,7 +154,7 @@ export default function LoginPage() {
       {/* Left branding panel */}
       <div className="hidden lg:flex w-1/2 bg-black flex-col items-center justify-center p-12 relative">
         <Image
-          src="/logo/674647452.png"
+          src="/shop_logo/6767467478-removebg-preview.png"
           alt="Nexora"
           width={360}
           height={360}
@@ -173,7 +173,7 @@ export default function LoginPage() {
           {/* Mobile logo */}
           <div className="lg:hidden mb-10 flex justify-center">
             <Image
-              src="/logo/5326326732673527.png"
+              src="/shop_logo/6767467478-removebg-preview.png"
               alt="Nexora"
               width={280}
               height={280}
@@ -184,7 +184,7 @@ export default function LoginPage() {
 
           {mode === "login" && (
             <>
-              <h1 className="font-prata text-2xl text-black mb-1">Sign in</h1>
+              <h1 className="font-prata text-2xl text-ink mb-1">Sign in</h1>
               <p className="text-zinc-500 text-sm mb-8 font-poppins">Enter your credentials to continue</p>
 
               <form onSubmit={handleSubmit} className="space-y-4">
@@ -210,7 +210,7 @@ export default function LoginPage() {
                     <button
                       type="button"
                       onClick={goToForgot}
-                      className="text-xs text-zinc-500 hover:text-black font-poppins"
+                      className="text-xs text-zinc-500 hover:text-ink font-poppins"
                     >
                       Forgot password?
                     </button>
@@ -242,7 +242,7 @@ export default function LoginPage() {
 
           {mode === "forgot" && (
             <>
-              <h1 className="font-prata text-2xl text-black mb-1">Reset password</h1>
+              <h1 className="font-prata text-2xl text-ink mb-1">Reset password</h1>
               <p className="text-zinc-500 text-sm mb-8 font-poppins">
                 Enter your account email and we'll send you a 6-digit code.
               </p>
@@ -276,7 +276,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={backToLogin}
-                  className="w-full text-center text-xs text-zinc-500 hover:text-black font-poppins mt-1"
+                  className="w-full text-center text-xs text-zinc-500 hover:text-ink font-poppins mt-1"
                 >
                   Back to sign in
                 </button>
@@ -286,7 +286,7 @@ export default function LoginPage() {
 
           {mode === "reset" && (
             <>
-              <h1 className="font-prata text-2xl text-black mb-1">Enter code</h1>
+              <h1 className="font-prata text-2xl text-ink mb-1">Enter code</h1>
               <p className="text-zinc-500 text-sm mb-8 font-poppins">
                 {resetInfo || `Enter the 6-digit code sent to ${resetEmail}.`}
               </p>
@@ -351,7 +351,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={backToLogin}
-                  className="w-full text-center text-xs text-zinc-500 hover:text-black font-poppins mt-1"
+                  className="w-full text-center text-xs text-zinc-500 hover:text-ink font-poppins mt-1"
                 >
                   Back to sign in
                 </button>

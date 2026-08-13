@@ -129,7 +129,7 @@ export default function StockOutPage() {
     <div className="p-4 sm:p-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
-          <h1 className="font-prata text-2xl text-black">Stock Out</h1>
+          <h1 className="font-prata text-2xl text-ink">Stock Out</h1>
           <p className="text-zinc-500 text-sm mt-1">{stockOuts.length} issuances recorded</p>
         </div>
         <div className="flex items-center gap-2 self-start sm:self-auto">
@@ -189,7 +189,7 @@ export default function StockOutPage() {
             ) : (
               paginated.map((s) => (
                 <tr key={s.id} className="hover:bg-zinc-50 transition-colors">
-                  <td className="px-4 py-3 font-medium text-black">{s.stockOutNo}</td>
+                  <td className="px-4 py-3 font-medium text-ink">{s.stockOutNo}</td>
                   <td className="px-4 py-3">
                     <span className={`badge ${s.location === "showroom" ? "badge-success" : "badge-default"}`}>
                       {s.location === "showroom" ? "Showroom" : "Stores"}
@@ -227,7 +227,7 @@ export default function StockOutPage() {
                     <Pencil size={12} /> Edit
                   </button>
                 )}
-                <button onClick={() => setViewStockOut(null)} className="text-zinc-400 hover:text-black">
+                <button onClick={() => setViewStockOut(null)} className="text-zinc-400 hover:text-ink">
                   <X size={18} />
                 </button>
               </div>
@@ -316,7 +316,7 @@ export default function StockOutPage() {
                     {viewStockOut.items?.map((item: any) => (
                       <tr key={item.id}>
                         <td className="py-2.5">
-                          <p className="font-medium text-black">{item.productName}</p>
+                          <p className="font-medium text-ink">{item.productName}</p>
                           <p className="text-xs text-zinc-400">{item.sku}</p>
                         </td>
                         <td className="py-2.5 text-center">{item.qty}</td>

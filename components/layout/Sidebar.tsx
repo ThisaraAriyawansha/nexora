@@ -79,10 +79,10 @@ export default function Sidebar({
         }`}
       >
         {/* Logo */}
-        <div className="px-6 py-6 border-b border-zinc-800 flex items-center justify-between">
+        <div className="px-6 py-6 border-b border-white/10 flex items-center justify-between">
           <div className="flex-1 flex justify-center">
             <Image
-              src="/logo/83278238723.png"
+              src="/shop_logo/6767467478-removebg-preview.png"
               alt="Nexora"
               width={200}
               height={80}
@@ -100,7 +100,7 @@ export default function Sidebar({
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+        <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto sidebar-nav-scroll">
           {nav.filter((item) => !item.permKey || can(item.permKey)).map((item) => {
             const Icon = item.icon;
             const active = pathname === item.href || pathname.startsWith(item.href + "/");
@@ -111,8 +111,8 @@ export default function Sidebar({
                 onClick={onClose}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded text-sm font-poppins transition-colors ${
                   active
-                    ? "bg-white text-black font-medium"
-                    : "text-zinc-400 hover:text-white hover:bg-zinc-800"
+                    ? "bg-white text-ink font-medium"
+                    : "text-zinc-400 hover:text-white hover:bg-white/10"
                 }`}
               >
                 <Icon size={15} />
@@ -123,27 +123,27 @@ export default function Sidebar({
         </nav>
 
         {/* User */}
-        <div className="px-3 pb-4 border-t border-zinc-800 pt-4">
+        <div className="px-3 pb-4 border-t border-white/10 pt-4">
           <Link
             href="/profile"
             onClick={onClose}
             className={`flex items-center gap-3 px-3 py-2 rounded mb-1 transition-colors group ${
-              pathname === "/profile" ? "bg-zinc-800" : "hover:bg-zinc-800"
+              pathname === "/profile" ? "bg-white/10" : "hover:bg-white/10"
             }`}
           >
-            <div className="w-7 h-7 rounded-full bg-zinc-700 group-hover:bg-zinc-600 flex items-center justify-center shrink-0 transition-colors">
+            <div className="w-7 h-7 rounded-full bg-white/15 group-hover:bg-white/25 flex items-center justify-center shrink-0 transition-colors">
               <span className="text-white text-xs font-prata">{initials}</span>
             </div>
             <div className="min-w-0">
               <p className="text-white text-xs font-medium truncate">
                 {user?.displayName || user?.email}
               </p>
-              <p className="text-zinc-500 text-xs">{userRole ?? "Admin"} · View profile</p>
+              <p className="text-zinc-400 text-xs">{userRole ?? "Admin"} · View profile</p>
             </div>
           </Link>
           <button
             onClick={handleLogout}
-            className="flex items-center gap-3 w-full px-3 py-2.5 rounded text-sm text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors font-poppins"
+            className="flex items-center gap-3 w-full px-3 py-2.5 rounded text-sm text-zinc-400 hover:text-white hover:bg-white/10 transition-colors font-poppins"
           >
             <LogOut size={15} />
             Sign out

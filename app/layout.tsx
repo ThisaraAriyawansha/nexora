@@ -3,7 +3,7 @@ import "./globals.css";
 import { AuthProvider } from "@/hooks/useAuth";
 
 const siteUrl = "https://nexora-pos.vercel.app";
-const ogImage = "/logo/5656477676.png";
+const ogImage = "/shop_logo/6767467478-removebg-preview.png";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -25,7 +25,7 @@ export const metadata: Metadata = {
   applicationName: "Nexora POS",
   authors: [{ name: "Nexora" }],
   icons: {
-    icon: "/logo/favicon_1.png",
+    icon: "/shop_logo/6767467478-removebg-preview.png",
   },
   alternates: {
     canonical: siteUrl,

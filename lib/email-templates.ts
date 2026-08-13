@@ -26,7 +26,7 @@ function emailShell(body: string, brandName: string, year: number) {
   return `
     <div style="background:#f4f4f5;padding:32px 16px;font-family:'Segoe UI',Helvetica,Arial,sans-serif">
       <div style="max-width:420px;margin:0 auto;background:#fff;border-radius:8px;overflow:hidden">
-        <div style="background:#000;padding:20px 24px">
+        <div style="background:#10233d;padding:20px 24px">
           <span style="font-size:22px;color:#fff;letter-spacing:0.5px;font-style:italic">${escapeHtml(brandName)}</span>
         </div>
         <div style="padding:28px 24px;font-family:Arial,Helvetica,sans-serif;color:#111">
@@ -47,7 +47,7 @@ export function changeEmailTemplate(newEmail: string, link: string, shopName: st
         ${currentEmail ? `You asked to change the email on your ${escapeHtml(shopName)} account from <strong>${escapeHtml(currentEmail)}</strong> to <strong>${escapeHtml(newEmail)}</strong>.` : `Confirm <strong>${escapeHtml(newEmail)}</strong> as your new ${escapeHtml(shopName)} email.`}
       </p>
       <p style="color:#999;font-size:12px;margin:0 0 20px">This link expires in 1 hour for your security.</p>
-      <a href="${link}" style="background:#000;color:#fff;font-size:13px;padding:10px 22px;text-decoration:none;border-radius:6px;display:inline-block">
+      <a href="${link}" style="background:#10233d;color:#fff;font-size:13px;padding:10px 22px;text-decoration:none;border-radius:6px;display:inline-block">
         Confirm Email
       </a>
       <p style="color:#999;font-size:12px;margin:20px 0 0">
@@ -90,7 +90,7 @@ function shopEmailShell(body: string, shop: { name: string; phone?: string; emai
   return `
     <div style="background:#f4f4f5;padding:32px 16px;font-family:'Segoe UI',Helvetica,Arial,sans-serif">
       <div style="max-width:420px;margin:0 auto;background:#fff;border-radius:8px;overflow:hidden">
-        <div style="background:#000;padding:20px 24px">
+        <div style="background:#10233d;padding:20px 24px">
           <span style="font-size:22px;color:#fff;letter-spacing:0.5px;font-style:italic">${escapeHtml(shop.name)}</span>
         </div>
         <div style="padding:28px 24px;font-family:Arial,Helvetica,sans-serif;color:#111">
@@ -144,7 +144,7 @@ export function jobUpdateTemplate(params: {
       </table>
       ${note ? `<p style="margin:0 0 8px;font-size:13px;line-height:1.5;color:#333">${escapeHtml(note)}</p>` : ""}
       ${shop.phone ? `
-      <a href="tel:${escapeHtml(shop.phone)}" style="background:#000;color:#fff;font-size:13px;padding:10px 22px;text-decoration:none;border-radius:6px;display:inline-block;margin-top:8px">
+      <a href="tel:${escapeHtml(shop.phone)}" style="background:#10233d;color:#fff;font-size:13px;padding:10px 22px;text-decoration:none;border-radius:6px;display:inline-block;margin-top:8px">
         Call ${safeShopName} · ${escapeHtml(shop.phone)}
       </a>` : ""}
       <p style="color:#999;font-size:12px;margin:16px 0 0">
@@ -287,7 +287,7 @@ export function supplierAccountStatementTemplate(params: {
         </tr>
       </table>
       ${shop.phone ? `
-      <a href="tel:${escapeHtml(shop.phone)}" style="background:#000;color:#fff;font-size:13px;padding:10px 22px;text-decoration:none;border-radius:6px;display:inline-block;margin-top:8px">
+      <a href="tel:${escapeHtml(shop.phone)}" style="background:#10233d;color:#fff;font-size:13px;padding:10px 22px;text-decoration:none;border-radius:6px;display:inline-block;margin-top:8px">
         Call ${escapeHtml(shop.name)} · ${escapeHtml(shop.phone)}
       </a>` : ""}
       <p style="color:#999;font-size:12px;margin:16px 0 0">

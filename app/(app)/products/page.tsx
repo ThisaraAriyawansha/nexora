@@ -358,7 +358,7 @@ export default function ProductsPage() {
     <div className="p-4 sm:p-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
-          <h1 className="font-prata text-2xl text-black">Products</h1>
+          <h1 className="font-prata text-2xl text-ink">Products</h1>
           <p className="text-zinc-500 text-sm mt-1">{products.length} items in inventory</p>
         </div>
         <button onClick={openAdd} className="nexora-btn nexora-btn-primary self-start sm:self-auto">
@@ -429,7 +429,7 @@ export default function ProductsPage() {
               paginated.map(p => (
                 <tr key={p.id} className="hover:bg-zinc-50 transition-colors">
                   <td className="px-4 py-3">
-                    <p className="font-medium text-black">{p.name}</p>
+                    <p className="font-medium text-ink">{p.name}</p>
                     <p className="text-xs text-zinc-400">{p.sku}</p>
                   </td>
                   <td className="px-4 py-3 text-zinc-600">{getBrand(p.brandId)}</td>
@@ -468,13 +468,13 @@ export default function ProductsPage() {
                           : p.active !== false ? "Active — visible on POS. Click to deactivate." : "Inactive — hidden from POS. Click to reactivate."
                       }
                     >
-                      <span className={`text-xs font-medium ${p.active !== false ? "text-black" : "text-zinc-300"}`}>Active</span>
+                      <span className={`text-xs font-medium ${p.active !== false ? "text-ink" : "text-zinc-300"}`}>Active</span>
                       <span className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${p.active !== false ? "bg-green-500" : "bg-zinc-200"}`}>
                         <span className={`inline-flex h-4 w-4 items-center justify-center rounded-full bg-white shadow transition-transform ${p.active !== false ? "translate-x-4" : "translate-x-0.5"}`}>
                           {p.active !== false ? <Check size={10} className="text-green-600" strokeWidth={3} /> : <X size={10} className="text-zinc-400" strokeWidth={3} />}
                         </span>
                       </span>
-                      <span className={`text-xs font-medium ${p.active !== false ? "text-zinc-300" : "text-black"}`}>Inactive</span>
+                      <span className={`text-xs font-medium ${p.active !== false ? "text-zinc-300" : "text-ink"}`}>Inactive</span>
                     </button>
                   </td>
                   <td className="px-4 py-3">
@@ -505,8 +505,8 @@ export default function ProductsPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-100">
-              <h2 className="font-prata text-lg text-black">{editingProduct ? "Edit Product" : "Add Product"}</h2>
-              <button disabled={saving} onClick={() => setShowModal(false)} className="text-zinc-400 hover:text-black transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
+              <h2 className="font-prata text-lg text-ink">{editingProduct ? "Edit Product" : "Add Product"}</h2>
+              <button disabled={saving} onClick={() => setShowModal(false)} className="text-zinc-400 hover:text-ink transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
                 <X size={18} />
               </button>
             </div>
@@ -584,7 +584,7 @@ export default function ProductsPage() {
                   onChange={e => setForm({...form, trackSerial: e.target.checked})}
                 />
                 <span>
-                  <span className="block text-sm font-medium text-black">Track Serial Numbers</span>
+                  <span className="block text-sm font-medium text-ink">Track Serial Numbers</span>
                   <span className="block text-xs text-zinc-400 mt-0.5">For items like laptops or phones — each unit is stocked in with its own serial, sold individually, and gets its own warranty record.</span>
                 </span>
               </label>
@@ -608,8 +608,8 @@ export default function ProductsPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl w-full max-w-md max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-100 shrink-0">
-              <h2 className="font-prata text-lg text-black">Stock Batches</h2>
-              <button onClick={() => { setShowBatchModal(null); setEditingBatchId(null); setBatchError(""); setManageSerialsBatch(null); setEditingBatchUnits([]); setUnitActionError(""); }} className="text-zinc-400 hover:text-black">
+              <h2 className="font-prata text-lg text-ink">Stock Batches</h2>
+              <button onClick={() => { setShowBatchModal(null); setEditingBatchId(null); setBatchError(""); setManageSerialsBatch(null); setEditingBatchUnits([]); setUnitActionError(""); }} className="text-zinc-400 hover:text-ink">
                 <X size={18} />
               </button>
             </div>
@@ -622,7 +622,7 @@ export default function ProductsPage() {
                   {batches.map((b, i) =>
                     editingBatchId === b.id ? (
                       <form key={b.id} onSubmit={handleUpdateBatch} className="p-3 bg-zinc-50 rounded-lg space-y-2">
-                        <p className="text-sm font-medium text-black">Editing Batch {i + 1}</p>
+                        <p className="text-sm font-medium text-ink">Editing Batch {i + 1}</p>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <div>
                             <label className="block text-xs text-zinc-500 mb-1">Cost Price (Rs.)</label>
@@ -664,7 +664,7 @@ export default function ProductsPage() {
                     ) : (
                       <div key={b.id} className="flex flex-wrap items-center justify-between gap-2 p-3 bg-zinc-50 rounded-lg">
                         <div>
-                          <p className="text-sm font-medium text-black flex items-center gap-1.5">
+                          <p className="text-sm font-medium text-ink flex items-center gap-1.5">
                             Batch {i + 1}
                             <span className={`badge text-[10px] ${(b.location ?? "stores") === "showroom" ? "badge-success" : "badge-default"}`}>
                               {(b.location ?? "stores") === "showroom" ? "Showroom" : "Stores"}
@@ -748,10 +748,10 @@ export default function ProductsPage() {
           <div className="bg-white rounded-xl w-full max-w-sm max-h-[85vh] flex flex-col">
             <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-100 shrink-0">
               <div>
-                <h2 className="font-prata text-lg text-black">Serial Numbers</h2>
+                <h2 className="font-prata text-lg text-ink">Serial Numbers</h2>
                 <p className="text-xs text-zinc-400">{editingBatchUnits.length} units in this batch</p>
               </div>
-              <button onClick={() => { setManageSerialsBatch(null); setEditingBatchUnits([]); setUnitActionError(""); }} className="text-zinc-400 hover:text-black">
+              <button onClick={() => { setManageSerialsBatch(null); setEditingBatchUnits([]); setUnitActionError(""); }} className="text-zinc-400 hover:text-ink">
                 <X size={18} />
               </button>
             </div>

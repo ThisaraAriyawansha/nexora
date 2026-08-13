@@ -5,7 +5,7 @@ import { getShopSettings } from "@/lib/firestore";
 const CACHE_KEY = "nexora:shopName";
 
 export function useShopName() {
-  const [shopName, setShopName] = useState("Nexora");
+  const [shopName, setShopName] = useState("T&N COMPUTERS");
 
   useEffect(() => {
     const cached = window.localStorage.getItem(CACHE_KEY);

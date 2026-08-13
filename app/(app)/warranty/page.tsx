@@ -94,7 +94,7 @@ export default function WarrantyPage() {
   return (
     <div className="p-4 sm:p-8">
       <div className="mb-8">
-        <h1 className="font-prata text-2xl text-black">Warranty</h1>
+        <h1 className="font-prata text-2xl text-ink">Warranty</h1>
         <p className="text-zinc-500 text-sm mt-1">Track product warranties by sale</p>
       </div>
 
@@ -105,28 +105,28 @@ export default function WarrantyPage() {
             <Check size={14} className="text-green-500" />
             <p className="text-xs text-zinc-500 uppercase tracking-wider">Active</p>
           </div>
-          <p className="font-prata text-2xl text-black">{stats.active}</p>
+          <p className="font-prata text-2xl text-ink">{stats.active}</p>
         </div>
         <div className="nexora-card p-4">
           <div className="flex items-center gap-2 mb-1">
             <AlertTriangle size={14} className="text-amber-500" />
             <p className="text-xs text-zinc-500 uppercase tracking-wider">Expiring Soon</p>
           </div>
-          <p className="font-prata text-2xl text-black">{stats.expiring}</p>
+          <p className="font-prata text-2xl text-ink">{stats.expiring}</p>
         </div>
         <div className="nexora-card p-4">
           <div className="flex items-center gap-2 mb-1">
             <Shield size={14} className="text-zinc-400" />
             <p className="text-xs text-zinc-500 uppercase tracking-wider">Expired</p>
           </div>
-          <p className="font-prata text-2xl text-black">{stats.expired}</p>
+          <p className="font-prata text-2xl text-ink">{stats.expired}</p>
         </div>
         <div className="nexora-card p-4">
           <div className="flex items-center gap-2 mb-1">
             <ShieldCheck size={14} className="text-violet-500" />
             <p className="text-xs text-zinc-500 uppercase tracking-wider">Claimed</p>
           </div>
-          <p className="font-prata text-2xl text-black">{stats.claimed}</p>
+          <p className="font-prata text-2xl text-ink">{stats.claimed}</p>
         </div>
       </div>
 
@@ -182,7 +182,7 @@ export default function WarrantyPage() {
                 const status = getStatus(w);
                 return (
                   <tr key={w.id} className="hover:bg-zinc-50 transition-colors">
-                    <td className="px-4 py-3 font-medium text-black">{w.customerName}</td>
+                    <td className="px-4 py-3 font-medium text-ink">{w.customerName}</td>
                     <td className="px-4 py-3 text-zinc-600">{w.productName}</td>
                     <td className="px-4 py-3 text-zinc-400 text-xs font-mono">{w.serialNumber || "—"}</td>
                     <td className="px-4 py-3 text-zinc-500 text-xs">{formatDate(w.startDate)}</td>
@@ -216,7 +216,7 @@ export default function WarrantyPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl w-full max-w-sm">
             <div className="px-6 py-4 border-b border-zinc-100">
-              <h2 className="font-prata text-lg text-black">Claim Warranty</h2>
+              <h2 className="font-prata text-lg text-ink">Claim Warranty</h2>
               <p className="text-xs text-zinc-500 mt-1">{claimTarget.productName} · {claimTarget.customerName}</p>
             </div>
             <div className="px-6 py-4">

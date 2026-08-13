@@ -103,18 +103,18 @@ export default function SupplierPaymentsReportPage() {
 
   return (
     <div className="p-4 sm:p-8">
-      <Link href="/suppliers" className="inline-flex items-center gap-1.5 text-sm text-zinc-500 hover:text-black mb-4">
+      <Link href="/suppliers" className="inline-flex items-center gap-1.5 text-sm text-zinc-500 hover:text-ink mb-4">
         <ArrowLeft size={14} /> Back to Suppliers
       </Link>
 
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-8">
         <div>
-          <h1 className="font-prata text-2xl text-black">Supplier Payment Report</h1>
+          <h1 className="font-prata text-2xl text-ink">Supplier Payment Report</h1>
           <p className="text-zinc-500 text-sm mt-1">{filteredPayments.length} payments in range</p>
         </div>
         <div className="sm:text-right">
           <p className="text-xs text-zinc-400 uppercase tracking-wider">Total Collected</p>
-          <p className="font-poppins font-semibold text-xl text-black">Rs. {totalCollected.toLocaleString()}</p>
+          <p className="font-poppins font-semibold text-xl text-ink">Rs. {totalCollected.toLocaleString()}</p>
         </div>
       </div>
 
@@ -154,7 +154,7 @@ export default function SupplierPaymentsReportPage() {
             ) : (
               paginatedPayments.map((p) => (
                 <tr key={p.id} className="hover:bg-zinc-50 transition-colors">
-                  <td className="px-4 py-3 font-medium text-black">{p.paymentNo}</td>
+                  <td className="px-4 py-3 font-medium text-ink">{p.paymentNo}</td>
                   <td className="px-4 py-3 text-zinc-600">{p.supplierName}</td>
                   <td className="px-4 py-3 font-medium">Rs. {p.amount?.toLocaleString()}</td>
                   <td className="px-4 py-3">{METHOD_LABEL[p.method] || p.method}</td>
@@ -170,7 +170,7 @@ export default function SupplierPaymentsReportPage() {
       <Pagination page={page} totalPages={totalPages} totalItems={filteredPayments.length} pageSize={PAGE_SIZE} onPageChange={setPage} />
 
       <div className="flex items-center justify-between mt-10 mb-3">
-        <h2 className="font-prata text-lg text-black">Outstanding Balances</h2>
+        <h2 className="font-prata text-lg text-ink">Outstanding Balances</h2>
         <button onClick={handleExportOutstanding} disabled={outstanding.length === 0} className="nexora-btn nexora-btn-outline text-xs disabled:opacity-50 disabled:cursor-not-allowed">
           <Download size={12} /> Download CSV
         </button>
@@ -192,7 +192,7 @@ export default function SupplierPaymentsReportPage() {
             ) : (
               outstanding.map((s) => (
                 <tr key={s.id} className="hover:bg-zinc-50 transition-colors">
-                  <td className="px-4 py-3 font-medium text-black">{s.name}</td>
+                  <td className="px-4 py-3 font-medium text-ink">{s.name}</td>
                   <td className="px-4 py-3">Rs. {s.totalPayable?.toLocaleString()}</td>
                   <td className="px-4 py-3">Rs. {s.amountPaid?.toLocaleString()}</td>
                   <td className="px-4 py-3 font-medium">Rs. {s.balance?.toLocaleString()}</td>

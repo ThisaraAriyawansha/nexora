@@ -434,7 +434,7 @@ export default function FinancePage() {
       <div className="p-4 sm:p-8">
         <div className="nexora-card p-8 text-center max-w-md mx-auto">
           <Wallet size={24} className="text-zinc-300 mx-auto mb-3" />
-          <h1 className="font-prata text-lg text-black mb-1">Access Restricted</h1>
+          <h1 className="font-prata text-lg text-ink mb-1">Access Restricted</h1>
           <p className="text-sm text-zinc-500">Only Manager and above can view the Finance section.</p>
         </div>
       </div>
@@ -444,14 +444,14 @@ export default function FinancePage() {
   return (
     <div className="p-4 sm:p-8">
       <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
-        <h1 className="font-prata text-2xl text-black">Finance</h1>
+        <h1 className="font-prata text-2xl text-ink">Finance</h1>
         <div className="flex items-center gap-1 bg-zinc-100 rounded p-1">
           {(["overview", "daily", "shifts", "expenses"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
               className={`px-3 py-1.5 text-xs font-medium rounded capitalize transition-colors ${
-                tab === t ? "bg-white text-black shadow-sm" : "text-zinc-500 hover:text-black"
+                tab === t ? "bg-white text-ink shadow-sm" : "text-zinc-500 hover:text-ink"
               }`}
             >
               {t === "shifts" ? "Cash Shifts" : t === "daily" ? "Daily Balance" : t}
@@ -484,7 +484,7 @@ export default function FinancePage() {
                     <p className="text-[11px] sm:text-xs text-zinc-500 uppercase tracking-wider">{card.label}</p>
                     <Icon size={14} className="text-zinc-400 shrink-0" />
                   </div>
-                  <p className="font-prata text-lg sm:text-2xl text-black truncate">{ovLoading ? "…" : card.value}</p>
+                  <p className="font-prata text-lg sm:text-2xl text-ink truncate">{ovLoading ? "…" : card.value}</p>
                 </div>
               );
             })}
@@ -536,7 +536,7 @@ export default function FinancePage() {
                   ) : (
                     cashierBreakdown.map((c) => (
                       <tr key={c.name}>
-                        <td className="px-4 py-2.5 font-medium text-black">{c.name}</td>
+                        <td className="px-4 py-2.5 font-medium text-ink">{c.name}</td>
                         <td className="px-4 py-2.5 text-zinc-600">{c.count}</td>
                         <td className="px-4 py-2.5">Rs. {c.revenue.toLocaleString()}</td>
                       </tr>
@@ -548,8 +548,8 @@ export default function FinancePage() {
           </div>
 
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-prata text-lg text-black">Supplier Payables</h2>
-            <a href="/suppliers/payments" className="text-xs text-zinc-500 hover:text-black underline">View full report →</a>
+            <h2 className="font-prata text-lg text-ink">Supplier Payables</h2>
+            <a href="/suppliers/payments" className="text-xs text-zinc-500 hover:text-ink underline">View full report →</a>
           </div>
           <div className="nexora-card overflow-x-auto">
             <table className="w-full text-sm min-w-[480px]">
@@ -567,7 +567,7 @@ export default function FinancePage() {
                 ) : (
                   outstandingSuppliers.slice(0, 5).map((s) => (
                     <tr key={s.id}>
-                      <td className="px-4 py-2.5 font-medium text-black">{s.name}</td>
+                      <td className="px-4 py-2.5 font-medium text-ink">{s.name}</td>
                       <td className="px-4 py-2.5">Rs. {s.balance?.toLocaleString()}</td>
                     </tr>
                   ))
@@ -610,19 +610,19 @@ export default function FinancePage() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-6">
             <div className="nexora-card p-4 sm:p-5 min-w-0">
               <p className="text-[11px] sm:text-xs text-zinc-500 uppercase tracking-wider mb-2">Total Income</p>
-              <p className="font-prata text-lg sm:text-2xl text-black truncate">{dbLoading ? "…" : `Rs. ${dbTotalIncome.toLocaleString()}`}</p>
+              <p className="font-prata text-lg sm:text-2xl text-ink truncate">{dbLoading ? "…" : `Rs. ${dbTotalIncome.toLocaleString()}`}</p>
             </div>
             <div className="nexora-card p-4 sm:p-5 min-w-0">
               <p className="text-[11px] sm:text-xs text-zinc-500 uppercase tracking-wider mb-2">Total Expenses</p>
-              <p className="font-prata text-lg sm:text-2xl text-black truncate">{dbLoading ? "…" : `Rs. ${dbTotalExpenses.toLocaleString()}`}</p>
+              <p className="font-prata text-lg sm:text-2xl text-ink truncate">{dbLoading ? "…" : `Rs. ${dbTotalExpenses.toLocaleString()}`}</p>
             </div>
             <div className="nexora-card p-4 sm:p-5 min-w-0">
               <p className="text-[11px] sm:text-xs text-zinc-500 uppercase tracking-wider mb-2">Net Change</p>
-              <p className={`font-prata text-lg sm:text-2xl truncate ${dbNet < 0 ? "text-red-600" : "text-black"}`}>{dbLoading ? "…" : `Rs. ${dbNet.toLocaleString()}`}</p>
+              <p className={`font-prata text-lg sm:text-2xl truncate ${dbNet < 0 ? "text-red-600" : "text-ink"}`}>{dbLoading ? "…" : `Rs. ${dbNet.toLocaleString()}`}</p>
             </div>
             <div className="nexora-card p-4 sm:p-5 min-w-0">
               <p className="text-[11px] sm:text-xs text-zinc-500 uppercase tracking-wider mb-2">Closing Balance</p>
-              <p className="font-prata text-lg sm:text-2xl text-black truncate">{dbLoading ? "…" : `Rs. ${dbFinalBalance.toLocaleString()}`}</p>
+              <p className="font-prata text-lg sm:text-2xl text-ink truncate">{dbLoading ? "…" : `Rs. ${dbFinalBalance.toLocaleString()}`}</p>
             </div>
           </div>
 
@@ -645,7 +645,7 @@ export default function FinancePage() {
                 ) : (
                   dailyRows.map((r) => (
                     <tr key={r.date} className="hover:bg-zinc-50 transition-colors">
-                      <td className="px-4 py-3 font-medium text-black">{formatDayLabel(r.date)}</td>
+                      <td className="px-4 py-3 font-medium text-ink">{formatDayLabel(r.date)}</td>
                       <td className="px-4 py-3">Rs. {r.income.toLocaleString()}</td>
                       <td className="px-4 py-3">Rs. {r.expenses.toLocaleString()}</td>
                       <td className={`px-4 py-3 font-medium ${r.net < 0 ? "text-red-600" : ""}`}>Rs. {r.net.toLocaleString()}</td>
@@ -667,11 +667,11 @@ export default function FinancePage() {
             <div className="flex gap-6 sm:text-right">
               <div>
                 <p className="text-xs text-zinc-400 uppercase tracking-wider">Cash Sales</p>
-                <p className="font-poppins font-semibold text-lg text-black">Rs. {totalCash.toLocaleString()}</p>
+                <p className="font-poppins font-semibold text-lg text-ink">Rs. {totalCash.toLocaleString()}</p>
               </div>
               <div>
                 <p className="text-xs text-zinc-400 uppercase tracking-wider">Variance</p>
-                <p className={`font-poppins font-semibold text-lg ${totalVariance === 0 ? "text-black" : "text-red-600"}`}>Rs. {totalVariance.toLocaleString()}</p>
+                <p className={`font-poppins font-semibold text-lg ${totalVariance === 0 ? "text-ink" : "text-red-600"}`}>Rs. {totalVariance.toLocaleString()}</p>
               </div>
             </div>
           </div>
@@ -728,7 +728,7 @@ export default function FinancePage() {
                 ) : (
                   paginatedShifts.map((s) => (
                     <tr key={s.id} onClick={() => openShiftDetail(s)} className="hover:bg-zinc-50 transition-colors cursor-pointer">
-                      <td className="px-4 py-3 font-medium text-black hover:underline">{s.shiftNo}</td>
+                      <td className="px-4 py-3 font-medium text-ink hover:underline">{s.shiftNo}</td>
                       <td className="px-4 py-3 text-zinc-600">{s.cashierName}</td>
                       <td className="px-4 py-3 text-zinc-500 text-xs">{formatDate(s.openedAt)}</td>
                       <td className="px-4 py-3 text-zinc-500 text-xs">{s.status === "open" ? <span className="badge badge-warning">Open</span> : formatDate(s.closedAt)}</td>
@@ -838,7 +838,7 @@ export default function FinancePage() {
             <p className="text-zinc-500 text-sm">{expenses.length} expenses in range</p>
             <div className="sm:text-right">
               <p className="text-xs text-zinc-400 uppercase tracking-wider">Total Expenses</p>
-              <p className="font-poppins font-semibold text-xl text-black">Rs. {totalExpensesTab.toLocaleString()}</p>
+              <p className="font-poppins font-semibold text-xl text-ink">Rs. {totalExpensesTab.toLocaleString()}</p>
             </div>
           </div>
 
@@ -884,7 +884,7 @@ export default function FinancePage() {
                 ) : (
                   paginatedExpenses.map((e) => (
                     <tr key={e.id} className="hover:bg-zinc-50 transition-colors">
-                      <td className="px-4 py-3 font-medium text-black">{e.expenseNo}</td>
+                      <td className="px-4 py-3 font-medium text-ink">{e.expenseNo}</td>
                       <td className="px-4 py-3">{EXPENSE_CATEGORY_LABEL[e.category] || e.category}</td>
                       <td className="px-4 py-3 font-medium">Rs. {e.amount?.toLocaleString()}</td>
                       <td className="px-4 py-3 text-zinc-600">{e.note || "—"}</td>
