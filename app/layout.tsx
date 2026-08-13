@@ -3,7 +3,7 @@ import "./globals.css";
 import { AuthProvider } from "@/hooks/useAuth";
 
 const siteUrl = "https://nexora-pos.vercel.app";
-const ogImage = "/shop_logo/6767467478-removebg-preview.png";
+const ogImage = "/shop_logo/og_image.jpeg";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -40,8 +40,8 @@ export const metadata: Metadata = {
     images: [
       {
         url: ogImage,
-        width: 1254,
-        height: 1254,
+        width: 1119,
+        height: 1280,
         alt: "T&N COMPUTERS POS",
       },
     ],
