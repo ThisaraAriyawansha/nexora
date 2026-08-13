@@ -152,18 +152,38 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-white flex">
       {/* Left branding panel */}
-      <div className="hidden lg:flex w-1/2 bg-black flex-col items-center justify-center p-12 relative">
-        <Image
-          src="/shop_logo/login_page.png"
-          alt="T&N COMPUTERS"
-          width={360}
-          height={360}
-          className="w-[85%] h-auto max-w-[360px]"
-          priority
+      <div
+        className="hidden lg:flex w-1/2 flex-col items-center justify-center p-12 relative overflow-hidden"
+        style={{
+          background: "linear-gradient(135deg, #fdfdfd 0%, #f3f4f8 55%, #eef1f7 100%)",
+        }}
+      >
+        {/* dot grid texture */}
+        <div
+          className="absolute inset-0 opacity-[0.4]"
+          style={{
+            backgroundImage: "radial-gradient(#d4d8e2 1px, transparent 1px)",
+            backgroundSize: "24px 24px",
+          }}
         />
-        <div className="text-zinc-600 text-xs font-poppins text-center space-y-0.5 absolute bottom-12">
+        {/* color wash blobs */}
+        <div className="absolute -top-24 -left-24 w-[380px] h-[380px] rounded-full bg-[#10233d]/10 blur-3xl" />
+        <div className="absolute -bottom-24 -right-16 w-[420px] h-[420px] rounded-full bg-red-500/15 blur-3xl" />
+
+        <div className="relative w-[320px] h-[320px] rounded-full  shadow-[0_20px_60px_-15px_rgba(16,35,61,0.25)] flex items-center justify-center">
+          <Image
+            src="/shop_logo/login_page.png"
+            alt="T&N COMPUTERS"
+            width={360}
+            height={360}
+            className="w-[88%] h-auto drop-shadow-lg"
+            priority
+          />
+        </div>
+
+        <div className="text-zinc-400 text-xs font-poppins text-center space-y-0.5 absolute bottom-12">
           <p>© {year} {shopName}</p>
-          <p className="text-zinc-700">Design &amp; Developed by plexCode</p>
+          <p className="text-zinc-500">Design &amp; Developed by plexCode</p>
         </div>
       </div>
 
