@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
     });
 
     const shopSnap = await getAdminDb().collection("shopSettings").doc("main").get();
-    const shopName = (shopSnap.exists ? shopSnap.data()?.name : null) || "Nexora";
+    const shopName = (shopSnap.exists ? shopSnap.data()?.name : null) || "T&N COMPUTERS";
 
     await sendMail(email, `Your password reset code - ${shopName}`, passwordResetOtpTemplate(otp, shopName));
 

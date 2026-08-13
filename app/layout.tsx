@@ -8,13 +8,13 @@ const ogImage = "/shop_logo/6767467478-removebg-preview.png";
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: "Nexora POS",
-    template: "%s | Nexora POS",
+    default: "T&N COMPUTERS POS",
+    template: "%s | T&N COMPUTERS POS",
   },
   description:
-    "Nexora POS is a point of sale system built for computer and accessories stores, covering sales, inventory, customers, and warranty management.",
+    "T&N COMPUTERS POS is a point of sale system built for computer and accessories stores, covering sales, inventory, customers, and warranty management.",
   keywords: [
-    "Nexora POS",
+    "T&N COMPUTERS POS",
     "point of sale",
     "POS system",
     "computer store POS",
@@ -22,8 +22,8 @@ export const metadata: Metadata = {
     "sales management",
     "warranty management",
   ],
-  applicationName: "Nexora POS",
-  authors: [{ name: "Nexora" }],
+  applicationName: "T&N COMPUTERS POS",
+  authors: [{ name: "T&N COMPUTERS" }],
   icons: {
     icon: "/shop_logo/6767467478-removebg-preview.png",
   },
@@ -33,8 +33,8 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     url: siteUrl,
-    siteName: "Nexora POS",
-    title: "Nexora POS",
+    siteName: "T&N COMPUTERS POS",
+    title: "T&N COMPUTERS POS",
     description:
       "Point of Sale System for Computer & Accessories - manage sales, inventory, customers, and warranty in one place.",
     images: [
@@ -42,13 +42,13 @@ export const metadata: Metadata = {
         url: ogImage,
         width: 1254,
         height: 1254,
-        alt: "Nexora POS",
+        alt: "T&N COMPUTERS POS",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Nexora POS",
+    title: "T&N COMPUTERS POS",
     description:
       "Point of Sale System for Computer & Accessories — manage sales, inventory, customers, and warranty in one place.",
     images: [ogImage],

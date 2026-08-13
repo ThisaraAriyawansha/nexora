@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
     const link = await adminAuth.generateVerifyAndChangeEmailLink(currentEmail, newEmail, actionCodeSettings);
 
     const shopSnap = await getAdminDb().collection("shopSettings").doc("main").get();
-    const shopName = (shopSnap.exists ? shopSnap.data()?.name : null) || "Nexora";
+    const shopName = (shopSnap.exists ? shopSnap.data()?.name : null) || "T&N COMPUTERS";
 
     await sendMail(
       newEmail,

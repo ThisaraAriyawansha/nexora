@@ -6,7 +6,7 @@ interface BillPrintProps {
   sale: any;
 }
 
-const DEFAULT_SHOP: ShopSettings = { name: "Nexora", phone: "", email: "", address: "" };
+const DEFAULT_SHOP: ShopSettings = { name: "T&N COMPUTERS", phone: "", email: "", address: "" };
 
 export default function BillPrint({ sale }: BillPrintProps) {
   const [shop, setShop] = useState<ShopSettings>(DEFAULT_SHOP);

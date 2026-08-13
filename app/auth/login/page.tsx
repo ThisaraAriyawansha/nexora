@@ -154,8 +154,8 @@ export default function LoginPage() {
       {/* Left branding panel */}
       <div className="hidden lg:flex w-1/2 bg-black flex-col items-center justify-center p-12 relative">
         <Image
-          src="/shop_logo/6767467478-removebg-preview.png"
-          alt="Nexora"
+          src="/shop_logo/login_page.png"
+          alt="T&N COMPUTERS"
           width={360}
           height={360}
           className="w-[85%] h-auto max-w-[360px]"
@@ -173,8 +173,8 @@ export default function LoginPage() {
           {/* Mobile logo */}
           <div className="lg:hidden mb-10 flex justify-center">
             <Image
-              src="/shop_logo/6767467478-removebg-preview.png"
-              alt="Nexora"
+              src="/shop_logo/login_page.png"
+              alt="T&N COMPUTERS"
               width={280}
               height={280}
               className="w-auto h-32"
