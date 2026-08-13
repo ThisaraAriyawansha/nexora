@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
-import { getSale, getSales, cancelSale, adminUpdateSale } from "@/lib/firestore";
+import { getSale, getSales, getSalesStats, cancelSale, adminUpdateSale } from "@/lib/firestore";
 import { Search, Printer, Eye, X, Ban, Download, Mail, Pencil } from "lucide-react";
 import BillPrint from "@/components/pos/BillPrint";
 import { useReactToPrint } from "react-to-print";
@@ -13,13 +13,28 @@ import type { Sale } from "@/types";
 
 const PAGE_SIZE = 10;
 
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+// Bills defaults to the last 30 days instead of loading every invoice ever
+// issued — total lifetime invoice count still shows via getSalesStats(),
+// and picking an earlier date range (or Clear, for the full history) fetches
+// exactly that range instead of scanning everything up front.
+function daysAgoStr(n: number) {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
 export default function BillsPage() {
   const { user, userDisplayName, can } = useAuth();
   const canView = can("bills.view");
   const [sales, setSales] = useState<Sale[]>([]);
+  const [totalInvoices, setTotalInvoices] = useState(0);
   const [search, setSearch] = useState("");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const [fromDate, setFromDate] = useState(daysAgoStr(30));
+  const [toDate, setToDate] = useState(todayStr());
   const [viewSale, setViewSale] = useState<Sale | null>(null);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -81,10 +96,19 @@ export default function BillsPage() {
   const canEditBills = can("bills.edit");
   const canCancelBills = can("bills.cancel");
 
-  const loadSales = () => getSales().then((s) => { setSales(s as Sale[]); setLoading(false); });
+  const loadSales = () => {
+    const from = fromDate ? new Date(`${fromDate}T00:00:00`) : undefined;
+    const to = toDate ? new Date(`${toDate}T23:59:59.999`) : undefined;
+    return getSales({ fromDate: from, toDate: to }).then((s) => { setSales(s as Sale[]); setLoading(false); });
+  };
 
   useEffect(() => {
+    setLoading(true);
     loadSales();
+  }, [fromDate, toDate]);
+
+  useEffect(() => {
+    getSalesStats().then((s) => setTotalInvoices(s.totalSalesCount));
   }, []);
 
   useEffect(() => {
@@ -160,19 +184,13 @@ export default function BillsPage() {
     }
   };
 
-  const filtered = sales.filter((s) => {
-    const matchesSearch =
+  // Date range is already applied server-side in loadSales(), so this only
+  // needs to filter the (bounded) loaded set by the search text.
+  const filtered = sales.filter(
+    (s) =>
       s.invoiceNo?.toLowerCase().includes(search.toLowerCase()) ||
-      s.customerName?.toLowerCase().includes(search.toLowerCase());
-    if (!matchesSearch) return false;
-
-    if (fromDate || toDate) {
-      const created = s.createdAt?.toDate ? s.createdAt.toDate() : new Date(s.createdAt);
-      if (fromDate && created < new Date(`${fromDate}T00:00:00`)) return false;
-      if (toDate && created > new Date(`${toDate}T23:59:59.999`)) return false;
-    }
-    return true;
-  });
+      s.customerName?.toLowerCase().includes(search.toLowerCase())
+  );
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -193,7 +211,7 @@ export default function BillsPage() {
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6">
         <div>
           <h1 className="font-prata text-2xl text-ink">Bills</h1>
-          <p className="text-zinc-500 text-sm mt-1">{sales.length} total invoices</p>
+          <p className="text-zinc-500 text-sm mt-1">{totalInvoices} total invoices</p>
         </div>
         <div className="sm:text-right">
           <p className="text-xs text-zinc-400 uppercase tracking-wider">Total · {filtered.length} invoices</p>

@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { getSales, getProducts, getCustomers, getAllSaleItems, getMainCategories } from "@/lib/firestore";
+import { getSales, getProducts, getCustomers, getSaleItemsForSales, getSalesStats, getMainCategories } from "@/lib/firestore";
 import { TrendingUp, Package, Users, ShoppingBag, AlertTriangle, Wallet, Receipt, ArrowUp, ArrowDown, Award, Tag } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
@@ -39,9 +39,18 @@ export default function DashboardPage() {
 
   useEffect(() => {
     async function load() {
-      const [allSales, products, customers, allSaleItems, mainCats] = await Promise.all([
-        getSales(), getProducts(), getCustomers(), getAllSaleItems(), getMainCategories(),
+      // Bounded to the last 30 days — the widgets below only ever need recent
+      // activity, and scanning full sales/item history on every dashboard
+      // visit would grow the read cost forever as the shop accumulates years
+      // of data. True lifetime figures (total sales, avg order value) come
+      // from the running counters in getSalesStats() instead.
+      const windowStart = new Date();
+      windowStart.setDate(windowStart.getDate() - 30);
+
+      const [allSales, products, customers, mainCats, salesStats] = await Promise.all([
+        getSales({ fromDate: windowStart }), getProducts(), getCustomers(), getMainCategories(), getSalesStats(),
       ]);
+      const allSaleItems = await getSaleItemsForSales(allSales.map((s: any) => s.id));
 
       // Reversed bills shouldn't count toward revenue, trends, or product performance.
       const cancelledIds = new Set(allSales.filter((s: any) => s.status === "cancelled").map((s: any) => s.id));
@@ -73,12 +82,11 @@ export default function DashboardPage() {
       setTodayProfit(todayProfitAmount);
       setProfitDelta(delta(todayProfitAmount, profitOn(yesterday)));
 
-      const allTimeRevenue = sales.reduce((sum: number, s: any) => sum + (s.totalAmount || 0), 0);
-      setAvgOrderValue(sales.length > 0 ? allTimeRevenue / sales.length : 0);
+      setAvgOrderValue(salesStats.totalSalesCount > 0 ? salesStats.totalRevenue / salesStats.totalSalesCount : 0);
 
       const lowStock = products.filter((p: any) => p.totalStock <= p.lowStockAlert).length;
       setStats({
-        sales: sales.length,
+        sales: salesStats.totalSalesCount,
         revenue: todayRevenue,
         products: products.length,
         customers: customers.length,
@@ -273,7 +281,7 @@ export default function DashboardPage() {
 
         {/* Payment method breakdown */}
         <div className="nexora-card p-4 sm:p-5 min-w-0">
-          <p className="text-xs text-zinc-500 uppercase tracking-wider mb-5">Payment Methods</p>
+          <p className="text-xs text-zinc-500 uppercase tracking-wider mb-5">Payment Methods <span className="normal-case text-zinc-400">· Last 30 days</span></p>
           {loading ? (
             <p className="text-sm text-zinc-400 text-center py-10">Loading…</p>
           ) : paymentBreakdown.length === 0 ? (
@@ -332,7 +340,7 @@ export default function DashboardPage() {
         {/* Sales by category */}
         <div className="nexora-card p-4 sm:p-5 min-w-0">
           <p className="text-xs text-zinc-500 uppercase tracking-wider mb-5 flex items-center gap-1.5">
-            <Tag size={12} /> Sales by Category
+            <Tag size={12} /> Sales by Category <span className="normal-case text-zinc-400">· Last 30 days</span>
           </p>
           {loading ? (
             <p className="text-sm text-zinc-400 text-center py-10">Loading…</p>
@@ -358,7 +366,7 @@ export default function DashboardPage() {
         {/* Staff performance */}
         <div className="nexora-card p-4 sm:p-5 min-w-0">
           <p className="text-xs text-zinc-500 uppercase tracking-wider mb-5 flex items-center gap-1.5">
-            <Award size={12} /> Staff Performance
+            <Award size={12} /> Staff Performance <span className="normal-case text-zinc-400">· Last 30 days</span>
           </p>
           {loading ? (
             <p className="text-sm text-zinc-400 text-center py-10">Loading…</p>
@@ -409,7 +417,7 @@ export default function DashboardPage() {
       {canViewFinance && (
       <div className="nexora-card mb-4">
         <div className="px-4 sm:px-6 py-4 border-b border-zinc-100">
-          <h2 className="font-prata text-base text-ink">Top Products</h2>
+          <h2 className="font-prata text-base text-ink">Top Products <span className="text-xs font-sans font-normal text-zinc-400">· Last 30 days</span></h2>
         </div>
         <div className="divide-y divide-zinc-50">
           {loading ? (
