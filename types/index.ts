@@ -246,6 +246,47 @@ export interface Expense {
   note?: string;
   paidById: string;
   paidByName: string;
+  // Set only on expenses auto-created by issueSalaryPayment() — lets
+  // deleteSalaryPayment() find and remove the matching expense in one batch.
+  linkedSalaryPaymentId?: string;
+  createdAt?: any;
+}
+
+export type SalaryType = "monthly" | "commission" | "hybrid";
+
+// Persisted per-employee default so the Salary page's Issue form pre-fills
+// instead of retyping a fixed amount/% every pay cycle — issueSalaryPayment()
+// always takes its own explicit amount/percent and never reads this at write
+// time, so it's purely a convenience default, not a source of truth.
+export interface SalarySetup {
+  type: SalaryType;
+  monthlyAmount?: number;
+  commissionPercent?: number;
+}
+
+export interface SalaryPayment {
+  id: string;
+  paymentNo: string;
+  userId: string;
+  userName: string;
+  userRole: string;
+  type: SalaryType;
+  // What was actually paid this cycle — source of truth for the linked
+  // Expense amount, independent of the employee's persisted SalarySetup.
+  amount: number;
+  // Commission inputs, present only when type is "commission"/"hybrid".
+  // commissionBase is typed in by hand by the admin (e.g. read off another
+  // report) — there's no automatic Sales/Jobs summation.
+  commissionBase?: number;
+  commissionPercent?: number;
+  periodLabel: string;
+  note?: string;
+  issuedById: string;
+  issuedByName: string;
+  // Back-reference to the auto-created Expense doc so deleteSalaryPayment
+  // can remove both docs together.
+  linkedExpenseId: string;
+  emailSentAt?: any;
   createdAt?: any;
 }
 
@@ -468,6 +509,9 @@ export interface UserProfile {
   // Manager/Cashier/Technician. Admin/Super Admin are always unconditionally
   // allowed and never read this. See lib/permissions.ts.
   permissions?: Partial<Record<import("@/lib/permissions").PermissionKey, boolean>>;
+  // Default monthly amount / commission % this employee is paid — set from
+  // the Salary page's Employee Setup tab. See SalarySetup.
+  salarySetup?: SalarySetup;
   createdAt?: any;
   updatedAt?: any;
 }

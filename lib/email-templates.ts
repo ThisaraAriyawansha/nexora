@@ -158,6 +158,59 @@ export function jobUpdateTemplate(params: {
   );
 }
 
+export function salaryPayslipTemplate(params: {
+  employeeName: string;
+  paymentNo: string;
+  typeLabel: string;
+  amount: number;
+  commissionBase?: number | null;
+  commissionPercent?: number | null;
+  periodLabel: string;
+  note?: string;
+  shop: { name: string; phone?: string; email?: string };
+}) {
+  const { employeeName, paymentNo, typeLabel, amount, commissionBase, commissionPercent, periodLabel, note, shop } = params;
+  const year = new Date().getFullYear();
+  return shopEmailShell(
+    `
+      <h1 style="font-size:16px;margin:0 0 12px">Your salary payment has been issued</h1>
+      <p style="margin:0 0 16px;font-size:14px;line-height:1.5">
+        Hi ${escapeHtml(employeeName)}, here's a summary of your ${escapeHtml(periodLabel)} salary payment from ${escapeHtml(shop.name)}.
+      </p>
+      <table style="width:100%;border-collapse:collapse;margin:0 0 16px">
+        <tr>
+          <td style="padding:6px 0;color:#999;font-size:12px;width:130px">Payment No.</td>
+          <td style="padding:6px 0;font-size:13px;font-weight:bold">${escapeHtml(paymentNo)}</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 0;color:#999;font-size:12px">Type</td>
+          <td style="padding:6px 0;font-size:13px">${escapeHtml(typeLabel)}</td>
+        </tr>
+        ${commissionBase != null ? `
+        <tr>
+          <td style="padding:6px 0;color:#999;font-size:12px">Commission Base</td>
+          <td style="padding:6px 0;font-size:13px">Rs. ${Number(commissionBase).toLocaleString()}</td>
+        </tr>` : ""}
+        ${commissionPercent != null ? `
+        <tr>
+          <td style="padding:6px 0;color:#999;font-size:12px">Commission %</td>
+          <td style="padding:6px 0;font-size:13px">${escapeHtml(commissionPercent)}%</td>
+        </tr>` : ""}
+        <tr>
+          <td style="padding:6px 0;font-size:14px;font-weight:bold;border-top:1px solid #eee">Amount Paid</td>
+          <td style="padding:6px 0;font-size:14px;font-weight:bold;border-top:1px solid #eee">Rs. ${Number(amount).toLocaleString()}</td>
+        </tr>
+      </table>
+      ${note ? `<p style="margin:0 0 8px;font-size:13px;line-height:1.5;color:#333">${escapeHtml(note)}</p>` : ""}
+      <p style="color:#999;font-size:12px;margin:16px 0 0">
+        This is a system-generated payslip summary. Contact management if you have any questions.
+      </p>
+    `,
+    shop,
+    year
+  );
+}
+
 const WARRANTY_TERMS_TEXT =
   "Warranty replacement period: 14 days, warranty covers manufacturing defects only, no warranty for physical, liquid, electrical, or accidental damage, no warranty for software issues, OS installation, formatting, virus removal, or service/labor charges, warranty is void if the warranty sticker or serial number is removed, damaged, altered, or unreadable, all warranty claims are subject to inspection by our technicians.";
 

@@ -40,6 +40,10 @@ export type PermissionKey =
   | "finance.reviewShift"
   | "finance.addExpense"
   | "finance.deleteExpense"
+  | "salary.view"
+  | "salary.manageConfig"
+  | "salary.issue"
+  | "salary.delete"
   | "auditLog.view"
   | "jobs.view"
   | "jobs.edit"
@@ -124,6 +128,16 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   { key: "finance.addExpense", label: "Add an expense", module: "Finance", ruleEnforced: true },
   { key: "finance.deleteExpense", label: "Delete an expense", module: "Finance", ruleEnforced: true },
 
+  // Payroll data — single-owner collection (only the Salary page reads it),
+  // so all four are safe to rule-enforce, same reasoning as GRN/Quotations.
+  // Unlike every other .view key, salary.view is deliberately NOT defaulted
+  // true for every role (see the VIEW_KEYS filter below) — it stays
+  // Admin/Super-Admin-only until a Super Admin explicitly grants it.
+  { key: "salary.view", label: "View Salary page", module: "Salary", ruleEnforced: true },
+  { key: "salary.manageConfig", label: "Edit employee salary setup", module: "Salary", ruleEnforced: true },
+  { key: "salary.issue", label: "Issue a salary payment", module: "Salary", ruleEnforced: true },
+  { key: "salary.delete", label: "Delete a salary payment", module: "Salary", ruleEnforced: true },
+
   { key: "auditLog.view", label: "View Audit Log", module: "Audit Log", ruleEnforced: false },
 
   { key: "jobs.view", label: "View Jobs", module: "Jobs", ruleEnforced: false },
@@ -148,7 +162,15 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
 // Admin opts into hiding a module per-account from Settings > Team instead.
 // Along with the two pre-existing wide-open keys, that's the full baseline —
 // every other (non-view) key defaults to false for every editable role.
-const VIEW_KEYS: PermissionKey[] = PERMISSION_CATALOG.map((p) => p.key).filter((k) => k.endsWith(".view"));
+// salary.view is deliberately excluded from this auto-derived default-true
+// set — every other .view key defaults true so adding this feature never
+// hides a page anyone could already see, but Salary is new, sensitive
+// payroll data, so it defaults to Admin/Super-Admin-only (via getDefaultPermissions'
+// role check below) until a Super Admin explicitly grants it, unlike every
+// other module in this catalog.
+const VIEW_KEYS: PermissionKey[] = PERMISSION_CATALOG.map((p) => p.key).filter(
+  (k) => k.endsWith(".view") && k !== "salary.view"
+);
 const DEFAULT_TRUE_KEYS: PermissionKey[] = ["products.edit", "suppliers.editContact", ...VIEW_KEYS];
 
 function buildDefaults(trueFor: PermissionKey[]): Record<PermissionKey, boolean> {
