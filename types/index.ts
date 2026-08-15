@@ -183,10 +183,11 @@ export interface Sale {
   taxAmount: number;
   totalAmount: number;
   paymentMethod: SalePaymentMethod;
-  // Set only when paymentMethod is "kokopay" — the merchant fee percentage
-  // entered at checkout and the resulting Rs. amount, kept alongside
-  // totalAmount (which already includes the charge) rather than folded into
-  // it silently.
+  // Set only when paymentMethod is "kokopay" — the surcharge % entered at
+  // checkout. It's applied directly to every item's own price (items/
+  // services above already reflect it), not added as a separate line, so
+  // these two fields are reporting metadata only: how much of subtotal is
+  // attributable to the surcharge.
   kokoPayChargePercent?: number;
   kokoPayChargeAmount?: number;
   paymentStatus: "paid" | "partial" | "pending";

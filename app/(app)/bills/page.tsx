@@ -429,7 +429,10 @@ export default function BillsPage() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Payment</p>
-                  <p className="text-sm font-medium">{SALE_PAYMENT_METHOD_LABEL[viewSale.paymentMethod] || viewSale.paymentMethod}</p>
+                  <p className="text-sm font-medium">
+                    {SALE_PAYMENT_METHOD_LABEL[viewSale.paymentMethod] || viewSale.paymentMethod}
+                    {(viewSale as any).kokoPayChargePercent > 0 && ` (${(viewSale as any).kokoPayChargePercent}% surcharge)`}
+                  </p>
                 </div>
                 {(viewSale as any).jobNo && (
                   <div className="min-w-0">
@@ -451,18 +454,32 @@ export default function BillsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-50">
-                  {viewSale.items?.map((item: any, i: number) => (
+                  {viewSale.items?.map((item: any, i: number) => {
+                    const kokoPct = (viewSale as any).kokoPayChargePercent;
+                    const kokoMult = kokoPct > 0 ? 1 + kokoPct / 100 : 1;
+                    const basePrice = kokoMult > 1 ? Math.round(item.unitPrice / kokoMult) : null;
+                    return (
                     <tr key={i}>
                       <td className="py-2.5">
                         <p className="font-medium text-ink">{item.productName}</p>
                         <p className="text-xs text-zinc-400">{item.sku}</p>
+                        {basePrice != null && (
+                          <p className="text-xs text-amber-600 mt-0.5">
+                            Rs. {basePrice.toLocaleString()} base + {kokoPct}% KokoPay = Rs. {item.unitPrice.toLocaleString()}/unit
+                          </p>
+                        )}
                       </td>
                       <td className="py-2.5 text-center">{item.qty}</td>
                       <td className="py-2.5 text-right">Rs. {item.unitPrice?.toLocaleString()}</td>
                       <td className="py-2.5 text-right font-medium">Rs. {item.lineTotal?.toLocaleString()}</td>
                     </tr>
-                  ))}
-                  {(viewSale as any).services?.map((s: any, i: number) => (
+                    );
+                  })}
+                  {(viewSale as any).services?.map((s: any, i: number) => {
+                    const kokoPct = (viewSale as any).kokoPayChargePercent;
+                    const kokoMult = kokoPct > 0 ? 1 + kokoPct / 100 : 1;
+                    const baseServicePrice = s.chargeType === "paid" && kokoMult > 1 ? Math.round(Number(s.price) / kokoMult) : null;
+                    return (
                     <tr key={`svc-${i}`}>
                       <td className="py-2.5">
                         <p className="font-medium text-ink">{s.name}</p>
@@ -470,6 +487,11 @@ export default function BillsPage() {
                           Service{(viewSale as any).jobNo ? ` · ${(viewSale as any).jobNo}` : ""}
                           {s.chargeType === "free" && s.freeReason ? ` · Free — ${s.freeReason}` : ""}
                         </p>
+                        {baseServicePrice != null && (
+                          <p className="text-xs text-amber-600 mt-0.5">
+                            Rs. {baseServicePrice.toLocaleString()} base + {kokoPct}% KokoPay = Rs. {Number(s.price).toLocaleString()}
+                          </p>
+                        )}
                       </td>
                       <td className="py-2.5 text-center">1</td>
                       <td className="py-2.5 text-right">{s.chargeType === "free" ? "—" : `Rs. ${Number(s.price).toLocaleString()}`}</td>
@@ -477,7 +499,8 @@ export default function BillsPage() {
                         {s.chargeType === "free" ? "Free" : `Rs. ${Number(s.price).toLocaleString()}`}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
               </div>
@@ -498,15 +521,14 @@ export default function BillsPage() {
                     <span>- Rs. {viewSale.pointsRedeemed?.toLocaleString()}</span>
                   </div>
                 )}
-                {(viewSale.kokoPayChargeAmount ?? 0) > 0 && (
-                  <div className="flex justify-between text-sm text-zinc-500">
-                    <span>KokoPay Charge ({viewSale.kokoPayChargePercent}%)</span>
-                    <span>+ Rs. {viewSale.kokoPayChargeAmount?.toLocaleString()}</span>
-                  </div>
-                )}
                 <div className="flex justify-between font-prata text-lg border-t border-zinc-100 pt-2 mt-2">
                   <span>Total</span><span>Rs. {viewSale.totalAmount?.toLocaleString()}</span>
                 </div>
+                {(viewSale.kokoPayChargeAmount ?? 0) > 0 && (
+                  <p className="text-xs text-zinc-400 pt-1">
+                    Staff note: item prices above already include a {viewSale.kokoPayChargePercent}% KokoPay surcharge (Rs. {viewSale.kokoPayChargeAmount?.toLocaleString()}) — not a separate charge on the customer's bill.
+                  </p>
+                )}
               </div>
             </div>
           </div>
