@@ -2,10 +2,10 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import {
-  getPayableUsers, setSalarySetup, issueSalaryPayment, getSalaryPayments, deleteSalaryPayment,
+  getPayableUsers, setSalarySetup, clearSalarySetup, issueSalaryPayment, getSalaryPayments, deleteSalaryPayment,
 } from "@/lib/firestore";
 import { SalaryType, SalarySetup, SalaryPayment, UserProfile } from "@/types";
-import { Banknote, Download, Mail, Trash2, X, Check } from "lucide-react";
+import { Banknote, Download, Mail, Trash2, X, Check, Eye } from "lucide-react";
 import Pagination from "@/components/ui/Pagination";
 import { rowsToCSV, downloadCSV } from "@/lib/csv";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -156,6 +156,7 @@ export default function SalaryPage() {
   const [deletingPayment, setDeletingPayment] = useState(false);
   const [sendingEmailId, setSendingEmailId] = useState<string | null>(null);
   const [emailNotice, setEmailNotice] = useState("");
+  const [viewPayment, setViewPayment] = useState<SalaryPayment | null>(null);
 
   const reloadPayments = async () => {
     const from = histFromDate ? new Date(`${histFromDate}T00:00:00`) : undefined;
@@ -261,6 +262,20 @@ export default function SalaryPage() {
       setEditSetupUser(null);
     } catch (err: any) {
       setSetupError(err?.message || "Failed to save salary setup");
+    }
+    setSavingSetup(false);
+  };
+
+  const handleClearSetup = async () => {
+    if (!editSetupUser) return;
+    setSavingSetup(true);
+    setSetupError("");
+    try {
+      await clearSalarySetup(editSetupUser.uid);
+      setPayableUsers((prev) => prev.map((u) => (u.uid === editSetupUser.uid ? { ...u, salarySetup: undefined } : u)));
+      setEditSetupUser(null);
+    } catch (err: any) {
+      setSetupError(err?.message || "Failed to clear salary setup");
     }
     setSavingSetup(false);
   };
@@ -477,6 +492,13 @@ export default function SalaryPage() {
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
                           <button
+                            onClick={() => setViewPayment(p)}
+                            title="View full details"
+                            className="text-zinc-300 hover:text-ink transition-colors"
+                          >
+                            <Eye size={14} />
+                          </button>
+                          <button
                             onClick={() => handleSendEmail(p.id)}
                             disabled={sendingEmailId === p.id}
                             title={p.emailSentAt ? "Resend payslip email" : "Send payslip email"}
@@ -584,6 +606,78 @@ export default function SalaryPage() {
               <button onClick={handleSaveSetup} disabled={savingSetup} className="nexora-btn nexora-btn-primary w-full justify-center">
                 {savingSetup ? "Saving…" : "Save"}
               </button>
+              {editSetupUser.salarySetup && (
+                <button onClick={handleClearSetup} disabled={savingSetup} className="nexora-btn nexora-btn-ghost w-full justify-center text-red-600">
+                  Clear Setup (mark as Not configured)
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View payment detail modal */}
+      {viewPayment && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-sm max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100 sticky top-0 bg-white">
+              <h2 className="font-prata text-base">{viewPayment.paymentNo}</h2>
+              <button onClick={() => setViewPayment(null)}><X size={16} className="text-zinc-400" /></button>
+            </div>
+            <div className="p-4 space-y-4">
+              <div className="bg-zinc-50 rounded p-3 space-y-1.5 text-sm">
+                <div className="flex justify-between"><span className="text-zinc-500">Employee</span><span className="font-medium">{viewPayment.userName}</span></div>
+                <div className="flex justify-between"><span className="text-zinc-500">Role</span><span>{viewPayment.userRole}</span></div>
+                <div className="flex justify-between"><span className="text-zinc-500">Type</span><span>{TYPE_LABEL[viewPayment.type] || viewPayment.type}</span></div>
+                <div className="flex justify-between"><span className="text-zinc-500">Period</span><span>{viewPayment.periodLabel}</span></div>
+                <div className="flex justify-between"><span className="text-zinc-500">Issued By</span><span>{viewPayment.issuedByName}</span></div>
+                <div className="flex justify-between"><span className="text-zinc-500">Date</span><span>{formatDate(viewPayment.createdAt)}</span></div>
+              </div>
+
+              <div>
+                <h3 className="text-xs text-zinc-500 font-medium uppercase tracking-wider mb-2">How this amount was calculated</h3>
+                <div className="border border-zinc-100 rounded divide-y divide-zinc-50 text-sm">
+                  {(viewPayment.type === "monthly" || viewPayment.type === "hybrid") && (
+                    <div className="flex justify-between px-3 py-2">
+                      <span className="text-zinc-500">Monthly amount</span>
+                      <span>Rs. {((viewPayment.type === "hybrid"
+                        ? viewPayment.amount - (((viewPayment.commissionBase || 0) * (viewPayment.commissionPercent || 0)) / 100)
+                        : viewPayment.amount) || 0).toLocaleString()}</span>
+                    </div>
+                  )}
+                  {(viewPayment.type === "commission" || viewPayment.type === "hybrid") && (
+                    <>
+                      <div className="flex justify-between px-3 py-2">
+                        <span className="text-zinc-500">Commission base</span>
+                        <span>Rs. {(viewPayment.commissionBase ?? 0).toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between px-3 py-2">
+                        <span className="text-zinc-500">Commission %</span>
+                        <span>{viewPayment.commissionPercent ?? 0}%</span>
+                      </div>
+                      <div className="flex justify-between px-3 py-2">
+                        <span className="text-zinc-500">Commission amount</span>
+                        <span>Rs. {(((viewPayment.commissionBase || 0) * (viewPayment.commissionPercent || 0)) / 100).toLocaleString()}</span>
+                      </div>
+                    </>
+                  )}
+                  <div className="flex justify-between px-3 py-2 font-medium bg-zinc-50">
+                    <span>Total paid</span>
+                    <span>Rs. {viewPayment.amount?.toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+
+              {viewPayment.note && (
+                <div>
+                  <h3 className="text-xs text-zinc-500 font-medium uppercase tracking-wider mb-1">Note</h3>
+                  <p className="text-sm text-zinc-700">{viewPayment.note}</p>
+                </div>
+              )}
+
+              <p className="text-xs text-zinc-400">
+                {viewPayment.emailSentAt ? "Payslip email sent to this employee." : "No payslip email sent yet."}
+              </p>
             </div>
           </div>
         </div>

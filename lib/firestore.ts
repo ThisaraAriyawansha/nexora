@@ -2,7 +2,7 @@ import {
   collection, doc, addDoc, updateDoc, deleteDoc, setDoc,
   getDocs, getDoc, query, where, orderBy, limit,
   serverTimestamp, FieldValue, increment,
-  runTransaction, Timestamp, writeBatch, getCountFromServer,
+  runTransaction, Timestamp, writeBatch, getCountFromServer, deleteField,
 } from "firebase/firestore";
 import { initializeApp, deleteApp } from "firebase/app";
 import { getAuth, createUserWithEmailAndPassword, signOut } from "firebase/auth";
@@ -2238,19 +2238,23 @@ export async function issueSalaryPayment(
 ): Promise<{ salaryPaymentId: string; paymentNo: string; expenseId: string }> {
   if (data.amount <= 0) throw new Error("Salary amount must be greater than zero");
   return runTransaction(db, async (tx) => {
+    // Firestore transactions require every tx.get() to happen before any
+    // tx.set()/tx.update() — both counters must be read first, then both
+    // bumped, rather than read-bump-read-bump.
     const salaryCounterRef = doc(db, "counters", "salary");
-    const salaryCounterDoc = await tx.get(salaryCounterRef);
+    const expenseCounterRef = doc(db, "counters", "expense");
+    const [salaryCounterDoc, expenseCounterDoc] = await Promise.all([tx.get(salaryCounterRef), tx.get(expenseCounterRef)]);
+
     const salaryCurrent = salaryCounterDoc.exists() ? (salaryCounterDoc.data().value as number) : 0;
     const salaryNext = salaryCurrent + 1;
-    tx.set(salaryCounterRef, { value: salaryNext });
     const paymentNo = `SAL-${String(salaryNext).padStart(5, "0")}`;
 
-    const expenseCounterRef = doc(db, "counters", "expense");
-    const expenseCounterDoc = await tx.get(expenseCounterRef);
     const expenseCurrent = expenseCounterDoc.exists() ? (expenseCounterDoc.data().value as number) : 0;
     const expenseNext = expenseCurrent + 1;
-    tx.set(expenseCounterRef, { value: expenseNext });
     const expenseNo = `EXP-${String(expenseNext).padStart(5, "0")}`;
+
+    tx.set(salaryCounterRef, { value: salaryNext });
+    tx.set(expenseCounterRef, { value: expenseNext });
 
     const salaryRef = doc(collection(db, "salaryPayments"));
     const expenseRef = doc(collection(db, "expenses"));
@@ -2319,6 +2323,13 @@ export async function getPayableUsers(): Promise<UserProfile[]> {
 
 export async function setSalarySetup(uid: string, salarySetup: SalarySetup) {
   return updateDoc(doc(db, "users", uid), { salarySetup, updatedAt: serverTimestamp() });
+}
+
+// Resets an employee back to "Not configured" — removes the field entirely
+// rather than writing an empty object, so getPayableUsers()/the Setup tab
+// can tell "never set up" apart from "explicitly set to zero".
+export async function clearSalarySetup(uid: string) {
+  return updateDoc(doc(db, "users", uid), { salarySetup: deleteField(), updatedAt: serverTimestamp() });
 }
 
 // ─── SHOP SETTINGS ────────────────────────────────────────────────────────────
