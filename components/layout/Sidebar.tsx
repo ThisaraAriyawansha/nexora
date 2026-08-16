@@ -9,7 +9,7 @@ import {
   LayoutDashboard, Package, Layers, BookMarked,
   ShoppingCart, Receipt, Shield, Settings, LogOut, X,
   Users, FileText, Wrench, PackagePlus, ArrowLeftRight, PackageMinus, History,
-  Truck, ShieldCheck, Wallet,
+  Truck, ShieldCheck, Wallet, Banknote,
 } from "lucide-react";
 
 const nav: { label: string; href: string; icon: React.ElementType; permKey?: PermissionKey }[] = [
@@ -25,6 +25,7 @@ const nav: { label: string; href: string; icon: React.ElementType; permKey?: Per
   { label: "Stock Movements", href: "/stock-movements", icon: History, permKey: "stockMovements.view" },
   { label: "Suppliers", href: "/suppliers", icon: Truck, permKey: "suppliers.view" },
   { label: "Finance", href: "/finance", icon: Wallet, permKey: "finance.view" },
+  { label: "Salary", href: "/salary", icon: Banknote, permKey: "salary.view" },
   { label: "Brands", href: "/brands", icon: BookMarked, permKey: "brands.view" },
   { label: "Categories", href: "/categories", icon: Layers, permKey: "categories.view" },
   { label: "Customers", href: "/customers", icon: Users, permKey: "customers.view" },

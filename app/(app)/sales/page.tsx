@@ -359,24 +359,35 @@ export default function SalesPage() {
   const updateDiscount = (tempId: string, disc: number) => {
     setCart(cart.map(i => {
       if (i.tempId !== tempId) return i;
-      const clamped = Math.max(0, Math.min(disc, i.unitPrice));
+      // Clamp against the KokoPay-inflated price (what's actually charged),
+      // not the base DB price, so the discount input's own max lines up.
+      const effectivePrice = Math.round(i.unitPrice * kokoMultiplier);
+      const clamped = Math.max(0, Math.min(disc, effectivePrice));
       return { ...i, discount: clamped, lineTotal: i.qty * (i.unitPrice - clamped) };
     }));
   };
 
   const removeItem = (tempId: string) => setCart(cart.filter(i => i.tempId !== tempId));
 
-  const jobServicesAmount = jobServicesTotal(attachedJob?.services);
-  const subtotal = cart.reduce((s, i) => s + i.lineTotal, 0) + jobServicesAmount;
-  const preChargeTotal = Math.max(0, subtotal - discount - pointsToRedeem);
-  // KokoPay charges the customer a service fee on top of the bill — entered
-  // as a percentage at payment-method selection, applied to the discounted/
-  // points-adjusted total, and kept on the sale as its own fields so the fee
-  // is never silently baked into totalAmount.
-  const kokoPayChargeAmount = paymentMethod === "kokopay" && kokoPayPercent > 0
-    ? Math.round(preChargeTotal * kokoPayPercent) / 100
-    : 0;
-  const totalAmount = preChargeTotal + kokoPayChargeAmount;
+  // KokoPay charges a per-item price increase — entered as a % at payment-
+  // method selection, it raises each product/service's own price rather
+  // than adding a separate "fee" line, so the customer's bill just shows
+  // higher item prices like a normal sale (no KokoPay line item anywhere on
+  // it). kokoPayChargeAmount is kept on the sale purely as reporting
+  // metadata — how much of the total above is attributable to the
+  // surcharge — never rendered as its own addable row.
+  const kokoMultiplier = paymentMethod === "kokopay" && kokoPayPercent > 0 ? 1 + kokoPayPercent / 100 : 1;
+  const baseJobServicesAmount = jobServicesTotal(attachedJob?.services);
+  const baseCartSubtotal = cart.reduce((s, i) => s + i.lineTotal, 0);
+  const baseSubtotal = baseCartSubtotal + baseJobServicesAmount;
+  const jobServicesAmount = Math.round(baseJobServicesAmount * kokoMultiplier);
+  const cartSubtotal = cart.reduce((s, i) => {
+    const unitPrice = Math.round(i.unitPrice * kokoMultiplier);
+    return s + i.qty * (unitPrice - i.discount);
+  }, 0);
+  const subtotal = cartSubtotal + jobServicesAmount;
+  const totalAmount = Math.max(0, subtotal - discount - pointsToRedeem);
+  const kokoPayChargeAmount = kokoMultiplier > 1 ? Math.max(0, subtotal - baseSubtotal) : 0;
   const change = Number(amountTendered) - totalAmount;
 
   const handleCheckout = async () => {
@@ -387,6 +398,18 @@ export default function SalesPage() {
     }
     setProcessing(true);
     try {
+      // The stored sale (and therefore the printed bill) carries the actual
+      // KokoPay-inflated prices on each line — never the base price plus a
+      // separate fee — so re-opening this invoice later shows exactly what
+      // the customer paid per item.
+      const saleItems = cart.map(i => {
+        if (kokoMultiplier === 1) return i;
+        const unitPrice = Math.round(i.unitPrice * kokoMultiplier);
+        return { ...i, unitPrice, lineTotal: i.qty * (unitPrice - i.discount) };
+      });
+      const saleServices = attachedJob?.services?.map((s: any) =>
+        s.chargeType === "paid" && kokoMultiplier > 1 ? { ...s, price: Math.round(s.price * kokoMultiplier) } : s
+      ) || [];
       const result = await createSale({
         customerId: selectedCustomer?.id || null,
         customerName: selectedCustomer?.name || attachedJob?.customerName || "Walk-in Customer",
@@ -394,8 +417,8 @@ export default function SalesPage() {
         customerEmail: selectedCustomer?.email || attachedJob?.customerEmail || undefined,
         cashierId: user!.uid,
         cashierName: userDisplayName || "Cashier",
-        items: cart,
-        ...(attachedJob ? { jobId: attachedJob.id, jobNo: attachedJob.jobNo, services: attachedJob.services || [] } : {}),
+        items: saleItems,
+        ...(attachedJob ? { jobId: attachedJob.id, jobNo: attachedJob.jobNo, services: saleServices } : {}),
         subtotal,
         discountAmount: discount,
         taxAmount: 0,
@@ -438,7 +461,7 @@ export default function SalesPage() {
       } : prev);
       // Warranties and loyalty-point adjustments are written server-side inside
       // createSale's own transaction, so they can't drift from the sale itself.
-      setCompletedSale({ ...result, items: cart, jobNo: attachedJob?.jobNo, services: attachedJob?.services, subtotal, discountAmount: discount, pointsRedeemed: pointsToRedeem, totalAmount, customerName: selectedCustomer?.name || attachedJob?.customerName || "Walk-in Customer", customerPhone: selectedCustomer?.phone || attachedJob?.customerPhone, customerEmail: selectedCustomer?.email || attachedJob?.customerEmail, cashierName: userDisplayName || "Cashier", paymentMethod, kokoPayChargePercent: paymentMethod === "kokopay" ? kokoPayPercent : undefined, kokoPayChargeAmount: paymentMethod === "kokopay" ? kokoPayChargeAmount : undefined, amountTendered: Number(amountTendered), changeAmount: Math.max(0, change) });
+      setCompletedSale({ ...result, items: saleItems, jobNo: attachedJob?.jobNo, services: saleServices, subtotal, discountAmount: discount, pointsRedeemed: pointsToRedeem, totalAmount, customerName: selectedCustomer?.name || attachedJob?.customerName || "Walk-in Customer", customerPhone: selectedCustomer?.phone || attachedJob?.customerPhone, customerEmail: selectedCustomer?.email || attachedJob?.customerEmail, cashierName: userDisplayName || "Cashier", paymentMethod, kokoPayChargePercent: paymentMethod === "kokopay" ? kokoPayPercent : undefined, kokoPayChargeAmount: paymentMethod === "kokopay" ? kokoPayChargeAmount : undefined, amountTendered: Number(amountTendered), changeAmount: Math.max(0, change) });
       setBillEmailNotice("");
 
       // Fire-and-forget: don't hold up the checkout flow on the alert email.
@@ -638,7 +661,7 @@ export default function SalesPage() {
                   <div key={s.id} className="flex items-center justify-between text-xs">
                     <span className="text-zinc-600">{s.name}{s.chargeType === "free" && s.freeReason ? ` — ${s.freeReason}` : ""}</span>
                     <span className={`font-medium ${s.chargeType === "free" ? "text-green-600" : "text-ink"}`}>
-                      {s.chargeType === "free" ? "Free" : `Rs. ${Number(s.price).toLocaleString()}`}
+                      {s.chargeType === "free" ? "Free" : `Rs. ${Math.round(Number(s.price) * kokoMultiplier).toLocaleString()}`}
                     </span>
                   </div>
                 ))}
@@ -656,7 +679,10 @@ export default function SalesPage() {
             </div>
           ) : (
             <div className="divide-y divide-zinc-50">
-              {cart.map(item => (
+              {cart.map(item => {
+                const displayUnitPrice = Math.round(item.unitPrice * kokoMultiplier);
+                const displayLineTotal = item.qty * (displayUnitPrice - item.discount);
+                return (
                 <div key={item.tempId} className="px-4 py-3">
                   <div className="flex items-start justify-between mb-1.5">
                     <div className="flex-1 pr-2">
@@ -696,16 +722,20 @@ export default function SalesPage() {
                     <input
                       type="number"
                       min={0}
-                      max={item.unitPrice}
+                      max={displayUnitPrice}
                       value={item.discount || ""}
                       onChange={e => updateDiscount(item.tempId, Number(e.target.value))}
                       className="nexora-input flex-1 py-1.5 text-xs"
                       placeholder="Discount"
                     />
-                    <span className="text-sm font-medium text-ink w-20 text-right">Rs. {item.lineTotal.toLocaleString()}</span>
+                    <span className="text-sm font-medium text-ink w-20 text-right">Rs. {displayLineTotal.toLocaleString()}</span>
                   </div>
+                  {kokoMultiplier > 1 && (
+                    <p className="text-[11px] text-zinc-400 mt-1 text-right">Rs. {item.unitPrice.toLocaleString()}/unit + {kokoPayPercent}% KokoPay = Rs. {displayUnitPrice.toLocaleString()}</p>
+                  )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -777,11 +807,11 @@ export default function SalesPage() {
 
           {paymentMethod === "kokopay" && (
             <div className="flex items-center justify-between text-xs bg-zinc-50 rounded px-3 py-2">
-              <span className="text-zinc-500">KokoPay fee: {kokoPayPercent}% (Rs. {kokoPayChargeAmount.toLocaleString()})</span>
+              <span className="text-zinc-500">Item prices above include a {kokoPayPercent}% KokoPay surcharge (Rs. {kokoPayChargeAmount.toLocaleString()}) — staff view only, not shown on the customer's bill</span>
               <button
                 type="button"
                 onClick={() => { setKokoPayPercentInput(kokoPayPercent > 0 ? String(kokoPayPercent) : ""); setShowKokoPayModal(true); }}
-                className="underline text-zinc-500 hover:text-black"
+                className="underline text-zinc-500 hover:text-black shrink-0 ml-2"
               >
                 Edit %
               </button>
@@ -1072,7 +1102,8 @@ export default function SalesPage() {
             </div>
             <div className="p-4 space-y-3">
               <div>
-                <label className="text-xs text-zinc-500 mb-1 block">Charge percentage (%)</label>
+                <label className="text-xs text-zinc-500 mb-1 block">Surcharge percentage (%)</label>
+                <p className="text-xs text-zinc-400 mb-2">Raises every item's own price by this % — the bill won't show a separate KokoPay fee line, just higher item prices.</p>
                 <input
                   type="number"
                   min={0}
@@ -1085,7 +1116,7 @@ export default function SalesPage() {
                 />
                 {kokoPayPercentInput !== "" && Number(kokoPayPercentInput) >= 0 && (
                   <p className="text-xs text-zinc-400 mt-1.5">
-                    Adds Rs. {(Math.round(preChargeTotal * Number(kokoPayPercentInput)) / 100).toLocaleString()} — new total Rs. {(preChargeTotal + Math.round(preChargeTotal * Number(kokoPayPercentInput)) / 100).toLocaleString()}
+                    Subtotal Rs. {baseSubtotal.toLocaleString()} → Rs. {Math.round(baseSubtotal * (1 + Number(kokoPayPercentInput) / 100)).toLocaleString()}
                   </p>
                 )}
               </div>

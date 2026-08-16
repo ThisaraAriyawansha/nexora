@@ -2,13 +2,13 @@ import {
   collection, doc, addDoc, updateDoc, deleteDoc, setDoc,
   getDocs, getDoc, query, where, orderBy, limit,
   serverTimestamp, FieldValue, increment,
-  runTransaction, Timestamp, writeBatch, getCountFromServer,
+  runTransaction, Timestamp, writeBatch, getCountFromServer, deleteField,
 } from "firebase/firestore";
 import { initializeApp, deleteApp } from "firebase/app";
 import { getAuth, createUserWithEmailAndPassword, signOut } from "firebase/auth";
 import { db } from "./firebase";
 import { firebaseConfig } from "./firebase";
-import type { ShopSettings, UserProfile, JobStatus, JobServiceItem, StockLocation, StockMovementReason, SupplierPaymentMethod, SupplierPaymentStatus, ShiftStatus, ShiftReviewStatus, ExpenseCategory, SalePaymentMethod } from "@/types";
+import type { ShopSettings, UserProfile, JobStatus, JobServiceItem, StockLocation, StockMovementReason, SupplierPaymentMethod, SupplierPaymentStatus, ShiftStatus, ShiftReviewStatus, ExpenseCategory, SalePaymentMethod, SalaryType, SalarySetup, SalaryPayment } from "@/types";
 import { diffFields, writeAuditLog } from "./audit";
 import { isEditableRole, getDefaultPermissions, PERMISSION_CATALOG } from "./permissions";
 
@@ -2212,6 +2212,126 @@ export async function deleteExpense(expenseId: string) {
   return deleteDoc(doc(db, "expenses", expenseId));
 }
 
+// ─── SALARY ─────────────────────────────────────────────────────────────────
+
+export interface IssueSalaryPaymentData {
+  userId: string;
+  userName: string;
+  userRole: string;
+  type: SalaryType;
+  amount: number;
+  commissionBase?: number;
+  commissionPercent?: number;
+  periodLabel: string;
+  note?: string;
+  issuedById: string;
+  issuedByName: string;
+}
+
+// Issues a payment and, in the same transaction, logs a matching Expense
+// (category "salaries") so Finance's existing Net Profit math picks it up
+// automatically — no separate manual expense entry needed. Reuses the
+// expense counter/sequence so it interleaves naturally with EXP-numbers
+// logged directly from Finance > Expenses.
+export async function issueSalaryPayment(
+  data: IssueSalaryPaymentData
+): Promise<{ salaryPaymentId: string; paymentNo: string; expenseId: string }> {
+  if (data.amount <= 0) throw new Error("Salary amount must be greater than zero");
+  return runTransaction(db, async (tx) => {
+    // Firestore transactions require every tx.get() to happen before any
+    // tx.set()/tx.update() — both counters must be read first, then both
+    // bumped, rather than read-bump-read-bump.
+    const salaryCounterRef = doc(db, "counters", "salary");
+    const expenseCounterRef = doc(db, "counters", "expense");
+    const [salaryCounterDoc, expenseCounterDoc] = await Promise.all([tx.get(salaryCounterRef), tx.get(expenseCounterRef)]);
+
+    const salaryCurrent = salaryCounterDoc.exists() ? (salaryCounterDoc.data().value as number) : 0;
+    const salaryNext = salaryCurrent + 1;
+    const paymentNo = `SAL-${String(salaryNext).padStart(5, "0")}`;
+
+    const expenseCurrent = expenseCounterDoc.exists() ? (expenseCounterDoc.data().value as number) : 0;
+    const expenseNext = expenseCurrent + 1;
+    const expenseNo = `EXP-${String(expenseNext).padStart(5, "0")}`;
+
+    tx.set(salaryCounterRef, { value: salaryNext });
+    tx.set(expenseCounterRef, { value: expenseNext });
+
+    const salaryRef = doc(collection(db, "salaryPayments"));
+    const expenseRef = doc(collection(db, "expenses"));
+
+    tx.set(expenseRef, {
+      expenseNo,
+      category: "salaries" as ExpenseCategory,
+      amount: data.amount,
+      note: `Salary payment ${paymentNo} — ${data.userName} (${data.periodLabel})`,
+      paidById: data.issuedById,
+      paidByName: data.issuedByName,
+      linkedSalaryPaymentId: salaryRef.id,
+      createdAt: serverTimestamp(),
+    });
+
+    tx.set(salaryRef, {
+      paymentNo,
+      userId: data.userId,
+      userName: data.userName,
+      userRole: data.userRole,
+      type: data.type,
+      amount: data.amount,
+      commissionBase: data.commissionBase ?? null,
+      commissionPercent: data.commissionPercent ?? null,
+      periodLabel: data.periodLabel,
+      note: data.note ?? "",
+      issuedById: data.issuedById,
+      issuedByName: data.issuedByName,
+      linkedExpenseId: expenseRef.id,
+      createdAt: serverTimestamp(),
+    });
+
+    return { salaryPaymentId: salaryRef.id, paymentNo, expenseId: expenseRef.id };
+  });
+}
+
+export async function getSalaryPayments(opts?: { userId?: string; fromDate?: Date; toDate?: Date }): Promise<SalaryPayment[]> {
+  const constraints = [];
+  if (opts?.userId) constraints.push(where("userId", "==", opts.userId));
+  if (opts?.fromDate) constraints.push(where("createdAt", ">=", Timestamp.fromDate(opts.fromDate)));
+  if (opts?.toDate) constraints.push(where("createdAt", "<=", Timestamp.fromDate(opts.toDate)));
+  const snap = await getDocs(query(collection(db, "salaryPayments"), ...constraints, orderBy("createdAt", "desc")));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() })) as SalaryPayment[];
+}
+
+// Deletes both the salary payment and its linked expense together so
+// Finance's Net Profit never ends up with an orphaned expense entry.
+export async function deleteSalaryPayment(salaryPaymentId: string) {
+  const salaryRef = doc(db, "salaryPayments", salaryPaymentId);
+  const salarySnap = await getDoc(salaryRef);
+  if (!salarySnap.exists()) throw new Error("Salary payment not found");
+  const linkedExpenseId = salarySnap.data().linkedExpenseId as string | undefined;
+
+  const batch = writeBatch(db);
+  batch.delete(salaryRef);
+  if (linkedExpenseId) batch.delete(doc(db, "expenses", linkedExpenseId));
+  return batch.commit();
+}
+
+// Every team member except Super Admin — the business owner is never a
+// payee, unconditionally (not just filtered from an Admin's own view).
+export async function getPayableUsers(): Promise<UserProfile[]> {
+  const users = await getTeamUsers();
+  return users.filter((u) => u.role !== "Super Admin");
+}
+
+export async function setSalarySetup(uid: string, salarySetup: SalarySetup) {
+  return updateDoc(doc(db, "users", uid), { salarySetup, updatedAt: serverTimestamp() });
+}
+
+// Resets an employee back to "Not configured" — removes the field entirely
+// rather than writing an empty object, so getPayableUsers()/the Setup tab
+// can tell "never set up" apart from "explicitly set to zero".
+export async function clearSalarySetup(uid: string) {
+  return updateDoc(doc(db, "users", uid), { salarySetup: deleteField(), updatedAt: serverTimestamp() });
+}
+
 // ─── SHOP SETTINGS ────────────────────────────────────────────────────────────
 
 export async function getShopSettings() {
@@ -2342,6 +2462,7 @@ export async function getUsageStats(): Promise<CollectionStat[]> {
     { key: "supplierPayments",label: "Supplier Payments",avgBytes: 350  },
     { key: "shifts",          label: "Shifts",           avgBytes: 400  },
     { key: "expenses",        label: "Expenses",         avgBytes: 350  },
+    { key: "salaryPayments",  label: "Salary Payments",  avgBytes: 350  },
   ];
 
   const results = await Promise.all(

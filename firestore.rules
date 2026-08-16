@@ -121,6 +121,12 @@ service cloud.firestore {
       // field at all, and accessing a fully-missing field throws instead of
       // yielding a comparable value, which would error this whole rule out to
       // a deny and block even a harmless self-service displayName edit.
+      // Third disjunct: a caller holding salary.manageConfig but not
+      // Admin+ (e.g. a Manager a Super Admin explicitly granted it to) may
+      // still write another user's salarySetup — affectedKeys() pins the
+      // write to exactly that field (plus updatedAt) so this path can never
+      // be used to smuggle in a role/status/permissions change, and Super
+      // Admin stays fully opaque to it just like the rest of this block.
       allow update: if isAuth() && (
         (request.auth.uid == userId
           && request.resource.data.role == resource.data.role
@@ -130,6 +136,9 @@ service cloud.firestore {
             && (request.resource.data.role != 'Super Admin' || isSuperAdmin())
             && (resource.data.role != 'Super Admin' || isSuperAdmin())
             && (resource.data.role != 'Admin' || request.resource.data.get('permissions', {}) == resource.data.get('permissions', {}) || isSuperAdmin()))
+        || (hasPerm('salary.manageConfig')
+            && resource.data.role != 'Super Admin'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['salarySetup', 'updatedAt']))
       );
 
       // Admin can delete a Manager/Cashier/Technician/Staff account, never a
@@ -371,6 +380,22 @@ service cloud.firestore {
       allow create: if hasPerm('finance.addExpense');
       allow update: if isAdminOrAbove();
       allow delete: if hasPerm('finance.deleteExpense');
+    }
+
+    // Payroll records — single-owner collection (only the Salary page reads
+    // it), so unlike products/customers/suppliers its view permission is
+    // safe to rule-enforce, same reasoning as quotations/grns above. Unlike
+    // Expenses, there's no isAuth()-open read here: salary amounts are
+    // sensitive and, per lib/permissions.ts, default to Admin/Super Admin
+    // only until a Super Admin explicitly grants salary.view to someone
+    // else. Update is Admin+ only since there's no in-app edit flow —
+    // payments are issued once and only ever deleted, never corrected in
+    // place.
+    match /salaryPayments/{id} {
+      allow read: if hasPerm('salary.view');
+      allow create: if hasPerm('salary.issue');
+      allow update: if isAdminOrAbove();
+      allow delete: if hasPerm('salary.delete');
     }
 
     // Generic Admin Edit audit trail — every writer of this collection is
