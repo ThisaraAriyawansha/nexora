@@ -33,6 +33,29 @@ function getTransporter() {
   return transporter;
 }
 
+// Spam filters penalize HTML-only mail — a plain-text alternative part
+// (multipart/alternative) is one of the few deliverability levers available
+// without owning a domain for SPF/DKIM/DMARC.
+function htmlToText(html: string): string {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<a\s+[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, (_m, href, label) => {
+      const text = label.replace(/<[^>]+>/g, "").trim();
+      return text && text !== href ? `${text} (${href})` : href;
+    })
+    .replace(/<(br|tr|\/tr|\/table|\/div|\/p|\/h1)[^>]*>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 export async function sendMail(
   to: string,
   subject: string,
@@ -46,6 +69,7 @@ export async function sendMail(
     to,
     subject,
     html,
+    text: htmlToText(html),
     attachments,
   });
 }
