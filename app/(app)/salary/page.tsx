@@ -1,11 +1,12 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import {
   getPayableUsers, setSalarySetup, clearSalarySetup, issueSalaryPayment, getSalaryPayments, deleteSalaryPayment,
+  getSales, getJobs,
 } from "@/lib/firestore";
-import { SalaryType, SalarySetup, SalaryPayment, UserProfile } from "@/types";
-import { Banknote, Download, Mail, Trash2, X, Check, Eye } from "lucide-react";
+import { SalaryType, SalarySetup, SalaryPayment, SalaryCommissionItem, UserProfile } from "@/types";
+import { Banknote, Download, Mail, Trash2, X, Check, Eye, Search } from "lucide-react";
 import Pagination from "@/components/ui/Pagination";
 import { rowsToCSV, downloadCSV } from "@/lib/csv";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -70,6 +71,72 @@ export default function SalaryPage() {
   const [issueError, setIssueError] = useState("");
   const [issueSuccess, setIssueSuccess] = useState<string | null>(null);
 
+  // Sale/Job picker for commission payments — lets the admin search by
+  // invoice/job number and attach specific sales/jobs as the audit trail
+  // for a commission, instead of only typing in a lump commissionBase.
+  const [commissionItems, setCommissionItems] = useState<SalaryCommissionItem[]>([]);
+  const [commissionSearch, setCommissionSearch] = useState("");
+  const [commissionPool, setCommissionPool] = useState<{ sales: any[]; jobs: any[] } | null>(null);
+  const [commissionPoolLoading, setCommissionPoolLoading] = useState(false);
+
+  useEffect(() => {
+    const showsPicker = issueType === "commission" || issueType === "hybrid";
+    if (!showsPicker || commissionPool || commissionPoolLoading) return;
+    setCommissionPoolLoading(true);
+    Promise.all([
+      getSales({ fromDate: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000) }),
+      getJobs(),
+    ]).then(([sales, jobs]) => {
+      setCommissionPool({ sales, jobs });
+      setCommissionPoolLoading(false);
+    });
+  }, [issueType, commissionPool, commissionPoolLoading]);
+
+  const commissionSearchResults = useMemo(() => {
+    const term = commissionSearch.trim().toLowerCase();
+    if (!commissionPool || term.length < 2) return { sales: [] as any[], jobs: [] as any[] };
+    const selectedKeys = new Set(commissionItems.map((i) => `${i.kind}:${i.id}`));
+    const sales = commissionPool.sales
+      .filter(
+        (s: any) =>
+          !s.commissionPaymentId &&
+          s.status !== "cancelled" &&
+          !selectedKeys.has(`sale:${s.id}`) &&
+          (s.invoiceNo?.toLowerCase().includes(term) || s.customerName?.toLowerCase().includes(term))
+      )
+      .slice(0, 8);
+    const jobs = commissionPool.jobs
+      .filter(
+        (j: any) =>
+          !j.commissionPaymentId &&
+          !selectedKeys.has(`job:${j.id}`) &&
+          (j.jobNo?.toLowerCase().includes(term) || j.customerName?.toLowerCase().includes(term))
+      )
+      .slice(0, 8);
+    return { sales, jobs };
+  }, [commissionPool, commissionSearch, commissionItems]);
+
+  const commissionItemsTotal = commissionItems.reduce((s, i) => s + i.amount, 0);
+
+  // Commission Base tracks the linked sales/jobs automatically — the admin
+  // picks items first, then just types the %, and the payable amount
+  // recalculates live (see suggestedAmount below).
+  useEffect(() => {
+    setIssueCommissionBase(commissionItems.length > 0 ? String(commissionItemsTotal) : "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [commissionItems]);
+
+  const addCommissionItem = (kind: "sale" | "job", record: any) => {
+    const amount = kind === "sale" ? record.totalAmount || 0 : (record.repairCost ?? record.estimatedCost ?? 0);
+    const number = kind === "sale" ? record.invoiceNo : record.jobNo;
+    setCommissionItems((prev) => [...prev, { kind, id: record.id, number, amount }]);
+    setCommissionSearch("");
+  };
+
+  const removeCommissionItem = (kind: "sale" | "job", id: string) => {
+    setCommissionItems((prev) => prev.filter((i) => !(i.kind === kind && i.id === id)));
+  };
+
   const selectedUser = payableUsers.find((u) => u.uid === issueUserId) || null;
   const commissionAmount = ((Number(issueCommissionBase) || 0) * (Number(issueCommissionPercent) || 0)) / 100;
   const suggestedAmount =
@@ -108,6 +175,8 @@ export default function SalaryPage() {
     setIssueAmount("");
     setIssuePeriodLabel(currentMonthLabel());
     setIssueNote("");
+    setCommissionItems([]);
+    setCommissionSearch("");
   };
 
   const handleIssue = async () => {
@@ -131,6 +200,7 @@ export default function SalaryPage() {
         amount,
         commissionBase: issueType !== "monthly" && issueCommissionBase ? Number(issueCommissionBase) : undefined,
         commissionPercent: issueType !== "monthly" && issueCommissionPercent ? Number(issueCommissionPercent) : undefined,
+        commissionItems: issueType !== "monthly" && commissionItems.length > 0 ? commissionItems : undefined,
         periodLabel: issuePeriodLabel || currentMonthLabel(),
         note: issueNote || undefined,
         issuedById: user.uid,
@@ -138,6 +208,7 @@ export default function SalaryPage() {
       });
       setIssueSuccess(paymentNo);
       resetIssueForm();
+      setCommissionPool(null);
       reloadPayments();
     } catch (err: any) {
       setIssueError(err?.message || "Failed to issue salary payment");
@@ -361,19 +432,113 @@ export default function SalaryPage() {
 
             {(issueType === "commission" || issueType === "hybrid") && (
               <>
+                <div>
+                  <label className="text-xs text-zinc-500 mb-1 block">1. Link Sales / Jobs</label>
+                  <div className="relative">
+                    <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+                    <input
+                      className="nexora-input pl-8 text-sm"
+                      placeholder="Search sale invoice no., job no. or customer…"
+                      value={commissionSearch}
+                      onChange={(e) => setCommissionSearch(e.target.value)}
+                      disabled={!canIssue}
+                    />
+                  </div>
+                  {commissionPoolLoading && <p className="text-xs text-zinc-400 mt-1">Loading sales & jobs…</p>}
+
+                  {commissionSearch.trim().length >= 2 &&
+                    (commissionSearchResults.sales.length > 0 || commissionSearchResults.jobs.length > 0) && (
+                      <div className="mt-1 border border-zinc-200 rounded-lg max-h-48 overflow-y-auto divide-y divide-zinc-50 bg-white shadow-sm">
+                        {commissionSearchResults.sales.map((s: any) => (
+                          <button
+                            type="button"
+                            key={`sale-${s.id}`}
+                            onClick={() => addCommissionItem("sale", s)}
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-50 flex items-center justify-between gap-2"
+                          >
+                            <span className="truncate">
+                              <span className="text-zinc-400 mr-1">Sale</span>
+                              <span className="font-medium">{s.invoiceNo}</span>
+                              {s.customerName && <span className="text-zinc-400"> — {s.customerName}</span>}
+                            </span>
+                            <span className="text-zinc-500 shrink-0">Rs. {(s.totalAmount || 0).toLocaleString()}</span>
+                          </button>
+                        ))}
+                        {commissionSearchResults.jobs.map((j: any) => (
+                          <button
+                            type="button"
+                            key={`job-${j.id}`}
+                            onClick={() => addCommissionItem("job", j)}
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-50 flex items-center justify-between gap-2"
+                          >
+                            <span className="truncate">
+                              <span className="text-zinc-400 mr-1">Job</span>
+                              <span className="font-medium">{j.jobNo}</span>
+                              {j.customerName && <span className="text-zinc-400"> — {j.customerName}</span>}
+                            </span>
+                            <span className="text-zinc-500 shrink-0">
+                              Rs. {((j.repairCost ?? j.estimatedCost) || 0).toLocaleString()}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                  {commissionSearch.trim().length >= 2 &&
+                    !commissionPoolLoading &&
+                    commissionSearchResults.sales.length === 0 &&
+                    commissionSearchResults.jobs.length === 0 && (
+                      <p className="text-xs text-zinc-400 mt-1">No matching sale/job found (or already linked to a commission).</p>
+                    )}
+
+                  {commissionItems.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      {commissionItems.map((item) => (
+                        <div
+                          key={`${item.kind}-${item.id}`}
+                          className="flex items-center justify-between gap-2 bg-zinc-50 rounded px-2.5 py-1.5 text-xs"
+                        >
+                          <span className="truncate">
+                            <span className="text-zinc-400 capitalize mr-1">{item.kind}</span>
+                            <span className="font-medium">{item.number}</span>
+                          </span>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-zinc-500">Rs. {item.amount.toLocaleString()}</span>
+                            <button
+                              type="button"
+                              onClick={() => removeCommissionItem(item.kind, item.id)}
+                              className="text-zinc-300 hover:text-red-500"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      <div className="text-xs pt-1">
+                        <span className="text-zinc-500">
+                          Selected total (Commission Base): <span className="font-medium text-ink">Rs. {commissionItemsTotal.toLocaleString()}</span>
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-xs text-zinc-500 mb-1 block">Commission Base (Rs.)</label>
                     <input
-                      type="number" min={0} className="nexora-input"
+                      type="number" min={0} className="nexora-input disabled:bg-zinc-50 disabled:text-zinc-500"
                       placeholder="e.g. sales total for period"
                       value={issueCommissionBase}
                       onChange={(e) => setIssueCommissionBase(e.target.value)}
-                      disabled={!canIssue}
+                      disabled={!canIssue || commissionItems.length > 0}
                     />
+                    {commissionItems.length > 0 && (
+                      <p className="text-[11px] text-zinc-400 mt-1">Auto-filled from the sales/jobs linked above.</p>
+                    )}
                   </div>
                   <div>
-                    <label className="text-xs text-zinc-500 mb-1 block">Commission %</label>
+                    <label className="text-xs text-zinc-500 mb-1 block">2. Commission %</label>
                     <input
                       type="number" min={0} max={100} step={0.1} className="nexora-input"
                       value={issueCommissionPercent}
@@ -667,6 +832,37 @@ export default function SalaryPage() {
                   </div>
                 </div>
               </div>
+
+              {viewPayment.commissionItems && viewPayment.commissionItems.length > 0 && (
+                <div>
+                  <h3 className="text-xs text-zinc-500 font-medium uppercase tracking-wider mb-2">Linked sales / jobs</h3>
+                  <div className="border border-zinc-100 rounded overflow-hidden text-sm">
+                    <div className="grid grid-cols-[1fr_auto_auto] gap-3 px-3 py-1.5 text-[11px] text-zinc-400 uppercase tracking-wider bg-zinc-50">
+                      <span>Item</span>
+                      <span className="text-right">Base</span>
+                      <span className="text-right">Commission</span>
+                    </div>
+                    <div className="divide-y divide-zinc-50">
+                      {viewPayment.commissionItems.map((item) => (
+                        <div key={`${item.kind}-${item.id}`} className="grid grid-cols-[1fr_auto_auto] gap-3 px-3 py-2">
+                          <span className="text-zinc-600 capitalize truncate">{item.kind} — {item.number}</span>
+                          <span className="text-right text-zinc-500">Rs. {item.amount.toLocaleString()}</span>
+                          <span className="text-right font-medium">
+                            Rs. {((item.amount * (viewPayment.commissionPercent || 0)) / 100).toLocaleString()}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-[1fr_auto_auto] gap-3 px-3 py-2 font-medium bg-zinc-50 border-t border-zinc-100">
+                      <span>Total ({viewPayment.commissionPercent ?? 0}%)</span>
+                      <span className="text-right">Rs. {(viewPayment.commissionBase ?? 0).toLocaleString()}</span>
+                      <span className="text-right">
+                        Rs. {(((viewPayment.commissionBase || 0) * (viewPayment.commissionPercent || 0)) / 100).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {viewPayment.note && (
                 <div>

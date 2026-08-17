@@ -54,10 +54,12 @@ export async function POST(req: NextRequest) {
       salaryPayslipTemplate({
         employeeName: payment.userName,
         paymentNo: payment.paymentNo,
+        type: payment.type,
         typeLabel: TYPE_LABEL[payment.type] || payment.type,
         amount: payment.amount,
         commissionBase: payment.commissionBase ?? null,
         commissionPercent: payment.commissionPercent ?? null,
+        commissionItems: payment.commissionItems ?? [],
         periodLabel: payment.periodLabel,
         note: payment.note,
         shop,

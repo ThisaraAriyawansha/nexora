@@ -197,6 +197,10 @@ export interface Sale {
   note?: string;
   shiftId?: string | null;
   shiftNo?: string;
+  // Set once this sale has been paid out as part of a commission —
+  // lets the commission picker exclude sales already claimed by another
+  // payment, and deleteSalaryPayment() clears it back to free the sale up.
+  commissionPaymentId?: string | null;
   // Set only once a sale is reversed via cancelSale() — absent on a normal sale.
   status?: SaleStatus;
   cancelledAt?: any;
@@ -264,6 +268,17 @@ export interface SalarySetup {
   commissionPercent?: number;
 }
 
+// A specific sale or job the admin picked while issuing a commission
+// payment — a lightweight snapshot (not a live reference) so the Payment
+// History detail view can list what was paid on without re-fetching the
+// underlying Sale/Job docs.
+export interface SalaryCommissionItem {
+  kind: "sale" | "job";
+  id: string;
+  number: string; // invoiceNo or jobNo
+  amount: number; // totalAmount (sale) or repairCost/estimatedCost (job)
+}
+
 export interface SalaryPayment {
   id: string;
   paymentNo: string;
@@ -276,9 +291,15 @@ export interface SalaryPayment {
   amount: number;
   // Commission inputs, present only when type is "commission"/"hybrid".
   // commissionBase is typed in by hand by the admin (e.g. read off another
-  // report) — there's no automatic Sales/Jobs summation.
+  // report, or copied from commissionItems' total below) — it is never
+  // auto-summed at write time.
   commissionBase?: number;
   commissionPercent?: number;
+  // The specific sales/jobs this commission was issued against, if the
+  // admin linked any via the sale/job number search picker. Optional —
+  // commissionBase can still be a plain hand-typed figure with nothing
+  // linked here.
+  commissionItems?: SalaryCommissionItem[];
   periodLabel: string;
   note?: string;
   issuedById: string;
@@ -495,6 +516,9 @@ export interface Job {
   status: JobStatus;
   repairCost?: number | null;
   dateReturned?: any;
+  // Set once this job has been paid out as part of a commission — see
+  // Sale.commissionPaymentId for the matching mechanism on sales.
+  commissionPaymentId?: string | null;
   createdAt?: any;
 }
 
