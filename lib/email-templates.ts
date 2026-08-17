@@ -161,16 +161,22 @@ export function jobUpdateTemplate(params: {
 export function salaryPayslipTemplate(params: {
   employeeName: string;
   paymentNo: string;
+  type: "monthly" | "commission" | "hybrid";
   typeLabel: string;
   amount: number;
   commissionBase?: number | null;
   commissionPercent?: number | null;
+  commissionItems?: { kind: "sale" | "job"; number: string; amount: number }[];
   periodLabel: string;
   note?: string;
   shop: { name: string; phone?: string; email?: string };
 }) {
-  const { employeeName, paymentNo, typeLabel, amount, commissionBase, commissionPercent, periodLabel, note, shop } = params;
+  const { employeeName, paymentNo, type, typeLabel, amount, commissionBase, commissionPercent, commissionItems, periodLabel, note, shop } = params;
   const year = new Date().getFullYear();
+  const pct = Number(commissionPercent) || 0;
+  const commissionAmount = ((Number(commissionBase) || 0) * pct) / 100;
+  const monthlyAmount = type === "hybrid" ? amount - commissionAmount : amount;
+
   return shopEmailShell(
     `
       <h1 style="font-size:16px;margin:0 0 12px">Your salary payment has been issued</h1>
@@ -179,28 +185,53 @@ export function salaryPayslipTemplate(params: {
       </p>
       <table style="width:100%;border-collapse:collapse;margin:0 0 16px">
         <tr>
-          <td style="padding:6px 0;color:#999;font-size:12px;width:130px">Payment No.</td>
+          <td style="padding:6px 0;color:#999;font-size:12px;width:150px">Payment No.</td>
           <td style="padding:6px 0;font-size:13px;font-weight:bold">${escapeHtml(paymentNo)}</td>
         </tr>
         <tr>
           <td style="padding:6px 0;color:#999;font-size:12px">Type</td>
           <td style="padding:6px 0;font-size:13px">${escapeHtml(typeLabel)}</td>
         </tr>
-        ${commissionBase != null ? `
+        ${(type === "monthly" || type === "hybrid") ? `
+        <tr>
+          <td style="padding:6px 0;color:#999;font-size:12px">Monthly Salary</td>
+          <td style="padding:6px 0;font-size:13px">Rs. ${Number(monthlyAmount).toLocaleString()}</td>
+        </tr>` : ""}
+        ${(type === "commission" || type === "hybrid") && commissionBase != null ? `
         <tr>
           <td style="padding:6px 0;color:#999;font-size:12px">Commission Base</td>
           <td style="padding:6px 0;font-size:13px">Rs. ${Number(commissionBase).toLocaleString()}</td>
         </tr>` : ""}
-        ${commissionPercent != null ? `
+        ${(type === "commission" || type === "hybrid") && commissionPercent != null ? `
         <tr>
           <td style="padding:6px 0;color:#999;font-size:12px">Commission %</td>
           <td style="padding:6px 0;font-size:13px">${escapeHtml(commissionPercent)}%</td>
         </tr>` : ""}
+        ${(type === "commission" || type === "hybrid") && commissionBase != null ? `
         <tr>
-          <td style="padding:6px 0;font-size:14px;font-weight:bold;border-top:1px solid #eee">Amount Paid</td>
+          <td style="padding:6px 0;color:#999;font-size:12px">Commission Amount</td>
+          <td style="padding:6px 0;font-size:13px">Rs. ${Number(commissionAmount).toLocaleString()}</td>
+        </tr>` : ""}
+        <tr>
+          <td style="padding:6px 0;font-size:14px;font-weight:bold;border-top:1px solid #eee">Full Payment</td>
           <td style="padding:6px 0;font-size:14px;font-weight:bold;border-top:1px solid #eee">Rs. ${Number(amount).toLocaleString()}</td>
         </tr>
       </table>
+      ${commissionItems && commissionItems.length > 0 ? `
+      <p style="margin:0 0 6px;font-size:12px;color:#999;text-transform:uppercase;letter-spacing:.03em">Linked Sales / Jobs</p>
+      <table style="width:100%;border-collapse:collapse;margin:0 0 16px;border:1px solid #eee">
+        <tr style="background:#fafafa">
+          <td style="padding:6px 8px;font-size:11px;color:#999;text-transform:uppercase">Item</td>
+          <td style="padding:6px 8px;font-size:11px;color:#999;text-transform:uppercase;text-align:right">Base</td>
+          <td style="padding:6px 8px;font-size:11px;color:#999;text-transform:uppercase;text-align:right">Commission</td>
+        </tr>
+        ${commissionItems.map((item) => `
+        <tr style="border-top:1px solid #eee">
+          <td style="padding:6px 8px;font-size:13px;text-transform:capitalize">${escapeHtml(item.kind)} — ${escapeHtml(item.number)}</td>
+          <td style="padding:6px 8px;font-size:13px;text-align:right">Rs. ${Number(item.amount).toLocaleString()}</td>
+          <td style="padding:6px 8px;font-size:13px;text-align:right">Rs. ${Number((item.amount * pct) / 100).toLocaleString()}</td>
+        </tr>`).join("")}
+      </table>` : ""}
       ${note ? `<p style="margin:0 0 8px;font-size:13px;line-height:1.5;color:#333">${escapeHtml(note)}</p>` : ""}
       <p style="color:#999;font-size:12px;margin:16px 0 0">
         This is a system-generated payslip summary. Contact management if you have any questions.

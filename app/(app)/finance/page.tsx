@@ -36,6 +36,13 @@ const EXPENSE_CATEGORIES: { value: ExpenseCategory; label: string }[] = [
 
 const EXPENSE_CATEGORY_LABEL: Record<string, string> = Object.fromEntries(EXPENSE_CATEGORIES.map((c) => [c.value, c.label]));
 
+// "Salaries" is excluded here — those expenses are only ever auto-created
+// by issueSalaryPayment() on the Salary page (linked to a SalaryPayment
+// doc), so it shouldn't be pickable when manually adding an expense here.
+// It still appears in EXPENSE_CATEGORIES above for the filter dropdown and
+// labeling existing records.
+const ADD_EXPENSE_CATEGORIES = EXPENSE_CATEGORIES.filter((c) => c.value !== "salaries");
+
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -923,7 +930,7 @@ export default function FinancePage() {
               <div>
                 <label className="text-xs text-zinc-500 mb-1 block">Category</label>
                 <select className="nexora-input" value={newExpenseCategory} onChange={(e) => setNewExpenseCategory(e.target.value as ExpenseCategory)}>
-                  {EXPENSE_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                  {ADD_EXPENSE_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                 </select>
               </div>
               <div>

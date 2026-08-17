@@ -8,7 +8,7 @@ import { initializeApp, deleteApp } from "firebase/app";
 import { getAuth, createUserWithEmailAndPassword, signOut } from "firebase/auth";
 import { db } from "./firebase";
 import { firebaseConfig } from "./firebase";
-import type { ShopSettings, UserProfile, JobStatus, JobServiceItem, StockLocation, StockMovementReason, SupplierPaymentMethod, SupplierPaymentStatus, ShiftStatus, ShiftReviewStatus, ExpenseCategory, SalePaymentMethod, SalaryType, SalarySetup, SalaryPayment } from "@/types";
+import type { ShopSettings, UserProfile, JobStatus, JobServiceItem, StockLocation, StockMovementReason, SupplierPaymentMethod, SupplierPaymentStatus, ShiftStatus, ShiftReviewStatus, ExpenseCategory, SalePaymentMethod, SalaryType, SalarySetup, SalaryPayment, SalaryCommissionItem } from "@/types";
 import { diffFields, writeAuditLog } from "./audit";
 import { isEditableRole, getDefaultPermissions, PERMISSION_CATALOG } from "./permissions";
 
@@ -2222,6 +2222,7 @@ export interface IssueSalaryPaymentData {
   amount: number;
   commissionBase?: number;
   commissionPercent?: number;
+  commissionItems?: SalaryCommissionItem[];
   periodLabel: string;
   note?: string;
   issuedById: string;
@@ -2237,13 +2238,32 @@ export async function issueSalaryPayment(
   data: IssueSalaryPaymentData
 ): Promise<{ salaryPaymentId: string; paymentNo: string; expenseId: string }> {
   if (data.amount <= 0) throw new Error("Salary amount must be greater than zero");
+  const commissionItems = data.commissionItems || [];
   return runTransaction(db, async (tx) => {
     // Firestore transactions require every tx.get() to happen before any
     // tx.set()/tx.update() — both counters must be read first, then both
-    // bumped, rather than read-bump-read-bump.
+    // bumped, rather than read-bump-read-bump. Linked sale/job docs are
+    // read here too, so we can confirm none of them got claimed by another
+    // commission payment between the picker loading and this submit.
     const salaryCounterRef = doc(db, "counters", "salary");
     const expenseCounterRef = doc(db, "counters", "expense");
-    const [salaryCounterDoc, expenseCounterDoc] = await Promise.all([tx.get(salaryCounterRef), tx.get(expenseCounterRef)]);
+    const itemRefs = commissionItems.map((item) =>
+      doc(db, item.kind === "sale" ? "sales" : "jobs", item.id)
+    );
+    const [salaryCounterDoc, expenseCounterDoc, ...itemDocs] = await Promise.all([
+      tx.get(salaryCounterRef),
+      tx.get(expenseCounterRef),
+      ...itemRefs.map((ref) => tx.get(ref)),
+    ]);
+
+    for (let i = 0; i < itemDocs.length; i++) {
+      const item = commissionItems[i];
+      const itemDoc = itemDocs[i];
+      if (!itemDoc.exists()) throw new Error(`${item.kind === "sale" ? "Sale" : "Job"} ${item.number} no longer exists`);
+      if (itemDoc.data().commissionPaymentId) {
+        throw new Error(`${item.kind === "sale" ? "Sale" : "Job"} ${item.number} already has a commission payment linked`);
+      }
+    }
 
     const salaryCurrent = salaryCounterDoc.exists() ? (salaryCounterDoc.data().value as number) : 0;
     const salaryNext = salaryCurrent + 1;
@@ -2279,6 +2299,7 @@ export async function issueSalaryPayment(
       amount: data.amount,
       commissionBase: data.commissionBase ?? null,
       commissionPercent: data.commissionPercent ?? null,
+      commissionItems,
       periodLabel: data.periodLabel,
       note: data.note ?? "",
       issuedById: data.issuedById,
@@ -2286,6 +2307,8 @@ export async function issueSalaryPayment(
       linkedExpenseId: expenseRef.id,
       createdAt: serverTimestamp(),
     });
+
+    itemRefs.forEach((ref) => tx.update(ref, { commissionPaymentId: salaryRef.id }));
 
     return { salaryPaymentId: salaryRef.id, paymentNo, expenseId: expenseRef.id };
   });
@@ -2306,11 +2329,18 @@ export async function deleteSalaryPayment(salaryPaymentId: string) {
   const salaryRef = doc(db, "salaryPayments", salaryPaymentId);
   const salarySnap = await getDoc(salaryRef);
   if (!salarySnap.exists()) throw new Error("Salary payment not found");
-  const linkedExpenseId = salarySnap.data().linkedExpenseId as string | undefined;
+  const salaryData = salarySnap.data();
+  const linkedExpenseId = salaryData.linkedExpenseId as string | undefined;
+  const commissionItems = (salaryData.commissionItems || []) as SalaryCommissionItem[];
 
   const batch = writeBatch(db);
   batch.delete(salaryRef);
   if (linkedExpenseId) batch.delete(doc(db, "expenses", linkedExpenseId));
+  // Free up any sales/jobs this payment had claimed so they're selectable
+  // again in a future commission payment.
+  commissionItems.forEach((item) => {
+    batch.update(doc(db, item.kind === "sale" ? "sales" : "jobs", item.id), { commissionPaymentId: null });
+  });
   return batch.commit();
 }
 
