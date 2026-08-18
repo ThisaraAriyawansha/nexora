@@ -2,11 +2,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import {
-  getShifts, getSalesByShift, reviewShift,
+  getShifts, getSalesByShift, reviewShift, adminCloseShift,
   getSales, getSaleItemsForSales, getSuppliers, getExpenses, addExpense, deleteExpense,
 } from "@/lib/firestore";
 import { ExpenseCategory, SALE_PAYMENT_METHOD_LABEL } from "@/types";
-import { Search, Download, Wallet, X, TrendingUp, Receipt, Plus, Trash2 } from "lucide-react";
+import { Search, Download, Wallet, X, TrendingUp, Receipt, Plus, Trash2, AlertTriangle } from "lucide-react";
 import Pagination from "@/components/ui/Pagination";
 import { rowsToCSV, downloadCSV } from "@/lib/csv";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -58,12 +58,21 @@ const formatDate = (ts: any) => {
   return d.toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 };
 
+// How long a shift has been sitting open — used to flag abandoned shifts
+// (opened days ago, never closed) so a stale one isn't mistaken for live.
+const daysOpen = (openedAt: any) => {
+  if (!openedAt) return 0;
+  const opened = openedAt.toDate ? openedAt.toDate() : new Date(openedAt);
+  return Math.floor((Date.now() - opened.getTime()) / (24 * 60 * 60 * 1000));
+};
+
 export default function FinancePage() {
   const { user, userDisplayName, can } = useAuth();
   const canView = can("finance.view");
   const canReview = can("finance.reviewShift");
   const canAddExpense = can("finance.addExpense");
   const canDeleteExpense = can("finance.deleteExpense");
+  const canForceClose = can("finance.forceCloseShift");
 
   const [tab, setTab] = useState<"overview" | "daily" | "shifts" | "expenses">("overview");
 
@@ -271,6 +280,23 @@ export default function FinancePage() {
     });
   }, [canView, fromDate, toDate]);
 
+  // Open shifts left sitting for a day or more, fetched independent of the
+  // Cash Shifts tab's date filter (which defaults to today) — otherwise an
+  // abandoned shift from days ago would silently never show up unless
+  // someone thought to widen the date range.
+  const [staleOpenShifts, setStaleOpenShifts] = useState<any[]>([]);
+
+  const reloadStaleOpenShifts = async () => {
+    const open = await getShifts({ status: "open" });
+    setStaleOpenShifts((open as any[]).filter((s) => daysOpen(s.openedAt) >= 1));
+  };
+
+  useEffect(() => {
+    if (!canView) return;
+    reloadStaleOpenShifts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canView]);
+
   useEffect(() => {
     setPage(1);
   }, [search, fromDate, toDate, statusFilter, reviewFilter]);
@@ -291,10 +317,21 @@ export default function FinancePage() {
   const openCount = filteredShifts.filter((s) => s.status === "open").length;
   const flaggedCount = filteredShifts.filter((s) => s.reviewStatus === "flagged").length;
 
+  // Force-close (Admin override for a shift its cashier abandoned) — kept
+  // as its own countedCash/note pair, distinct from the review form's
+  // reviewNote, since they're different actions on the same modal.
+  const [forceCountedCash, setForceCountedCash] = useState("");
+  const [forceCloseNote, setForceCloseNote] = useState("");
+  const [forceClosing, setForceClosing] = useState(false);
+  const [forceCloseError, setForceCloseError] = useState("");
+
   const openShiftDetail = async (shift: any) => {
     setViewShift(shift);
     setReviewNote(shift.reviewNote || "");
     setReviewError("");
+    setForceCountedCash("");
+    setForceCloseNote("");
+    setForceCloseError("");
     setLoadingSales(true);
     const sales = await getSalesByShift(shift.id);
     setShiftSales(sales);
@@ -306,6 +343,9 @@ export default function FinancePage() {
     setShiftSales([]);
     setReviewNote("");
     setReviewError("");
+    setForceCountedCash("");
+    setForceCloseNote("");
+    setForceCloseError("");
   };
 
   const handleReview = async (status: "approved" | "flagged") => {
@@ -324,6 +364,42 @@ export default function FinancePage() {
       setReviewError(err?.message || "Failed to update review status");
     }
     setReviewing(false);
+  };
+
+  const handleForceClose = async () => {
+    if (!viewShift || !user) return;
+    const countedCash = Number(forceCountedCash);
+    if (!forceCountedCash || countedCash < 0) {
+      setForceCloseError("Enter a valid counted cash amount");
+      return;
+    }
+    setForceClosing(true);
+    setForceCloseError("");
+    try {
+      const result = await adminCloseShift(viewShift.id, {
+        countedCash,
+        closeNote: forceCloseNote || undefined,
+        performedBy: { uid: user.uid, name: userDisplayName || "Admin" },
+      });
+      const patch = {
+        status: "closed",
+        expectedCash: result.expectedCash,
+        countedCash: result.countedCash,
+        variance: result.variance,
+        closeNote: forceCloseNote,
+        forceClosed: true,
+        closedByName: userDisplayName || "Admin",
+        reviewStatus: "pending",
+      };
+      setShifts((prev) => prev.map((s) => (s.id === viewShift.id ? { ...s, ...patch } : s)));
+      setViewShift((prev: any) => (prev ? { ...prev, ...patch } : prev));
+      setStaleOpenShifts((prev) => prev.filter((s) => s.id !== viewShift.id));
+      setForceCountedCash("");
+      setForceCloseNote("");
+    } catch (err: any) {
+      setForceCloseError(err?.message || "Failed to force-close shift");
+    }
+    setForceClosing(false);
   };
 
   const handleExport = () => {
@@ -704,6 +780,37 @@ export default function FinancePage() {
       {/* ─── Cash Shifts tab ─── */}
       {tab === "shifts" && (
         <div>
+          {staleOpenShifts.length > 0 && (
+            <div className="nexora-card border border-amber-200 bg-amber-50 p-4 mb-6">
+              <div className="flex items-start gap-3">
+                <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-amber-800">
+                    {staleOpenShifts.length} shift{staleOpenShifts.length > 1 ? "s" : ""} left open for a day or more
+                  </p>
+                  <p className="text-xs text-amber-700 mt-0.5">
+                    These cashiers never closed their till. Open one below to review it{canForceClose ? " or force-close it" : ""}.
+                  </p>
+                  <div className="mt-2 space-y-1.5">
+                    {staleOpenShifts.map((s) => (
+                      <button
+                        key={s.id}
+                        onClick={() => openShiftDetail(s)}
+                        className="w-full text-left flex items-center justify-between gap-2 bg-white border border-amber-200 rounded px-3 py-1.5 text-xs hover:border-amber-400 transition-colors"
+                      >
+                        <span>
+                          <span className="font-medium text-ink">{s.shiftNo}</span>
+                          <span className="text-zinc-500"> — {s.cashierName}</span>
+                        </span>
+                        <span className="text-amber-700 shrink-0">Open {daysOpen(s.openedAt)} day{daysOpen(s.openedAt) !== 1 ? "s" : ""}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6">
             <p className="text-zinc-500 text-sm">{filteredShifts.length} shifts in range · {openCount} still open · {flaggedCount} flagged</p>
             <div className="flex gap-6 sm:text-right">
@@ -774,7 +881,18 @@ export default function FinancePage() {
                       <td className="px-4 py-3 font-medium text-ink hover:underline">{s.shiftNo}</td>
                       <td className="px-4 py-3 text-zinc-600">{s.cashierName}</td>
                       <td className="px-4 py-3 text-zinc-500 text-xs">{formatDate(s.openedAt)}</td>
-                      <td className="px-4 py-3 text-zinc-500 text-xs">{s.status === "open" ? <span className="badge badge-warning">Open</span> : formatDate(s.closedAt)}</td>
+                      <td className="px-4 py-3 text-zinc-500 text-xs">
+                        {s.status === "open" ? (
+                          <span className="flex items-center gap-1.5">
+                            <span className="badge badge-warning">Open</span>
+                            {daysOpen(s.openedAt) >= 1 && (
+                              <span className="text-amber-600 font-medium">{daysOpen(s.openedAt)}d</span>
+                            )}
+                          </span>
+                        ) : (
+                          formatDate(s.closedAt)
+                        )}
+                      </td>
                       <td className="px-4 py-3">Rs. {s.openingFloat?.toLocaleString()}</td>
                       <td className="px-4 py-3">Rs. {s.cashSalesTotal?.toLocaleString()}</td>
                       <td className="px-4 py-3">Rs. {s.cardSalesTotal?.toLocaleString()}</td>
@@ -807,7 +925,17 @@ export default function FinancePage() {
                 </div>
                 <div className="p-4 space-y-4">
                   <div className="bg-zinc-50 rounded p-3 space-y-1 text-sm">
-                    <div className="flex justify-between"><span className="text-zinc-500">Status</span><span>{viewShift.status === "open" ? <span className="badge badge-warning">Open</span> : "Closed"}</span></div>
+                    <div className="flex justify-between">
+                      <span className="text-zinc-500">Status</span>
+                      <span className="flex items-center gap-2">
+                        {viewShift.status === "open" ? <span className="badge badge-warning">Open</span> : "Closed"}
+                        {viewShift.status === "open" && daysOpen(viewShift.openedAt) >= 1 && (
+                          <span className="text-xs text-amber-600 font-medium">
+                            open {daysOpen(viewShift.openedAt)} day{daysOpen(viewShift.openedAt) !== 1 ? "s" : ""}
+                          </span>
+                        )}
+                      </span>
+                    </div>
                     <div className="flex justify-between"><span className="text-zinc-500">Opened</span><span>{formatDate(viewShift.openedAt)}</span></div>
                     {viewShift.status === "closed" && <div className="flex justify-between"><span className="text-zinc-500">Closed</span><span>{formatDate(viewShift.closedAt)}</span></div>}
                     <div className="flex justify-between"><span className="text-zinc-500">Opening float</span><span>Rs. {viewShift.openingFloat?.toLocaleString()}</span></div>
@@ -828,6 +956,9 @@ export default function FinancePage() {
                       </>
                     )}
                     {viewShift.closeNote && <div className="pt-1"><span className="text-zinc-500">Note: </span>{viewShift.closeNote}</div>}
+                    {viewShift.forceClosed && (
+                      <div className="pt-1 text-amber-700">Force-closed by {viewShift.closedByName || "an Admin"} — not the owning cashier.</div>
+                    )}
                   </div>
 
                   <div>
@@ -848,6 +979,38 @@ export default function FinancePage() {
                       </div>
                     )}
                   </div>
+
+                  {viewShift.status === "open" && canForceClose && (
+                    <div className="space-y-2 border-t border-zinc-100 pt-3">
+                      <h3 className="text-xs text-zinc-500 font-medium uppercase tracking-wider">Force Close (Admin Override)</h3>
+                      <p className="text-xs text-zinc-400">
+                        Use this only if {viewShift.cashierName} can't close this shift themselves (e.g. an abandoned till).
+                        Counted cash is compared against expected cash the same way a normal close-out works.
+                      </p>
+                      <input
+                        type="number"
+                        min={0}
+                        className="nexora-input"
+                        placeholder="Counted cash"
+                        value={forceCountedCash}
+                        onChange={(e) => setForceCountedCash(e.target.value)}
+                      />
+                      <input
+                        className="nexora-input"
+                        placeholder="Note (optional) — e.g. why this was force-closed"
+                        value={forceCloseNote}
+                        onChange={(e) => setForceCloseNote(e.target.value)}
+                      />
+                      {forceCloseError && <p className="text-xs text-red-600">{forceCloseError}</p>}
+                      <button
+                        onClick={handleForceClose}
+                        disabled={forceClosing}
+                        className="nexora-btn nexora-btn-outline w-full justify-center text-amber-700 border-amber-200 hover:border-amber-400"
+                      >
+                        {forceClosing ? "Closing…" : "Force Close Shift"}
+                      </button>
+                    </div>
+                  )}
 
                   {viewShift.status === "closed" && canReview && (
                     <div className="space-y-2 border-t border-zinc-100 pt-3">
@@ -1001,7 +1164,10 @@ export default function FinancePage() {
                       <select className="nexora-input" value={newExpenseShiftId} onChange={(e) => setNewExpenseShiftId(e.target.value)}>
                         <option value="">Select a shift…</option>
                         {openShiftsForExpense.map((s) => (
-                          <option key={s.id} value={s.id}>{s.shiftNo} — {s.cashierName}</option>
+                          <option key={s.id} value={s.id}>
+                            {s.shiftNo} — {s.cashierName}
+                            {daysOpen(s.openedAt) >= 1 ? ` (open ${daysOpen(s.openedAt)}d — check this is still live)` : " (opened today)"}
+                          </option>
                         ))}
                       </select>
                     )}

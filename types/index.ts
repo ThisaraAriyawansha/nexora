@@ -237,6 +237,12 @@ export interface Shift {
   countedCash?: number;
   variance?: number;
   closeNote?: string;
+  // Set only when an Admin/Super Admin closed this shift on the cashier's
+  // behalf via adminCloseShift() — e.g. an abandoned shift the original
+  // cashier never came back to close themselves.
+  forceClosed?: boolean;
+  closedById?: string;
+  closedByName?: string;
   reviewStatus?: ShiftReviewStatus;
   reviewedAt?: any;
   reviewedById?: string;

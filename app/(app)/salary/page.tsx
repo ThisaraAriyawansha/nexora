@@ -38,6 +38,14 @@ const formatDate = (ts: any) => {
   return d.toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 };
 
+// How long a shift has been sitting open — flags a stale/abandoned till in
+// the "which shift?" picker so it isn't mistaken for the current live one.
+const daysOpen = (openedAt: any) => {
+  if (!openedAt) return 0;
+  const opened = openedAt.toDate ? openedAt.toDate() : new Date(openedAt);
+  return Math.floor((Date.now() - opened.getTime()) / (24 * 60 * 60 * 1000));
+};
+
 export default function SalaryPage() {
   const { user, userDisplayName, can } = useAuth();
   const canView = can("salary.view");
@@ -636,7 +644,10 @@ export default function SalaryPage() {
                     <select className="nexora-input" value={issueShiftId} onChange={(e) => setIssueShiftId(e.target.value)}>
                       <option value="">Select a shift…</option>
                       {openShiftsForSalary.map((s) => (
-                        <option key={s.id} value={s.id}>{s.shiftNo} — {s.cashierName}</option>
+                        <option key={s.id} value={s.id}>
+                          {s.shiftNo} — {s.cashierName}
+                          {daysOpen(s.openedAt) >= 1 ? ` (open ${daysOpen(s.openedAt)}d — check this is still live)` : " (opened today)"}
+                        </option>
                       ))}
                     </select>
                   )}

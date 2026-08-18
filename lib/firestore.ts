@@ -2132,6 +2132,44 @@ export async function closeShift(
   });
 }
 
+// Lets an Admin/Super Admin close a shift the original cashier never came
+// back to close themselves (e.g. left open for days) — closeShift() is
+// deliberately locked to the owning cashier, so an abandoned shift would
+// otherwise stay "open" forever with no recovery path. Same expectedCash
+// math as closeShift(), but stamps who actually closed it so it's visibly
+// distinguishable from a normal self-close in Finance.
+export async function adminCloseShift(
+  shiftId: string,
+  data: { countedCash: number; closeNote?: string; performedBy: { uid: string; name: string } }
+) {
+  if (data.countedCash < 0) throw new Error("Counted cash cannot be negative");
+  return runTransaction(db, async (tx) => {
+    const shiftRef = doc(db, "shifts", shiftId);
+    const shiftSnap = await tx.get(shiftRef);
+    if (!shiftSnap.exists()) throw new Error("Shift not found");
+    const shift = shiftSnap.data() as { status: string; openingFloat: number; cashSalesTotal: number; cashExpensesTotal?: number };
+    if (shift.status !== "open") throw new Error("Shift is already closed");
+
+    const expectedCash = shift.openingFloat + shift.cashSalesTotal - (shift.cashExpensesTotal || 0);
+    const variance = data.countedCash - expectedCash;
+
+    tx.update(shiftRef, {
+      status: "closed",
+      closedAt: serverTimestamp(),
+      expectedCash,
+      countedCash: data.countedCash,
+      variance,
+      closeNote: data.closeNote ?? "",
+      reviewStatus: "pending",
+      forceClosed: true,
+      closedById: data.performedBy.uid,
+      closedByName: data.performedBy.name,
+    });
+
+    return { expectedCash, countedCash: data.countedCash, variance };
+  });
+}
+
 export async function getShifts(opts?: { cashierId?: string; status?: ShiftStatus; fromDate?: Date; toDate?: Date }) {
   const constraints = [];
   if (opts?.cashierId) constraints.push(where("cashierId", "==", opts.cashierId));
