@@ -333,11 +333,13 @@ service cloud.firestore {
       //     stays frozen, only the review fields move.
       //  3) createSale (lib/firestore.ts) bumping running totals on the
       //     caller's own still-open shift as each sale completes.
-      //  4) addExpense/deleteExpense (lib/firestore.ts) debiting/reversing
-      //     cashExpensesTotal on a still-open shift when someone with
-      //     finance.addExpense/finance.deleteExpense logs or removes a
-      //     cash-drawer payout — the actor is typically a Manager, not the
-      //     owning cashier, so this can't reuse path 3's cashierId pin.
+      //  4) addExpense/deleteExpense/issueSalaryPayment/deleteSalaryPayment
+      //     (lib/firestore.ts) debiting/reversing cashExpensesTotal on a
+      //     still-open shift when someone with finance.addExpense/
+      //     finance.deleteExpense/salary.issue/salary.delete logs or removes
+      //     a cash-drawer payout — the actor is typically a Manager/Admin,
+      //     not the owning cashier, so this can't reuse path 3's cashierId
+      //     pin.
       allow update: if isAuth() && (
         (
           resource.data.cashierId == request.auth.uid &&
@@ -374,7 +376,10 @@ service cloud.firestore {
           request.resource.data.openingFloat == resource.data.openingFloat
         )
         || (
-          (hasPerm('finance.addExpense') || hasPerm('finance.deleteExpense')) &&
+          (
+            hasPerm('finance.addExpense') || hasPerm('finance.deleteExpense') ||
+            hasPerm('salary.issue') || hasPerm('salary.delete')
+          ) &&
           resource.data.status == 'open' &&
           request.resource.data.status == 'open' &&
           request.resource.data.cashierId == resource.data.cashierId &&

@@ -316,6 +316,11 @@ export interface SalaryPayment {
   // Back-reference to the auto-created Expense doc so deleteSalaryPayment
   // can remove both docs together.
   linkedExpenseId: string;
+  // Set when this payment was handed out of a cashier's physical cash
+  // drawer (e.g. a cash advance mid-shift) — lets closeShift() subtract it
+  // from that shift's expected cash. Only linkable to a still-open shift.
+  shiftId?: string;
+  shiftNo?: string;
   emailSentAt?: any;
   createdAt?: any;
 }

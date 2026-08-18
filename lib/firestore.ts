@@ -2268,6 +2268,13 @@ export interface IssueSalaryPaymentData {
   note?: string;
   issuedById: string;
   issuedByName: string;
+  // Set when this payment was handed out of a cashier's physical cash
+  // drawer rather than by bank/cheque — must reference a still-open shift
+  // so its cashExpensesTotal can be debited in the same transaction,
+  // keeping closeShift()'s expectedCash accurate. Mirrors addExpense()'s
+  // shiftId link.
+  shiftId?: string;
+  shiftNo?: string;
 }
 
 // Issues a payment and, in the same transaction, logs a matching Expense
@@ -2280,6 +2287,7 @@ export async function issueSalaryPayment(
 ): Promise<{ salaryPaymentId: string; paymentNo: string; expenseId: string }> {
   if (data.amount <= 0) throw new Error("Salary amount must be greater than zero");
   const commissionItems = data.commissionItems || [];
+  const shiftRef = data.shiftId ? doc(db, "shifts", data.shiftId) : null;
   return runTransaction(db, async (tx) => {
     // Firestore transactions require every tx.get() to happen before any
     // tx.set()/tx.update() — both counters must be read first, then both
@@ -2291,11 +2299,15 @@ export async function issueSalaryPayment(
     const itemRefs = commissionItems.map((item) =>
       doc(db, item.kind === "sale" ? "sales" : "jobs", item.id)
     );
-    const [salaryCounterDoc, expenseCounterDoc, ...itemDocs] = await Promise.all([
+    const [salaryCounterDoc, expenseCounterDoc, shiftSnap, ...itemDocs] = await Promise.all([
       tx.get(salaryCounterRef),
       tx.get(expenseCounterRef),
+      shiftRef ? tx.get(shiftRef) : Promise.resolve(null),
       ...itemRefs.map((ref) => tx.get(ref)),
     ]);
+    if (shiftRef && (!shiftSnap!.exists() || shiftSnap!.data().status !== "open")) {
+      throw new Error("That shift is no longer open — it can't be debited for this payment.");
+    }
 
     for (let i = 0; i < itemDocs.length; i++) {
       const item = commissionItems[i];
@@ -2328,6 +2340,7 @@ export async function issueSalaryPayment(
       paidById: data.issuedById,
       paidByName: data.issuedByName,
       linkedSalaryPaymentId: salaryRef.id,
+      ...(shiftRef ? { shiftId: data.shiftId, shiftNo: data.shiftNo ?? "" } : {}),
       createdAt: serverTimestamp(),
     });
 
@@ -2346,10 +2359,15 @@ export async function issueSalaryPayment(
       issuedById: data.issuedById,
       issuedByName: data.issuedByName,
       linkedExpenseId: expenseRef.id,
+      ...(shiftRef ? { shiftId: data.shiftId, shiftNo: data.shiftNo ?? "" } : {}),
       createdAt: serverTimestamp(),
     });
 
     itemRefs.forEach((ref) => tx.update(ref, { commissionPaymentId: salaryRef.id }));
+
+    if (shiftRef) {
+      tx.update(shiftRef, { cashExpensesTotal: increment(data.amount) });
+    }
 
     return { salaryPaymentId: salaryRef.id, paymentNo, expenseId: expenseRef.id };
   });
@@ -2373,16 +2391,27 @@ export async function deleteSalaryPayment(salaryPaymentId: string) {
   const salaryData = salarySnap.data();
   const linkedExpenseId = salaryData.linkedExpenseId as string | undefined;
   const commissionItems = (salaryData.commissionItems || []) as SalaryCommissionItem[];
+  const shiftId = salaryData.shiftId as string | undefined;
+  const shiftRef = shiftId ? doc(db, "shifts", shiftId) : null;
 
-  const batch = writeBatch(db);
-  batch.delete(salaryRef);
-  if (linkedExpenseId) batch.delete(doc(db, "expenses", linkedExpenseId));
-  // Free up any sales/jobs this payment had claimed so they're selectable
-  // again in a future commission payment.
-  commissionItems.forEach((item) => {
-    batch.update(doc(db, item.kind === "sale" ? "sales" : "jobs", item.id), { commissionPaymentId: null });
+  return runTransaction(db, async (tx) => {
+    // Read before any write — a transaction's reads must all happen first.
+    const shiftSnap = shiftRef ? await tx.get(shiftRef) : null;
+
+    tx.delete(salaryRef);
+    if (linkedExpenseId) tx.delete(doc(db, "expenses", linkedExpenseId));
+    // Free up any sales/jobs this payment had claimed so they're selectable
+    // again in a future commission payment.
+    commissionItems.forEach((item) => {
+      tx.update(doc(db, item.kind === "sale" ? "sales" : "jobs", item.id), { commissionPaymentId: null });
+    });
+
+    // Reverse this payment's debit from its shift's cash drawer, mirroring
+    // deleteExpense() — only if the shift is still open.
+    if (shiftSnap && shiftSnap.exists() && shiftSnap.data().status === "open") {
+      tx.update(shiftRef!, { cashExpensesTotal: increment(-(salaryData.amount as number)) });
+    }
   });
-  return batch.commit();
 }
 
 // Every team member except Super Admin — the business owner is never a
