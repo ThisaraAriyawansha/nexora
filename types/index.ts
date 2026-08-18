@@ -228,11 +228,21 @@ export interface Shift {
   transferSalesTotal: number;
   kokoPaySalesTotal: number;
   salesCount: number;
+  // Sum of expenses paid out of this shift's physical cash drawer (e.g. a
+  // maintenance callout paid in cash mid-shift) — subtracted from expected
+  // cash at close so a legitimate payout doesn't read as a shortage.
+  cashExpensesTotal: number;
   closedAt?: any;
   expectedCash?: number;
   countedCash?: number;
   variance?: number;
   closeNote?: string;
+  // Set only when an Admin/Super Admin closed this shift on the cashier's
+  // behalf via adminCloseShift() — e.g. an abandoned shift the original
+  // cashier never came back to close themselves.
+  forceClosed?: boolean;
+  closedById?: string;
+  closedByName?: string;
   reviewStatus?: ShiftReviewStatus;
   reviewedAt?: any;
   reviewedById?: string;
@@ -253,6 +263,11 @@ export interface Expense {
   // Set only on expenses auto-created by issueSalaryPayment() — lets
   // deleteSalaryPayment() find and remove the matching expense in one batch.
   linkedSalaryPaymentId?: string;
+  // Set when this expense was paid out of a cashier's physical cash drawer —
+  // lets closeShift() subtract it from that shift's expected cash so the
+  // payout doesn't read as a shortage. Only linkable to a still-open shift.
+  shiftId?: string;
+  shiftNo?: string;
   createdAt?: any;
 }
 
@@ -307,6 +322,11 @@ export interface SalaryPayment {
   // Back-reference to the auto-created Expense doc so deleteSalaryPayment
   // can remove both docs together.
   linkedExpenseId: string;
+  // Set when this payment was handed out of a cashier's physical cash
+  // drawer (e.g. a cash advance mid-shift) — lets closeShift() subtract it
+  // from that shift's expected cash. Only linkable to a still-open shift.
+  shiftId?: string;
+  shiftNo?: string;
   emailSentAt?: any;
   createdAt?: any;
 }

@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import {
   getPayableUsers, setSalarySetup, clearSalarySetup, issueSalaryPayment, getSalaryPayments, deleteSalaryPayment,
-  getSales, getJobs,
+  getSales, getJobs, getShifts,
 } from "@/lib/firestore";
 import { SalaryType, SalarySetup, SalaryPayment, SalaryCommissionItem, UserProfile } from "@/types";
 import { Banknote, Download, Mail, Trash2, X, Check, Eye, Search } from "lucide-react";
@@ -38,6 +38,14 @@ const formatDate = (ts: any) => {
   return d.toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 };
 
+// How long a shift has been sitting open — flags a stale/abandoned till in
+// the "which shift?" picker so it isn't mistaken for the current live one.
+const daysOpen = (openedAt: any) => {
+  if (!openedAt) return 0;
+  const opened = openedAt.toDate ? openedAt.toDate() : new Date(openedAt);
+  return Math.floor((Date.now() - opened.getTime()) / (24 * 60 * 60 * 1000));
+};
+
 export default function SalaryPage() {
   const { user, userDisplayName, can } = useAuth();
   const canView = can("salary.view");
@@ -70,6 +78,29 @@ export default function SalaryPage() {
   const [issuing, setIssuing] = useState(false);
   const [issueError, setIssueError] = useState("");
   const [issueSuccess, setIssueSuccess] = useState<string | null>(null);
+
+  // Paying a salary/advance out of a cashier's till debits that shift's cash
+  // drawer (via issueSalaryPayment's shiftId link), same mechanism as
+  // Finance > Expenses' "paid from till" option — otherwise the payout is
+  // invisible to closeShift()'s expected-cash math and reads as a shortage.
+  const [paidFromDrawer, setPaidFromDrawer] = useState(false);
+  const [issueShiftId, setIssueShiftId] = useState("");
+  const [openShiftsForSalary, setOpenShiftsForSalary] = useState<any[]>([]);
+  const [loadingOpenShifts, setLoadingOpenShifts] = useState(false);
+
+  useEffect(() => {
+    if (!paidFromDrawer) return;
+    setLoadingOpenShifts(true);
+    getShifts({ status: "open" }).then((s) => {
+      setOpenShiftsForSalary(s);
+      setLoadingOpenShifts(false);
+    });
+  }, [paidFromDrawer]);
+
+  const selectedDrawerShift = useMemo(
+    () => openShiftsForSalary.find((s) => s.id === issueShiftId) || null,
+    [openShiftsForSalary, issueShiftId]
+  );
 
   // Sale/Job picker for commission payments — lets the admin search by
   // invoice/job number and attach specific sales/jobs as the audit trail
@@ -177,6 +208,8 @@ export default function SalaryPage() {
     setIssueNote("");
     setCommissionItems([]);
     setCommissionSearch("");
+    setPaidFromDrawer(false);
+    setIssueShiftId("");
   };
 
   const handleIssue = async () => {
@@ -187,6 +220,10 @@ export default function SalaryPage() {
     const amount = Number(issueAmount);
     if (!issueAmount || amount <= 0) {
       setIssueError("Enter a valid amount");
+      return;
+    }
+    if (paidFromDrawer && !issueShiftId) {
+      setIssueError("Pick which cashier's till this was paid from");
       return;
     }
     setIssuing(true);
@@ -205,6 +242,9 @@ export default function SalaryPage() {
         note: issueNote || undefined,
         issuedById: user.uid,
         issuedByName: userDisplayName || "Admin",
+        ...(paidFromDrawer && selectedDrawerShift
+          ? { shiftId: selectedDrawerShift.id, shiftNo: selectedDrawerShift.shiftNo }
+          : {}),
       });
       setIssueSuccess(paymentNo);
       resetIssueForm();
@@ -297,6 +337,7 @@ export default function SalaryPage() {
       Period: p.periodLabel,
       Note: p.note,
       "Issued By": p.issuedByName,
+      Drawer: p.shiftNo || "",
       Date: p.createdAt,
     }));
     downloadCSV(`salary-payments-${histFromDate}_to_${histToDate}.csv`, rowsToCSV(rows));
@@ -582,6 +623,39 @@ export default function SalaryPage() {
               />
             </div>
 
+            <div className="border-t border-zinc-100 pt-3">
+              <label className="flex items-center gap-2 text-xs text-zinc-600">
+                <input
+                  type="checkbox"
+                  checked={paidFromDrawer}
+                  disabled={!canIssue}
+                  onChange={(e) => { setPaidFromDrawer(e.target.checked); if (!e.target.checked) setIssueShiftId(""); }}
+                />
+                Paid out of a cashier's till
+              </label>
+              {paidFromDrawer && (
+                <div className="mt-2">
+                  <label className="text-xs text-zinc-500 mb-1 block">Which shift?</label>
+                  {loadingOpenShifts ? (
+                    <p className="text-xs text-zinc-400">Loading open shifts…</p>
+                  ) : openShiftsForSalary.length === 0 ? (
+                    <p className="text-xs text-amber-600">No open shifts right now — this can't be debited from a drawer.</p>
+                  ) : (
+                    <select className="nexora-input" value={issueShiftId} onChange={(e) => setIssueShiftId(e.target.value)}>
+                      <option value="">Select a shift…</option>
+                      {openShiftsForSalary.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.shiftNo} — {s.cashierName}
+                          {daysOpen(s.openedAt) >= 1 ? ` (open ${daysOpen(s.openedAt)}d — check this is still live)` : " (opened today)"}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <p className="text-[11px] text-zinc-400 mt-1">This amount is deducted from that shift's expected cash at close.</p>
+                </div>
+              )}
+            </div>
+
             {issueError && <p className="text-xs text-red-600">{issueError}</p>}
             {issueSuccess && (
               <p className="text-xs text-green-600 flex items-center gap-1"><Check size={12} /> Issued as {issueSuccess}</p>
@@ -796,6 +870,9 @@ export default function SalaryPage() {
                 <div className="flex justify-between"><span className="text-zinc-500">Type</span><span>{TYPE_LABEL[viewPayment.type] || viewPayment.type}</span></div>
                 <div className="flex justify-between"><span className="text-zinc-500">Period</span><span>{viewPayment.periodLabel}</span></div>
                 <div className="flex justify-between"><span className="text-zinc-500">Issued By</span><span>{viewPayment.issuedByName}</span></div>
+                {viewPayment.shiftNo && (
+                  <div className="flex justify-between"><span className="text-zinc-500">Paid from till</span><span>{viewPayment.shiftNo}</span></div>
+                )}
                 <div className="flex justify-between"><span className="text-zinc-500">Date</span><span>{formatDate(viewPayment.createdAt)}</span></div>
               </div>
 

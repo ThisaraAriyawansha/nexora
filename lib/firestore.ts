@@ -2088,6 +2088,7 @@ export async function openShift(data: ShiftOpenData): Promise<{ shiftId: string;
       transferSalesTotal: 0,
       kokoPaySalesTotal: 0,
       salesCount: 0,
+      cashExpensesTotal: 0,
     });
 
     return { shiftId: shiftRef.id, shiftNo };
@@ -2110,11 +2111,11 @@ export async function closeShift(
     const shiftRef = doc(db, "shifts", shiftId);
     const shiftSnap = await tx.get(shiftRef);
     if (!shiftSnap.exists()) throw new Error("Shift not found");
-    const shift = shiftSnap.data() as { status: string; cashierId: string; openingFloat: number; cashSalesTotal: number };
+    const shift = shiftSnap.data() as { status: string; cashierId: string; openingFloat: number; cashSalesTotal: number; cashExpensesTotal?: number };
     if (shift.status !== "open") throw new Error("Shift is already closed");
     if (shift.cashierId !== data.performedBy.uid) throw new Error("Only the cashier who opened this shift can close it");
 
-    const expectedCash = shift.openingFloat + shift.cashSalesTotal;
+    const expectedCash = shift.openingFloat + shift.cashSalesTotal - (shift.cashExpensesTotal || 0);
     const variance = data.countedCash - expectedCash;
 
     tx.update(shiftRef, {
@@ -2125,6 +2126,44 @@ export async function closeShift(
       variance,
       closeNote: data.closeNote ?? "",
       reviewStatus: "pending",
+    });
+
+    return { expectedCash, countedCash: data.countedCash, variance };
+  });
+}
+
+// Lets an Admin/Super Admin close a shift the original cashier never came
+// back to close themselves (e.g. left open for days) — closeShift() is
+// deliberately locked to the owning cashier, so an abandoned shift would
+// otherwise stay "open" forever with no recovery path. Same expectedCash
+// math as closeShift(), but stamps who actually closed it so it's visibly
+// distinguishable from a normal self-close in Finance.
+export async function adminCloseShift(
+  shiftId: string,
+  data: { countedCash: number; closeNote?: string; performedBy: { uid: string; name: string } }
+) {
+  if (data.countedCash < 0) throw new Error("Counted cash cannot be negative");
+  return runTransaction(db, async (tx) => {
+    const shiftRef = doc(db, "shifts", shiftId);
+    const shiftSnap = await tx.get(shiftRef);
+    if (!shiftSnap.exists()) throw new Error("Shift not found");
+    const shift = shiftSnap.data() as { status: string; openingFloat: number; cashSalesTotal: number; cashExpensesTotal?: number };
+    if (shift.status !== "open") throw new Error("Shift is already closed");
+
+    const expectedCash = shift.openingFloat + shift.cashSalesTotal - (shift.cashExpensesTotal || 0);
+    const variance = data.countedCash - expectedCash;
+
+    tx.update(shiftRef, {
+      status: "closed",
+      closedAt: serverTimestamp(),
+      expectedCash,
+      countedCash: data.countedCash,
+      variance,
+      closeNote: data.closeNote ?? "",
+      reviewStatus: "pending",
+      forceClosed: true,
+      closedById: data.performedBy.uid,
+      closedByName: data.performedBy.name,
     });
 
     return { expectedCash, countedCash: data.countedCash, variance };
@@ -2172,13 +2211,29 @@ export interface ExpenseData {
   note?: string;
   paidById: string;
   paidByName: string;
+  // Set when this expense was paid out of a cashier's physical cash drawer
+  // (e.g. a maintenance callout paid in cash mid-shift) rather than out of
+  // pocket/bank — must reference a still-open shift so its cashExpensesTotal
+  // can be debited in the same transaction, keeping closeShift()'s
+  // expectedCash accurate.
+  shiftId?: string;
+  shiftNo?: string;
 }
 
 export async function addExpense(data: ExpenseData): Promise<{ expenseId: string; expenseNo: string }> {
   if (data.amount <= 0) throw new Error("Expense amount must be greater than zero");
+  const shiftRef = data.shiftId ? doc(db, "shifts", data.shiftId) : null;
   return runTransaction(db, async (tx) => {
+    // Read before any write — a transaction's reads must all happen first.
     const counterRef = doc(db, "counters", "expense");
-    const counterDoc = await tx.get(counterRef);
+    const [counterDoc, shiftSnap] = await Promise.all([
+      tx.get(counterRef),
+      shiftRef ? tx.get(shiftRef) : Promise.resolve(null),
+    ]);
+    if (shiftRef && (!shiftSnap!.exists() || shiftSnap!.data().status !== "open")) {
+      throw new Error("That shift is no longer open — it can't be debited for this expense.");
+    }
+
     const current = counterDoc.exists() ? (counterDoc.data().value as number) : 0;
     const next = current + 1;
     tx.set(counterRef, { value: next });
@@ -2192,8 +2247,13 @@ export async function addExpense(data: ExpenseData): Promise<{ expenseId: string
       note: data.note ?? "",
       paidById: data.paidById,
       paidByName: data.paidByName,
+      ...(shiftRef ? { shiftId: data.shiftId, shiftNo: data.shiftNo ?? "" } : {}),
       createdAt: serverTimestamp(),
     });
+
+    if (shiftRef) {
+      tx.update(shiftRef, { cashExpensesTotal: increment(data.amount) });
+    }
 
     return { expenseId: expenseRef.id, expenseNo };
   });
@@ -2209,7 +2269,26 @@ export async function getExpenses(opts?: { category?: ExpenseCategory; fromDate?
 }
 
 export async function deleteExpense(expenseId: string) {
-  return deleteDoc(doc(db, "expenses", expenseId));
+  const expenseRef = doc(db, "expenses", expenseId);
+  const expenseSnap = await getDoc(expenseRef);
+  if (!expenseSnap.exists()) throw new Error("Expense not found");
+  const expense = expenseSnap.data() as { amount: number; shiftId?: string };
+  const shiftRef = expense.shiftId ? doc(db, "shifts", expense.shiftId) : null;
+
+  return runTransaction(db, async (tx) => {
+    // Read before any write — a transaction's reads must all happen first.
+    const shiftSnap = shiftRef ? await tx.get(shiftRef) : null;
+
+    tx.delete(expenseRef);
+
+    // Reverse this expense's debit from its shift's cash drawer so deleting
+    // a mis-entered payout doesn't leave expectedCash permanently understated.
+    // Only applies if the shift is still open — once closed, expectedCash/
+    // variance are already computed and frozen, so there's nothing to correct.
+    if (shiftSnap && shiftSnap.exists() && shiftSnap.data().status === "open") {
+      tx.update(shiftRef!, { cashExpensesTotal: increment(-expense.amount) });
+    }
+  });
 }
 
 // ─── SALARY ─────────────────────────────────────────────────────────────────
@@ -2227,6 +2306,13 @@ export interface IssueSalaryPaymentData {
   note?: string;
   issuedById: string;
   issuedByName: string;
+  // Set when this payment was handed out of a cashier's physical cash
+  // drawer rather than by bank/cheque — must reference a still-open shift
+  // so its cashExpensesTotal can be debited in the same transaction,
+  // keeping closeShift()'s expectedCash accurate. Mirrors addExpense()'s
+  // shiftId link.
+  shiftId?: string;
+  shiftNo?: string;
 }
 
 // Issues a payment and, in the same transaction, logs a matching Expense
@@ -2239,6 +2325,7 @@ export async function issueSalaryPayment(
 ): Promise<{ salaryPaymentId: string; paymentNo: string; expenseId: string }> {
   if (data.amount <= 0) throw new Error("Salary amount must be greater than zero");
   const commissionItems = data.commissionItems || [];
+  const shiftRef = data.shiftId ? doc(db, "shifts", data.shiftId) : null;
   return runTransaction(db, async (tx) => {
     // Firestore transactions require every tx.get() to happen before any
     // tx.set()/tx.update() — both counters must be read first, then both
@@ -2250,11 +2337,15 @@ export async function issueSalaryPayment(
     const itemRefs = commissionItems.map((item) =>
       doc(db, item.kind === "sale" ? "sales" : "jobs", item.id)
     );
-    const [salaryCounterDoc, expenseCounterDoc, ...itemDocs] = await Promise.all([
+    const [salaryCounterDoc, expenseCounterDoc, shiftSnap, ...itemDocs] = await Promise.all([
       tx.get(salaryCounterRef),
       tx.get(expenseCounterRef),
+      shiftRef ? tx.get(shiftRef) : Promise.resolve(null),
       ...itemRefs.map((ref) => tx.get(ref)),
     ]);
+    if (shiftRef && (!shiftSnap!.exists() || shiftSnap!.data().status !== "open")) {
+      throw new Error("That shift is no longer open — it can't be debited for this payment.");
+    }
 
     for (let i = 0; i < itemDocs.length; i++) {
       const item = commissionItems[i];
@@ -2287,6 +2378,7 @@ export async function issueSalaryPayment(
       paidById: data.issuedById,
       paidByName: data.issuedByName,
       linkedSalaryPaymentId: salaryRef.id,
+      ...(shiftRef ? { shiftId: data.shiftId, shiftNo: data.shiftNo ?? "" } : {}),
       createdAt: serverTimestamp(),
     });
 
@@ -2305,10 +2397,15 @@ export async function issueSalaryPayment(
       issuedById: data.issuedById,
       issuedByName: data.issuedByName,
       linkedExpenseId: expenseRef.id,
+      ...(shiftRef ? { shiftId: data.shiftId, shiftNo: data.shiftNo ?? "" } : {}),
       createdAt: serverTimestamp(),
     });
 
     itemRefs.forEach((ref) => tx.update(ref, { commissionPaymentId: salaryRef.id }));
+
+    if (shiftRef) {
+      tx.update(shiftRef, { cashExpensesTotal: increment(data.amount) });
+    }
 
     return { salaryPaymentId: salaryRef.id, paymentNo, expenseId: expenseRef.id };
   });
@@ -2332,16 +2429,27 @@ export async function deleteSalaryPayment(salaryPaymentId: string) {
   const salaryData = salarySnap.data();
   const linkedExpenseId = salaryData.linkedExpenseId as string | undefined;
   const commissionItems = (salaryData.commissionItems || []) as SalaryCommissionItem[];
+  const shiftId = salaryData.shiftId as string | undefined;
+  const shiftRef = shiftId ? doc(db, "shifts", shiftId) : null;
 
-  const batch = writeBatch(db);
-  batch.delete(salaryRef);
-  if (linkedExpenseId) batch.delete(doc(db, "expenses", linkedExpenseId));
-  // Free up any sales/jobs this payment had claimed so they're selectable
-  // again in a future commission payment.
-  commissionItems.forEach((item) => {
-    batch.update(doc(db, item.kind === "sale" ? "sales" : "jobs", item.id), { commissionPaymentId: null });
+  return runTransaction(db, async (tx) => {
+    // Read before any write — a transaction's reads must all happen first.
+    const shiftSnap = shiftRef ? await tx.get(shiftRef) : null;
+
+    tx.delete(salaryRef);
+    if (linkedExpenseId) tx.delete(doc(db, "expenses", linkedExpenseId));
+    // Free up any sales/jobs this payment had claimed so they're selectable
+    // again in a future commission payment.
+    commissionItems.forEach((item) => {
+      tx.update(doc(db, item.kind === "sale" ? "sales" : "jobs", item.id), { commissionPaymentId: null });
+    });
+
+    // Reverse this payment's debit from its shift's cash drawer, mirroring
+    // deleteExpense() — only if the shift is still open.
+    if (shiftSnap && shiftSnap.exists() && shiftSnap.data().status === "open") {
+      tx.update(shiftRef!, { cashExpensesTotal: increment(-(salaryData.amount as number)) });
+    }
   });
-  return batch.commit();
 }
 
 // Every team member except Super Admin — the business owner is never a
