@@ -67,12 +67,15 @@ const daysOpen = (openedAt: any) => {
 };
 
 export default function FinancePage() {
-  const { user, userDisplayName, can } = useAuth();
+  const { user, userDisplayName, userRole, can } = useAuth();
   const canView = can("finance.view");
   const canReview = can("finance.reviewShift");
   const canAddExpense = can("finance.addExpense");
   const canDeleteExpense = can("finance.deleteExpense");
-  const canForceClose = can("finance.forceCloseShift");
+  // Role check, not the granular permission system — matches firestore.rules'
+  // shifts force-close path, which trusts Admin/Super Admin outright (same
+  // tier as shift deletion) rather than gating on a configurable permission.
+  const canForceClose = userRole === "Admin" || userRole === "Super Admin";
 
   const [tab, setTab] = useState<"overview" | "daily" | "shifts" | "expenses">("overview");
 

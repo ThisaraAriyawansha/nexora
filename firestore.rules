@@ -341,10 +341,12 @@ service cloud.firestore {
       //     not the owning cashier, so this can't reuse path 3's cashierId
       //     pin.
       //  5) adminCloseShift (lib/firestore.ts) — an Admin/Super Admin closing
-      //     a shift the original cashier abandoned and never came back to
-      //     close, since path 1 is locked to the owning cashier and would
-      //     otherwise leave it open forever. Same field set as path 1 minus
-      //     the cashierId-must-equal-caller requirement.
+      //     any shift (their own or an abandoned one another cashier never
+      //     came back to close), since path 1 is locked to the owning
+      //     cashier and would otherwise leave a forgotten shift open
+      //     forever. Deliberately unpinned beyond the status transition —
+      //     Admin/Super Admin is fully trusted here, same as the shifts
+      //     delete rule below.
       allow update: if isAuth() && (
         (
           resource.data.cashierId == request.auth.uid &&
@@ -396,16 +398,9 @@ service cloud.firestore {
           request.resource.data.salesCount == resource.data.salesCount
         )
         || (
-          hasPerm('finance.forceCloseShift') &&
+          isAdminOrAbove() &&
           resource.data.status == 'open' &&
-          request.resource.data.status == 'closed' &&
-          request.resource.data.cashierId == resource.data.cashierId &&
-          request.resource.data.openingFloat == resource.data.openingFloat &&
-          request.resource.data.cashSalesTotal == resource.data.cashSalesTotal &&
-          request.resource.data.cardSalesTotal == resource.data.cardSalesTotal &&
-          request.resource.data.transferSalesTotal == resource.data.transferSalesTotal &&
-          request.resource.data.kokoPaySalesTotal == resource.data.kokoPaySalesTotal &&
-          request.resource.data.cashExpensesTotal == resource.data.cashExpensesTotal
+          request.resource.data.status == 'closed'
         )
       );
 

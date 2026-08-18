@@ -40,7 +40,6 @@ export type PermissionKey =
   | "finance.reviewShift"
   | "finance.addExpense"
   | "finance.deleteExpense"
-  | "finance.forceCloseShift"
   | "salary.view"
   | "salary.manageConfig"
   | "salary.issue"
@@ -128,12 +127,6 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   { key: "finance.reviewShift", label: "Review a closed shift", module: "Finance", ruleEnforced: true },
   { key: "finance.addExpense", label: "Add an expense", module: "Finance", ruleEnforced: true },
   { key: "finance.deleteExpense", label: "Delete an expense", module: "Finance", ruleEnforced: true },
-  // Not granted to Manager by default (absent from Manager's buildDefaults
-  // list below) — closing someone else's till on their behalf is more
-  // sensitive than reviewing an already-closed one, so this stays
-  // Admin/Super-Admin-only until explicitly granted, same tier as the
-  // shifts/{id} delete rule in firestore.rules.
-  { key: "finance.forceCloseShift", label: "Force-close an abandoned shift", module: "Finance", ruleEnforced: true },
 
   // Payroll data — single-owner collection (only the Salary page reads it),
   // so all four are safe to rule-enforce, same reasoning as GRN/Quotations.
