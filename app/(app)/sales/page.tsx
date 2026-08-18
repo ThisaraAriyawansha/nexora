@@ -168,6 +168,7 @@ export default function SalesPage() {
         transferSalesTotal: 0,
         kokoPaySalesTotal: 0,
         salesCount: 0,
+        cashExpensesTotal: 0,
       });
       setShowOpenShift(false);
       setOpeningFloatInput("");
@@ -1150,9 +1151,12 @@ export default function SalesPage() {
                 <div className="flex justify-between"><span className="text-zinc-500">Cash sales</span><span>Rs. {currentShift.cashSalesTotal.toLocaleString()}</span></div>
                 <div className="flex justify-between"><span className="text-zinc-500">Card sales</span><span>Rs. {currentShift.cardSalesTotal.toLocaleString()}</span></div>
                 <div className="flex justify-between"><span className="text-zinc-500">Transfer sales</span><span>Rs. {currentShift.transferSalesTotal.toLocaleString()}</span></div>
+                {currentShift.cashExpensesTotal > 0 && (
+                  <div className="flex justify-between"><span className="text-zinc-500">Cash expenses paid out</span><span>− Rs. {currentShift.cashExpensesTotal.toLocaleString()}</span></div>
+                )}
                 <div className="flex justify-between font-medium border-t border-zinc-200 pt-1 mt-1">
                   <span>Expected cash</span>
-                  <span>Rs. {(currentShift.openingFloat + currentShift.cashSalesTotal).toLocaleString()}</span>
+                  <span>Rs. {(currentShift.openingFloat + currentShift.cashSalesTotal - currentShift.cashExpensesTotal).toLocaleString()}</span>
                 </div>
               </div>
               <div>
@@ -1168,7 +1172,7 @@ export default function SalesPage() {
                 />
                 {countedCashInput !== "" && (
                   (() => {
-                    const variance = Number(countedCashInput) - (currentShift.openingFloat + currentShift.cashSalesTotal);
+                    const variance = Number(countedCashInput) - (currentShift.openingFloat + currentShift.cashSalesTotal - currentShift.cashExpensesTotal);
                     return (
                       <p className={`text-xs mt-1 font-medium ${variance === 0 ? "text-green-600" : "text-red-600"}`}>
                         {variance === 0 ? "Balanced" : variance > 0 ? `Over by Rs. ${variance.toLocaleString()}` : `Short by Rs. ${Math.abs(variance).toLocaleString()}`}

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import {
   getShifts, getSalesByShift, reviewShift,
@@ -338,6 +338,7 @@ export default function FinancePage() {
       "Card Sales": s.cardSalesTotal,
       "Transfer Sales": s.transferSalesTotal,
       "KokoPay Sales": s.kokoPaySalesTotal,
+      "Cash Expenses": s.cashExpensesTotal,
       "Expected Cash": s.expectedCash,
       "Counted Cash": s.countedCash,
       Variance: s.variance,
@@ -361,6 +362,30 @@ export default function FinancePage() {
   const [expenseError, setExpenseError] = useState("");
   const [deleteExpenseId, setDeleteExpenseId] = useState<string | null>(null);
   const [deletingExpense, setDeletingExpense] = useState(false);
+
+  // Paying an expense out of a cashier's till debits that shift's cash
+  // drawer (via addExpense's shiftId link) so closeShift() doesn't read the
+  // payout as a shortage. Open shifts are fetched fresh each time the modal
+  // opens rather than reused from the Cash Shifts tab's date-filtered list,
+  // which may not include every currently-open shift.
+  const [paidFromDrawer, setPaidFromDrawer] = useState(false);
+  const [newExpenseShiftId, setNewExpenseShiftId] = useState("");
+  const [openShiftsForExpense, setOpenShiftsForExpense] = useState<any[]>([]);
+  const [loadingOpenShifts, setLoadingOpenShifts] = useState(false);
+
+  useEffect(() => {
+    if (!showAddExpense) return;
+    setLoadingOpenShifts(true);
+    getShifts({ status: "open" }).then((s) => {
+      setOpenShiftsForExpense(s);
+      setLoadingOpenShifts(false);
+    });
+  }, [showAddExpense]);
+
+  const selectedDrawerShift = useMemo(
+    () => openShiftsForExpense.find((s) => s.id === newExpenseShiftId) || null,
+    [openShiftsForExpense, newExpenseShiftId]
+  );
 
   const reloadExpenses = async () => {
     const from = expFromDate ? new Date(`${expFromDate}T00:00:00`) : undefined;
@@ -390,6 +415,10 @@ export default function FinancePage() {
       setExpenseError("Enter a valid amount");
       return;
     }
+    if (paidFromDrawer && !newExpenseShiftId) {
+      setExpenseError("Pick which cashier's till this was paid from");
+      return;
+    }
     setSavingExpense(true);
     setExpenseError("");
     try {
@@ -399,11 +428,16 @@ export default function FinancePage() {
         note: newExpenseNote || undefined,
         paidById: user.uid,
         paidByName: userDisplayName || "Manager",
+        ...(paidFromDrawer && selectedDrawerShift
+          ? { shiftId: selectedDrawerShift.id, shiftNo: selectedDrawerShift.shiftNo }
+          : {}),
       });
       setShowAddExpense(false);
       setNewExpenseAmount("");
       setNewExpenseNote("");
       setNewExpenseCategory("other");
+      setPaidFromDrawer(false);
+      setNewExpenseShiftId("");
       await reloadExpenses();
     } catch (err: any) {
       setExpenseError(err?.message || "Failed to add expense");
@@ -431,6 +465,7 @@ export default function FinancePage() {
       Amount: e.amount,
       Note: e.note,
       "Paid By": e.paidByName,
+      Drawer: e.shiftNo || "",
       Date: e.createdAt,
     }));
     downloadCSV(`expenses-${expFromDate}_to_${expToDate}.csv`, rowsToCSV(rows));
@@ -780,6 +815,9 @@ export default function FinancePage() {
                     <div className="flex justify-between"><span className="text-zinc-500">Card sales</span><span>Rs. {viewShift.cardSalesTotal?.toLocaleString()}</span></div>
                     <div className="flex justify-between"><span className="text-zinc-500">Transfer sales</span><span>Rs. {viewShift.transferSalesTotal?.toLocaleString()}</span></div>
                     <div className="flex justify-between"><span className="text-zinc-500">KokoPay sales</span><span>Rs. {viewShift.kokoPaySalesTotal?.toLocaleString()}</span></div>
+                    {viewShift.cashExpensesTotal > 0 && (
+                      <div className="flex justify-between"><span className="text-zinc-500">Cash expenses paid out</span><span>− Rs. {viewShift.cashExpensesTotal?.toLocaleString()}</span></div>
+                    )}
                     {viewShift.status === "closed" && (
                       <>
                         <div className="flex justify-between border-t border-zinc-200 pt-1 mt-1"><span className="text-zinc-500">Expected cash</span><span>Rs. {viewShift.expectedCash?.toLocaleString()}</span></div>
@@ -882,15 +920,16 @@ export default function FinancePage() {
                   <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase tracking-wider">Amount</th>
                   <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase tracking-wider">Note</th>
                   <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase tracking-wider">Paid By</th>
+                  <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase tracking-wider">Drawer</th>
                   <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase tracking-wider">Date</th>
                   {canDeleteExpense && <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase tracking-wider"></th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-50">
                 {expLoading ? (
-                  <tr><td colSpan={7} className="text-center py-10 text-zinc-400">Loading…</td></tr>
+                  <tr><td colSpan={8} className="text-center py-10 text-zinc-400">Loading…</td></tr>
                 ) : expenses.length === 0 ? (
-                  <tr><td colSpan={7} className="text-center py-10 text-zinc-400">No expenses found</td></tr>
+                  <tr><td colSpan={8} className="text-center py-10 text-zinc-400">No expenses found</td></tr>
                 ) : (
                   paginatedExpenses.map((e) => (
                     <tr key={e.id} className="hover:bg-zinc-50 transition-colors">
@@ -899,6 +938,7 @@ export default function FinancePage() {
                       <td className="px-4 py-3 font-medium">Rs. {e.amount?.toLocaleString()}</td>
                       <td className="px-4 py-3 text-zinc-600">{e.note || "—"}</td>
                       <td className="px-4 py-3 text-zinc-600">{e.paidByName}</td>
+                      <td className="px-4 py-3 text-zinc-500 text-xs">{e.shiftNo || "—"}</td>
                       <td className="px-4 py-3 text-zinc-500 text-xs">{formatDate(e.createdAt)}</td>
                       {canDeleteExpense && (
                         <td className="px-4 py-3">
@@ -924,7 +964,7 @@ export default function FinancePage() {
           <div className="bg-white rounded-xl w-full max-w-sm mx-4">
             <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100">
               <h2 className="font-prata text-base">Add Expense</h2>
-              <button onClick={() => setShowAddExpense(false)}><X size={16} className="text-zinc-400" /></button>
+              <button onClick={() => { setShowAddExpense(false); setPaidFromDrawer(false); setNewExpenseShiftId(""); }}><X size={16} className="text-zinc-400" /></button>
             </div>
             <div className="p-4 space-y-3">
               <div>
@@ -940,6 +980,34 @@ export default function FinancePage() {
               <div>
                 <label className="text-xs text-zinc-500 mb-1 block">Note (optional)</label>
                 <input className="nexora-input" placeholder="e.g. July shop rent" value={newExpenseNote} onChange={(e) => setNewExpenseNote(e.target.value)} />
+              </div>
+              <div className="border-t border-zinc-100 pt-3">
+                <label className="flex items-center gap-2 text-xs text-zinc-600">
+                  <input
+                    type="checkbox"
+                    checked={paidFromDrawer}
+                    onChange={(e) => { setPaidFromDrawer(e.target.checked); if (!e.target.checked) setNewExpenseShiftId(""); }}
+                  />
+                  Paid out of a cashier's till
+                </label>
+                {paidFromDrawer && (
+                  <div className="mt-2">
+                    <label className="text-xs text-zinc-500 mb-1 block">Which shift?</label>
+                    {loadingOpenShifts ? (
+                      <p className="text-xs text-zinc-400">Loading open shifts…</p>
+                    ) : openShiftsForExpense.length === 0 ? (
+                      <p className="text-xs text-amber-600">No open shifts right now — this can't be debited from a drawer.</p>
+                    ) : (
+                      <select className="nexora-input" value={newExpenseShiftId} onChange={(e) => setNewExpenseShiftId(e.target.value)}>
+                        <option value="">Select a shift…</option>
+                        {openShiftsForExpense.map((s) => (
+                          <option key={s.id} value={s.id}>{s.shiftNo} — {s.cashierName}</option>
+                        ))}
+                      </select>
+                    )}
+                    <p className="text-[11px] text-zinc-400 mt-1">This amount is deducted from that shift's expected cash at close.</p>
+                  </div>
+                )}
               </div>
               {expenseError && <p className="text-xs text-red-600">{expenseError}</p>}
               <button onClick={handleAddExpense} disabled={savingExpense} className="nexora-btn nexora-btn-primary w-full justify-center">

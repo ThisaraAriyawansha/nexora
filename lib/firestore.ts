@@ -2088,6 +2088,7 @@ export async function openShift(data: ShiftOpenData): Promise<{ shiftId: string;
       transferSalesTotal: 0,
       kokoPaySalesTotal: 0,
       salesCount: 0,
+      cashExpensesTotal: 0,
     });
 
     return { shiftId: shiftRef.id, shiftNo };
@@ -2110,11 +2111,11 @@ export async function closeShift(
     const shiftRef = doc(db, "shifts", shiftId);
     const shiftSnap = await tx.get(shiftRef);
     if (!shiftSnap.exists()) throw new Error("Shift not found");
-    const shift = shiftSnap.data() as { status: string; cashierId: string; openingFloat: number; cashSalesTotal: number };
+    const shift = shiftSnap.data() as { status: string; cashierId: string; openingFloat: number; cashSalesTotal: number; cashExpensesTotal?: number };
     if (shift.status !== "open") throw new Error("Shift is already closed");
     if (shift.cashierId !== data.performedBy.uid) throw new Error("Only the cashier who opened this shift can close it");
 
-    const expectedCash = shift.openingFloat + shift.cashSalesTotal;
+    const expectedCash = shift.openingFloat + shift.cashSalesTotal - (shift.cashExpensesTotal || 0);
     const variance = data.countedCash - expectedCash;
 
     tx.update(shiftRef, {
@@ -2172,13 +2173,29 @@ export interface ExpenseData {
   note?: string;
   paidById: string;
   paidByName: string;
+  // Set when this expense was paid out of a cashier's physical cash drawer
+  // (e.g. a maintenance callout paid in cash mid-shift) rather than out of
+  // pocket/bank — must reference a still-open shift so its cashExpensesTotal
+  // can be debited in the same transaction, keeping closeShift()'s
+  // expectedCash accurate.
+  shiftId?: string;
+  shiftNo?: string;
 }
 
 export async function addExpense(data: ExpenseData): Promise<{ expenseId: string; expenseNo: string }> {
   if (data.amount <= 0) throw new Error("Expense amount must be greater than zero");
+  const shiftRef = data.shiftId ? doc(db, "shifts", data.shiftId) : null;
   return runTransaction(db, async (tx) => {
+    // Read before any write — a transaction's reads must all happen first.
     const counterRef = doc(db, "counters", "expense");
-    const counterDoc = await tx.get(counterRef);
+    const [counterDoc, shiftSnap] = await Promise.all([
+      tx.get(counterRef),
+      shiftRef ? tx.get(shiftRef) : Promise.resolve(null),
+    ]);
+    if (shiftRef && (!shiftSnap!.exists() || shiftSnap!.data().status !== "open")) {
+      throw new Error("That shift is no longer open — it can't be debited for this expense.");
+    }
+
     const current = counterDoc.exists() ? (counterDoc.data().value as number) : 0;
     const next = current + 1;
     tx.set(counterRef, { value: next });
@@ -2192,8 +2209,13 @@ export async function addExpense(data: ExpenseData): Promise<{ expenseId: string
       note: data.note ?? "",
       paidById: data.paidById,
       paidByName: data.paidByName,
+      ...(shiftRef ? { shiftId: data.shiftId, shiftNo: data.shiftNo ?? "" } : {}),
       createdAt: serverTimestamp(),
     });
+
+    if (shiftRef) {
+      tx.update(shiftRef, { cashExpensesTotal: increment(data.amount) });
+    }
 
     return { expenseId: expenseRef.id, expenseNo };
   });
@@ -2209,7 +2231,26 @@ export async function getExpenses(opts?: { category?: ExpenseCategory; fromDate?
 }
 
 export async function deleteExpense(expenseId: string) {
-  return deleteDoc(doc(db, "expenses", expenseId));
+  const expenseRef = doc(db, "expenses", expenseId);
+  const expenseSnap = await getDoc(expenseRef);
+  if (!expenseSnap.exists()) throw new Error("Expense not found");
+  const expense = expenseSnap.data() as { amount: number; shiftId?: string };
+  const shiftRef = expense.shiftId ? doc(db, "shifts", expense.shiftId) : null;
+
+  return runTransaction(db, async (tx) => {
+    // Read before any write — a transaction's reads must all happen first.
+    const shiftSnap = shiftRef ? await tx.get(shiftRef) : null;
+
+    tx.delete(expenseRef);
+
+    // Reverse this expense's debit from its shift's cash drawer so deleting
+    // a mis-entered payout doesn't leave expectedCash permanently understated.
+    // Only applies if the shift is still open — once closed, expectedCash/
+    // variance are already computed and frozen, so there's nothing to correct.
+    if (shiftSnap && shiftSnap.exists() && shiftSnap.data().status === "open") {
+      tx.update(shiftRef!, { cashExpensesTotal: increment(-expense.amount) });
+    }
+  });
 }
 
 // ─── SALARY ─────────────────────────────────────────────────────────────────
