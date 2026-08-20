@@ -65,9 +65,7 @@ export default function BillPrint({ sale }: BillPrintProps) {
           )}
           {sale.payments?.length > 0 ? (
             <div style={{ fontSize: "8.5pt", color: "#555" }}>
-              {sale.payments.map((p: any, i: number) => (
-                <div key={i}>{SALE_PAYMENT_METHOD_LABEL[p.method] || p.method}: Rs. {p.amount?.toLocaleString()}</div>
-              ))}
+              {sale.payments.map((p: any) => `${SALE_PAYMENT_METHOD_LABEL[p.method] || p.method}: Rs. ${p.amount?.toLocaleString()}`).join("  ·  ")}
             </div>
           ) : (
             <div style={{ fontSize: "8.5pt", color: "#555" }}>Payment: {SALE_PAYMENT_METHOD_LABEL[sale.paymentMethod] || sale.paymentMethod}</div>
