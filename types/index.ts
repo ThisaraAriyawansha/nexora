@@ -163,6 +163,23 @@ export const SALE_PAYMENT_METHOD_LABEL: Record<string, string> = Object.fromEntr
   SALE_PAYMENT_METHODS.map((m) => [m.value, m.label])
 );
 
+// One leg of a split payment — e.g. { method: "cash", amount: 1000 }. KokoPay
+// can never appear alongside another method (enforced at checkout), so a
+// "payments" array containing "kokopay" always has exactly one entry.
+export interface SalePaymentSplit {
+  method: SalePaymentMethod;
+  amount: number;
+}
+
+// Normalizes a sale's payment breakdown for shift-crediting/reporting: a
+// split sale carries `payments`, a plain single-method sale doesn't, so
+// callers that need "list of {method, amount}" use this instead of branching.
+export function salePaymentSplits(sale: Pick<Sale, "payments" | "paymentMethod" | "totalAmount">): SalePaymentSplit[] {
+  return sale.payments && sale.payments.length > 0
+    ? sale.payments
+    : [{ method: sale.paymentMethod, amount: sale.totalAmount }];
+}
+
 export interface Sale {
   id: string;
   invoiceNo: string;
@@ -182,7 +199,14 @@ export interface Sale {
   discountAmount: number;
   taxAmount: number;
   totalAmount: number;
+  // For a split payment (2+ methods), this is the largest leg — kept so
+  // code that only reads a single method (labels, legacy reports) still
+  // shows something reasonable. The full breakdown is in `payments`.
   paymentMethod: SalePaymentMethod;
+  // Present only when the sale was paid with 2+ methods (e.g. Cash + Card).
+  // Amounts sum to exactly totalAmount. Absent for ordinary single-method
+  // sales — use salePaymentSplits() to normalize either shape.
+  payments?: SalePaymentSplit[];
   // Set only when paymentMethod is "kokopay" — the surcharge % entered at
   // checkout. It's applied directly to every item's own price (items/
   // services above already reflect it), not added as a separate line, so

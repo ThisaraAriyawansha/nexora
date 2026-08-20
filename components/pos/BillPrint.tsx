@@ -63,7 +63,15 @@ export default function BillPrint({ sale }: BillPrintProps) {
               <div style={{ fontSize: "9.5pt", fontWeight: "600" }}>{sale.cashierName?.includes("@") ? "Cashier" : sale.cashierName}</div>
             </>
           )}
-          <div style={{ fontSize: "8.5pt", color: "#555" }}>Payment: {SALE_PAYMENT_METHOD_LABEL[sale.paymentMethod] || sale.paymentMethod}</div>
+          {sale.payments?.length > 0 ? (
+            <div style={{ fontSize: "8.5pt", color: "#555" }}>
+              {sale.payments.map((p: any, i: number) => (
+                <div key={i}>{SALE_PAYMENT_METHOD_LABEL[p.method] || p.method}: Rs. {p.amount?.toLocaleString()}</div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ fontSize: "8.5pt", color: "#555" }}>Payment: {SALE_PAYMENT_METHOD_LABEL[sale.paymentMethod] || sale.paymentMethod}</div>
+          )}
         </div>
       </div>
 
@@ -150,7 +158,7 @@ export default function BillPrint({ sale }: BillPrintProps) {
             <span>Total</span>
             <span>Rs. {sale.totalAmount?.toLocaleString()}</span>
           </div>
-          {sale.paymentMethod === "cash" && sale.amountTendered > 0 && (
+          {!sale.payments?.length && sale.paymentMethod === "cash" && sale.amountTendered > 0 && (
             <>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: "9pt", padding: "1.5mm 0", color: "#555", marginTop: "2mm" }}>
                 <span>Tendered</span>

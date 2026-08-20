@@ -8,7 +8,8 @@ import { initializeApp, deleteApp } from "firebase/app";
 import { getAuth, createUserWithEmailAndPassword, signOut } from "firebase/auth";
 import { db } from "./firebase";
 import { firebaseConfig } from "./firebase";
-import type { ShopSettings, UserProfile, JobStatus, JobServiceItem, StockLocation, StockMovementReason, SupplierPaymentMethod, SupplierPaymentStatus, ShiftStatus, ShiftReviewStatus, ExpenseCategory, SalePaymentMethod, SalaryType, SalarySetup, SalaryPayment, SalaryCommissionItem } from "@/types";
+import type { ShopSettings, UserProfile, JobStatus, JobServiceItem, StockLocation, StockMovementReason, SupplierPaymentMethod, SupplierPaymentStatus, ShiftStatus, ShiftReviewStatus, ExpenseCategory, SalePaymentMethod, SalePaymentSplit, SalaryType, SalarySetup, SalaryPayment, SalaryCommissionItem } from "@/types";
+import { salePaymentSplits } from "@/types";
 import { diffFields, writeAuditLog } from "./audit";
 import { isEditableRole, getDefaultPermissions, PERMISSION_CATALOG } from "./permissions";
 
@@ -422,6 +423,7 @@ export interface SaleData {
   totalAmount: number;
   pointsRedeemed?: number;
   paymentMethod: SalePaymentMethod;
+  payments?: SalePaymentSplit[];
   kokoPayChargePercent?: number;
   kokoPayChargeAmount?: number;
   paymentStatus: "paid" | "partial" | "pending";
@@ -619,7 +621,11 @@ export async function createSale(data: SaleData) {
     });
 
     if (shiftRef) {
-      tx.update(shiftRef, { [shiftTotalsField(data.paymentMethod)]: increment(data.totalAmount), salesCount: increment(1) });
+      const shiftUpdates: Record<string, any> = { salesCount: increment(1) };
+      for (const split of salePaymentSplits(data)) {
+        shiftUpdates[shiftTotalsField(split.method)] = increment(split.amount);
+      }
+      tx.update(shiftRef, shiftUpdates);
     }
 
     // Keep lifetime totals so dashboards can read one doc instead of scanning
@@ -865,7 +871,11 @@ export async function cancelSale(saleId: string, cancelledBy: { uid: string; nam
     // Only applies if the shift is still open — once closed, expectedCash/
     // variance are already computed and frozen, so there's nothing to correct.
     if (shiftSnap && shiftSnap.exists() && shiftSnap.data().status === "open") {
-      tx.update(shiftRef!, { [shiftTotalsField(sale.paymentMethod)]: increment(-sale.totalAmount), salesCount: increment(-1) });
+      const shiftUpdates: Record<string, any> = { salesCount: increment(-1) };
+      for (const split of salePaymentSplits(sale)) {
+        shiftUpdates[shiftTotalsField(split.method)] = increment(-split.amount);
+      }
+      tx.update(shiftRef!, shiftUpdates);
     }
 
     // Mirror createSale's lifetime-totals bump so a cancelled sale stops counting.

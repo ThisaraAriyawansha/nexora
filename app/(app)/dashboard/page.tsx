@@ -5,7 +5,7 @@ import { TrendingUp, Package, Users, ShoppingBag, AlertTriangle, Wallet, Receipt
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
 import AccessRestricted from "@/components/ui/AccessRestricted";
-import { SALE_PAYMENT_METHOD_LABEL } from "@/types";
+import { SALE_PAYMENT_METHOD_LABEL, salePaymentSplits } from "@/types";
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const PAYMENT_COLORS = ["#10233d", "#a1a1aa", "#e4e4e7", "#71717a"];
@@ -123,8 +123,10 @@ export default function DashboardPage() {
       // Payment method breakdown
       const byMethod = new Map<string, number>();
       for (const s of sales as any[]) {
-        const m = s.paymentMethod || "other";
-        byMethod.set(m, (byMethod.get(m) || 0) + (s.totalAmount || 0));
+        for (const split of salePaymentSplits(s)) {
+          const m = split.method || "other";
+          byMethod.set(m, (byMethod.get(m) || 0) + (split.amount || 0));
+        }
       }
       const totalRevenue = Array.from(byMethod.values()).reduce((a, b) => a + b, 0);
       setPaymentBreakdown(
