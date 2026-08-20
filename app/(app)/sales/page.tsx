@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
 import { getProducts, getCustomers, addCustomer, createSale, getBatches, getAvailableUnits, getMainCategories, getSubCategories, getCurrentOpenShift, openShift, closeShift, getJobs, updateJobStatus } from "@/lib/firestore";
-import { Product, Customer, CartItem, MainCategory, SubCategory, Shift, SalePaymentMethod, SALE_PAYMENT_METHODS, jobServicesTotal } from "@/types";
+import { Product, Customer, CartItem, MainCategory, SubCategory, Shift, SalePaymentMethod, SalePaymentSplit, SALE_PAYMENT_METHODS, SALE_PAYMENT_METHOD_LABEL, jobServicesTotal } from "@/types";
 import { Search, Plus, Minus, Trash2, Printer, User, X, Check, Download, Mail, Wallet, Lock, Wrench } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import BillPrint from "@/components/pos/BillPrint";
@@ -26,7 +26,11 @@ export default function SalesPage() {
   const [showCustomerPicker, setShowCustomerPicker] = useState(false);
   const [showAddCustomer, setShowAddCustomer] = useState(false);
   const [discount, setDiscount] = useState(0);
-  const [paymentMethod, setPaymentMethod] = useState<SalePaymentMethod>("cash");
+  // 2+ selected = split payment (e.g. Cash + Card). KokoPay can never appear
+  // alongside another method — selecting it replaces the whole array, and
+  // selecting anything else while it's active replaces it right back out.
+  const [selectedMethods, setSelectedMethods] = useState<SalePaymentMethod[]>(["cash"]);
+  const [splitAmounts, setSplitAmounts] = useState<Record<string, string>>({});
   const [kokoPayPercent, setKokoPayPercent] = useState(0);
   const [showKokoPayModal, setShowKokoPayModal] = useState(false);
   const [kokoPayPercentInput, setKokoPayPercentInput] = useState("");
@@ -377,7 +381,9 @@ export default function SalesPage() {
   // it). kokoPayChargeAmount is kept on the sale purely as reporting
   // metadata — how much of the total above is attributable to the
   // surcharge — never rendered as its own addable row.
-  const kokoMultiplier = paymentMethod === "kokopay" && kokoPayPercent > 0 ? 1 + kokoPayPercent / 100 : 1;
+  const isKokoPay = selectedMethods.length === 1 && selectedMethods[0] === "kokopay";
+  const isSplitMode = selectedMethods.length > 1;
+  const kokoMultiplier = isKokoPay && kokoPayPercent > 0 ? 1 + kokoPayPercent / 100 : 1;
   const baseJobServicesAmount = jobServicesTotal(attachedJob?.services);
   const baseCartSubtotal = cart.reduce((s, i) => s + i.lineTotal, 0);
   const baseSubtotal = baseCartSubtotal + baseJobServicesAmount;
@@ -390,6 +396,20 @@ export default function SalesPage() {
   const totalAmount = Math.max(0, subtotal - discount - pointsToRedeem);
   const kokoPayChargeAmount = kokoMultiplier > 1 ? Math.max(0, subtotal - baseSubtotal) : 0;
   const change = Number(amountTendered) - totalAmount;
+  const splitAmountsTotal = selectedMethods.reduce((s, m) => s + (Number(splitAmounts[m]) || 0), 0);
+  const splitRemaining = totalAmount - splitAmountsTotal;
+  const toggleMethod = (value: SalePaymentMethod) => {
+    setKokoPayPercent(0);
+    setSelectedMethods(prev => {
+      if (prev.includes("kokopay")) return [value];
+      if (prev.includes(value)) return prev.length === 1 ? prev : prev.filter(m => m !== value);
+      return [...prev, value];
+    });
+  };
+  const openKokoPayModal = () => {
+    setKokoPayPercentInput(kokoPayPercent > 0 ? String(kokoPayPercent) : "");
+    setShowKokoPayModal(true);
+  };
 
   const handleCheckout = async () => {
     if (cart.length === 0 && !attachedJob) return;
@@ -411,6 +431,13 @@ export default function SalesPage() {
       const saleServices = attachedJob?.services?.map((s: any) =>
         s.chargeType === "paid" && kokoMultiplier > 1 ? { ...s, price: Math.round(s.price * kokoMultiplier) } : s
       ) || [];
+      const payments: SalePaymentSplit[] | undefined = isSplitMode
+        ? selectedMethods.map(m => ({ method: m, amount: Number(splitAmounts[m]) || 0 }))
+        : undefined;
+      // Legacy single-method fields (paymentMethod, amountTendered, changeAmount)
+      // still need a value even on a split sale — paymentMethod falls back to
+      // the largest leg so old reports/labels show something reasonable.
+      const primaryMethod = payments ? payments.reduce((a, b) => (b.amount > a.amount ? b : a)).method : selectedMethods[0];
       const result = await createSale({
         customerId: selectedCustomer?.id || null,
         customerName: selectedCustomer?.name || attachedJob?.customerName || "Walk-in Customer",
@@ -425,12 +452,13 @@ export default function SalesPage() {
         taxAmount: 0,
         totalAmount,
         pointsRedeemed: pointsToRedeem || 0,
-        paymentMethod,
-        kokoPayChargePercent: paymentMethod === "kokopay" ? kokoPayPercent : undefined,
-        kokoPayChargeAmount: paymentMethod === "kokopay" ? kokoPayChargeAmount : undefined,
+        paymentMethod: primaryMethod,
+        ...(payments ? { payments } : {}),
+        kokoPayChargePercent: isKokoPay ? kokoPayPercent : undefined,
+        kokoPayChargeAmount: isKokoPay ? kokoPayChargeAmount : undefined,
         paymentStatus: "paid",
-        amountTendered: Number(amountTendered) || totalAmount,
-        changeAmount: Math.max(0, change),
+        amountTendered: isSplitMode ? totalAmount : (Number(amountTendered) || totalAmount),
+        changeAmount: isSplitMode ? 0 : Math.max(0, change),
         note,
         shiftId: currentShift.id,
         shiftNo: currentShift.shiftNo,
@@ -452,17 +480,21 @@ export default function SalesPage() {
           console.error("Failed to mark job as delivered:", err);
         }
       }
-      setCurrentShift(prev => prev ? {
-        ...prev,
-        cashSalesTotal: prev.cashSalesTotal + (paymentMethod === "cash" ? totalAmount : 0),
-        cardSalesTotal: prev.cardSalesTotal + (paymentMethod === "card" ? totalAmount : 0),
-        transferSalesTotal: prev.transferSalesTotal + (paymentMethod === "transfer" ? totalAmount : 0),
-        kokoPaySalesTotal: prev.kokoPaySalesTotal + (paymentMethod === "kokopay" ? totalAmount : 0),
-        salesCount: prev.salesCount + 1,
-      } : prev);
+      const splits = payments ?? [{ method: primaryMethod, amount: totalAmount }];
+      setCurrentShift(prev => {
+        if (!prev) return prev;
+        const next = { ...prev, salesCount: prev.salesCount + 1 };
+        for (const s of splits) {
+          if (s.method === "cash") next.cashSalesTotal += s.amount;
+          else if (s.method === "card") next.cardSalesTotal += s.amount;
+          else if (s.method === "transfer") next.transferSalesTotal += s.amount;
+          else if (s.method === "kokopay") next.kokoPaySalesTotal += s.amount;
+        }
+        return next;
+      });
       // Warranties and loyalty-point adjustments are written server-side inside
       // createSale's own transaction, so they can't drift from the sale itself.
-      setCompletedSale({ ...result, items: saleItems, jobNo: attachedJob?.jobNo, services: saleServices, subtotal, discountAmount: discount, pointsRedeemed: pointsToRedeem, totalAmount, customerName: selectedCustomer?.name || attachedJob?.customerName || "Walk-in Customer", customerPhone: selectedCustomer?.phone || attachedJob?.customerPhone, customerEmail: selectedCustomer?.email || attachedJob?.customerEmail, cashierName: userDisplayName || "Cashier", paymentMethod, kokoPayChargePercent: paymentMethod === "kokopay" ? kokoPayPercent : undefined, kokoPayChargeAmount: paymentMethod === "kokopay" ? kokoPayChargeAmount : undefined, amountTendered: Number(amountTendered), changeAmount: Math.max(0, change) });
+      setCompletedSale({ ...result, items: saleItems, jobNo: attachedJob?.jobNo, services: saleServices, subtotal, discountAmount: discount, pointsRedeemed: pointsToRedeem, totalAmount, customerName: selectedCustomer?.name || attachedJob?.customerName || "Walk-in Customer", customerPhone: selectedCustomer?.phone || attachedJob?.customerPhone, customerEmail: selectedCustomer?.email || attachedJob?.customerEmail, cashierName: userDisplayName || "Cashier", paymentMethod: primaryMethod, payments, kokoPayChargePercent: isKokoPay ? kokoPayPercent : undefined, kokoPayChargeAmount: isKokoPay ? kokoPayChargeAmount : undefined, amountTendered: isSplitMode ? totalAmount : Number(amountTendered), changeAmount: isSplitMode ? 0 : Math.max(0, change) });
       setBillEmailNotice("");
 
       // Fire-and-forget: don't hold up the checkout flow on the alert email.
@@ -490,6 +522,7 @@ export default function SalesPage() {
       setSelectedCustomer(null);
       setAttachedJob(null);
       setAmountTendered("");
+      setSplitAmounts({});
       setNote("");
     } catch (err: any) {
       console.error("Checkout failed:", err);
@@ -783,22 +816,15 @@ export default function SalesPage() {
             <span>Rs. {totalAmount.toLocaleString()}</span>
           </div>
 
-          {/* Payment method */}
-          <div className="grid grid-cols-4 gap-2">
-            {SALE_PAYMENT_METHODS.map(({ value, label }) => (
+          {/* Payment method — tap more than one (except KokoPay, which is
+              always alone) to split the total across methods */}
+          <div className={`grid gap-2 ${isSplitMode ? "grid-cols-3" : "grid-cols-4"}`}>
+            {SALE_PAYMENT_METHODS.filter(({ value }) => value !== "kokopay" || !isSplitMode).map(({ value, label }) => (
               <button
                 key={value}
-                onClick={() => {
-                  if (value === "kokopay") {
-                    setKokoPayPercentInput(kokoPayPercent > 0 ? String(kokoPayPercent) : "");
-                    setShowKokoPayModal(true);
-                  } else {
-                    setPaymentMethod(value);
-                    setKokoPayPercent(0);
-                  }
-                }}
+                onClick={() => (value === "kokopay" ? openKokoPayModal() : toggleMethod(value))}
                 className={`py-2 text-xs font-medium rounded border transition-colors ${
-                  paymentMethod === value ? "bg-black text-white border-black" : "border-zinc-200 text-zinc-500 hover:border-black"
+                  selectedMethods.includes(value) ? "bg-black text-white border-black" : "border-zinc-200 text-zinc-500 hover:border-black"
                 }`}
               >
                 {label}
@@ -806,12 +832,12 @@ export default function SalesPage() {
             ))}
           </div>
 
-          {paymentMethod === "kokopay" && (
+          {isKokoPay && (
             <div className="flex items-center justify-between text-xs bg-zinc-50 rounded px-3 py-2">
               <span className="text-zinc-500">Item prices above include a {kokoPayPercent}% KokoPay surcharge (Rs. {kokoPayChargeAmount.toLocaleString()}) — staff view only, not shown on the customer's bill</span>
               <button
                 type="button"
-                onClick={() => { setKokoPayPercentInput(kokoPayPercent > 0 ? String(kokoPayPercent) : ""); setShowKokoPayModal(true); }}
+                onClick={openKokoPayModal}
                 className="underline text-zinc-500 hover:text-black shrink-0 ml-2"
               >
                 Edit %
@@ -819,7 +845,25 @@ export default function SalesPage() {
             </div>
           )}
 
-          {paymentMethod === "cash" && (
+          {isSplitMode ? (
+            <div className="space-y-2">
+              {selectedMethods.map(m => (
+                <div key={m} className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-zinc-500 w-16 shrink-0">{SALE_PAYMENT_METHOD_LABEL[m]}</span>
+                  <input
+                    type="number"
+                    value={splitAmounts[m] ?? ""}
+                    onChange={e => setSplitAmounts(prev => ({ ...prev, [m]: e.target.value }))}
+                    className="nexora-input flex-1 py-1.5 text-sm"
+                    placeholder="0"
+                  />
+                </div>
+              ))}
+              <p className={`text-xs font-medium text-right ${splitRemaining === 0 ? "text-green-600" : "text-red-600"}`}>
+                {splitRemaining === 0 ? "Balanced" : splitRemaining > 0 ? `Remaining: Rs. ${splitRemaining.toLocaleString()}` : `Over by Rs. ${Math.abs(splitRemaining).toLocaleString()}`}
+              </p>
+            </div>
+          ) : selectedMethods[0] === "cash" && (
             <div>
               <input
                 type="number"
@@ -851,7 +895,12 @@ export default function SalesPage() {
           )}
           <button
             onClick={handleCheckout}
-            disabled={(cart.length === 0 && !attachedJob) || processing || !currentShift}
+            disabled={
+              (cart.length === 0 && !attachedJob) ||
+              processing ||
+              !currentShift ||
+              (isSplitMode && (splitRemaining !== 0 || selectedMethods.some(m => (Number(splitAmounts[m]) || 0) <= 0)))
+            }
             className="nexora-btn nexora-btn-primary w-full justify-center py-3 text-base"
           >
             {processing ? "Processing…" : `Checkout — Rs. ${totalAmount.toLocaleString()}`}
@@ -1125,7 +1174,7 @@ export default function SalesPage() {
                 onClick={() => {
                   const pct = Math.max(0, Number(kokoPayPercentInput) || 0);
                   setKokoPayPercent(pct);
-                  setPaymentMethod("kokopay");
+                  setSelectedMethods(["kokopay"]);
                   setShowKokoPayModal(false);
                 }}
                 className="nexora-btn nexora-btn-primary w-full justify-center"

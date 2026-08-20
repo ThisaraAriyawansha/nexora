@@ -5,7 +5,7 @@ import {
   getShifts, getSalesByShift, reviewShift, adminCloseShift,
   getSales, getSaleItemsForSales, getSuppliers, getExpenses, addExpense, deleteExpense,
 } from "@/lib/firestore";
-import { ExpenseCategory, SALE_PAYMENT_METHOD_LABEL } from "@/types";
+import { ExpenseCategory, SALE_PAYMENT_METHOD_LABEL, salePaymentSplits } from "@/types";
 import { Search, Download, Wallet, X, TrendingUp, Receipt, Plus, Trash2, AlertTriangle } from "lucide-react";
 import Pagination from "@/components/ui/Pagination";
 import { rowsToCSV, downloadCSV } from "@/lib/csv";
@@ -118,8 +118,10 @@ export default function FinancePage() {
   const paymentBreakdown = (() => {
     const byMethod = new Map<string, number>();
     for (const s of ovSales) {
-      const m = s.paymentMethod || "other";
-      byMethod.set(m, (byMethod.get(m) || 0) + (s.totalAmount || 0));
+      for (const split of salePaymentSplits(s)) {
+        const m = split.method || "other";
+        byMethod.set(m, (byMethod.get(m) || 0) + (split.amount || 0));
+      }
     }
     const total = Array.from(byMethod.values()).reduce((a, b) => a + b, 0);
     return Array.from(byMethod.entries())
@@ -975,7 +977,11 @@ export default function FinancePage() {
                         {shiftSales.map((sale) => (
                           <div key={sale.id} className="flex items-center justify-between px-3 py-2 text-sm">
                             <span>{sale.invoiceNo}</span>
-                            <span className="text-zinc-400 text-xs">{SALE_PAYMENT_METHOD_LABEL[sale.paymentMethod] || sale.paymentMethod}</span>
+                            <span className="text-zinc-400 text-xs">
+                              {(sale as any).payments?.length > 0
+                                ? (sale as any).payments.map((p: any) => SALE_PAYMENT_METHOD_LABEL[p.method] || p.method).join(" + ")
+                                : SALE_PAYMENT_METHOD_LABEL[sale.paymentMethod] || sale.paymentMethod}
+                            </span>
                             <span className="font-medium">Rs. {sale.totalAmount?.toLocaleString()}</span>
                           </div>
                         ))}

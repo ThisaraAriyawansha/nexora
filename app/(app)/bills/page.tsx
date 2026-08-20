@@ -282,7 +282,15 @@ export default function BillsPage() {
                   <td className="px-4 py-3 text-zinc-600">{sale.customerName || "Walk-in"}</td>
                   <td className="px-4 py-3 text-zinc-500 text-xs">{formatDate(sale.createdAt)}</td>
                   <td className="px-4 py-3">
-                    <span className="badge badge-default">{SALE_PAYMENT_METHOD_LABEL[sale.paymentMethod] || sale.paymentMethod}</span>
+                    {(sale as any).payments?.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {(sale as any).payments.map((p: any, i: number) => (
+                          <span key={i} className="badge badge-default">{SALE_PAYMENT_METHOD_LABEL[p.method] || p.method}</span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="badge badge-default">{SALE_PAYMENT_METHOD_LABEL[sale.paymentMethod] || sale.paymentMethod}</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 font-medium text-ink">Rs. {sale.totalAmount?.toLocaleString()}</td>
                   <td className="px-4 py-3">
@@ -353,9 +361,15 @@ export default function BillsPage() {
                   <input className="nexora-input text-sm" placeholder="Customer name" value={billEditForm.customerName} onChange={(e) => setBillEditForm({ ...billEditForm, customerName: e.target.value })} />
                   <input className="nexora-input text-sm" placeholder="Customer phone" value={billEditForm.customerPhone} onChange={(e) => setBillEditForm({ ...billEditForm, customerPhone: e.target.value })} />
                   <input className="nexora-input text-sm" placeholder="Customer email" value={billEditForm.customerEmail} onChange={(e) => setBillEditForm({ ...billEditForm, customerEmail: e.target.value })} />
-                  <select className="nexora-input text-sm" value={billEditForm.paymentMethod} onChange={(e) => setBillEditForm({ ...billEditForm, paymentMethod: e.target.value as SalePaymentMethod })}>
-                    {SALE_PAYMENT_METHODS.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
-                  </select>
+                  {(viewSale as any)?.payments?.length > 0 ? (
+                    <div className="nexora-input text-sm bg-zinc-100 text-zinc-500 flex items-center">
+                      Split payment — {(viewSale as any).payments.map((p: any) => `${SALE_PAYMENT_METHOD_LABEL[p.method] || p.method} Rs. ${p.amount?.toLocaleString()}`).join(" + ")}
+                    </div>
+                  ) : (
+                    <select className="nexora-input text-sm" value={billEditForm.paymentMethod} onChange={(e) => setBillEditForm({ ...billEditForm, paymentMethod: e.target.value as SalePaymentMethod })}>
+                      {SALE_PAYMENT_METHODS.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
+                    </select>
+                  )}
                 </div>
                 <textarea className="nexora-input text-sm w-full" rows={2} placeholder="Note" value={billEditForm.note} onChange={(e) => setBillEditForm({ ...billEditForm, note: e.target.value })} />
                 <div className="flex gap-2">
@@ -429,10 +443,20 @@ export default function BillsPage() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Payment</p>
-                  <p className="text-sm font-medium">
-                    {SALE_PAYMENT_METHOD_LABEL[viewSale.paymentMethod] || viewSale.paymentMethod}
-                    {(viewSale as any).kokoPayChargePercent > 0 && ` (${(viewSale as any).kokoPayChargePercent}% surcharge)`}
-                  </p>
+                  {(viewSale as any).payments?.length > 0 ? (
+                    <div className="space-y-0.5">
+                      {(viewSale as any).payments.map((p: any, i: number) => (
+                        <p key={i} className="text-sm font-medium">
+                          {SALE_PAYMENT_METHOD_LABEL[p.method] || p.method} <span className="text-zinc-400 font-normal">Rs. {p.amount?.toLocaleString()}</span>
+                        </p>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm font-medium">
+                      {SALE_PAYMENT_METHOD_LABEL[viewSale.paymentMethod] || viewSale.paymentMethod}
+                      {(viewSale as any).kokoPayChargePercent > 0 && ` (${(viewSale as any).kokoPayChargePercent}% surcharge)`}
+                    </p>
+                  )}
                 </div>
                 {(viewSale as any).jobNo && (
                   <div className="min-w-0">
